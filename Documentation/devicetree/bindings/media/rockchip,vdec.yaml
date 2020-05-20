@@ -69,9 +69,15 @@ properties:
     items:
       - description: The Video Decoder AXI interface reset
       - description: The Video Decoder AHB interface reset
-      - description: The Video Decoded CABAC reset
+      - description: The Video Decoder CABAC reset
       - description: The Video Decoder core reset
-      - description: The Video decoder HEVC CABAC reset
+      - description: The Video Decoder HEVC CABAC reset
+      - description: The Video Decoder video_h reset
+      - description: The Video Decoder video_a reset
+      - description: The Video Decoder video_core reset
+      - description: The Video Decoder video_cabac reset
+      - description: The Video Decoder niu_a reset
+      - description: The Video Decoder niu_h reset
 
   reset-names:
     items:
@@ -80,6 +86,12 @@ properties:
       - const: cabac
       - const: core
       - const: hevc_cabac
+      - const: video_h
+      - const: video_a
+      - const: video_core
+      - const: video_cabac
+      - const: niu_a
+      - const: niu_h
 
   power-domains:
     maxItems: 1
@@ -101,6 +113,8 @@ required:
   - clocks
   - clock-names
   - power-domains
+  - resets
+  - reset-names
 
 allOf:
   - if:
@@ -134,8 +148,8 @@ allOf:
           maxItems: 4
         clock-names:
           maxItems: 4
-        resets: false
-        reset-names: false
+        resets: 6
+        reset-names: 6
         sram: false
 
 additionalProperties: false
@@ -155,6 +169,11 @@ examples:
         clock-names = "axi", "ahb", "cabac", "core";
         power-domains = <&power RK3399_PD_VDU>;
         iommus = <&vdec_mmu>;
+        resets = <&cru SRST_H_VDU>, <&cru SRST_A_VDU>,
+                 <&cru SRST_VDU_CORE>, <&cru SRST_VDU_CA>,
+                 <&cru SRST_A_VDU_NOC>, <&cru SRST_H_VDU_NOC>;
+        reset-names = "video_h", "video_a", "video_core", "video_cabac",
+                      "niu_a", "niu_h";
     };
 
 ...

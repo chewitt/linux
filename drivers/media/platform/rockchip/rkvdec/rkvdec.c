@@ -11,6 +11,7 @@
 
 #include <linux/hw_bitfield.h>
 #include <linux/clk.h>
+#include <linux/delay.h>
 #include <linux/genalloc.h>
 #include <linux/interrupt.h>
 #include <linux/iommu.h>
@@ -20,6 +21,8 @@
 #include <linux/platform_device.h>
 #include <linux/pm.h>
 #include <linux/pm_runtime.h>
+#include <linux/reset.h>
+#include <linux/rockchip_pmu.h>
 #include <linux/slab.h>
 #include <linux/videodev2.h>
 #include <linux/workqueue.h>
@@ -1280,6 +1283,11 @@ static void rkvdec_job_finish(struct rkvdec_ctx *ctx,
 	struct rkvdec_dev *rkvdec = ctx->dev;
 
 	pm_runtime_put_autosuspend(rkvdec->dev);
+
+	if (result == VB2_BUF_STATE_ERROR &&
+	    rkvdec->reset_mask == RESET_NONE)
+		rkvdec->reset_mask |= RESET_SOFT;
+
 	rkvdec_job_finish_no_pm(ctx, result);
 }
 
@@ -1352,6 +1360,33 @@ static void rkvdec_device_run(void *priv)
 
 	if (WARN_ON(!desc))
 		return;
+	if (rkvdec->reset_mask != RESET_NONE) {
+
+		if (rkvdec->reset_mask & RESET_SOFT) {
+			writel(RKVDEC_SOFTRST_EN_P,
+			       rkvdec->regs + RKVDEC_REG_INTERRUPT);
+			udelay(RKVDEC_RESET_DELAY);
+			if (readl(rkvdec->regs + RKVDEC_REG_INTERRUPT)
+			    & RKVDEC_SOFTRESET_RDY)
+				dev_info_ratelimited(rkvdec->dev,
+						      "softreset failed\n");
+		}
+
+		if (rkvdec->reset_mask & RESET_HARD) {
+			rockchip_pmu_idle_request(rkvdec->dev, true);
+			ret = reset_control_assert(rkvdec->rstc);
+			if (!ret) {
+				udelay(RKVDEC_RESET_DELAY);
+				ret = reset_control_deassert(rkvdec->rstc);
+			}
+			rockchip_pmu_idle_request(rkvdec->dev, false);
+			if (ret)
+				dev_notice_ratelimited(rkvdec->dev,
+							"hardreset failed\n");
+		}
+		rkvdec->reset_mask = RESET_NONE;
+		pm_runtime_suspend(rkvdec->dev);
+	}
 
 	ret = pm_runtime_resume_and_get(rkvdec->dev);
 	if (ret < 0) {
@@ -1639,6 +1674,10 @@ static irqreturn_t rk3399_irq_handler(struct rkvdec_ctx *ctx)
 	if (cancel_delayed_work(&rkvdec->watchdog_work))
 		rkvdec_job_finish(ctx, state);
 
+	if (state == VB2_BUF_STATE_ERROR)
+		rkvdec->reset_mask |= (status & RKVDEC_ERR_MASK) ?
+					RESET_HARD : RESET_SOFT;
+
 	return IRQ_HANDLED;
 }
 
@@ -1791,6 +1830,7 @@ static void rkvdec_watchdog_func(struct work_struct *work)
 	ctx = v4l2_m2m_get_curr_priv(rkvdec->m2m_dev);
 	if (ctx) {
 		dev_err(rkvdec->dev, "Frame processing timed out!\n");
+		rkvdec->reset_mask |= RESET_HARD;
 		writel(RKVDEC_IRQ_DIS, rkvdec->regs + RKVDEC_REG_INTERRUPT);
 		rkvdec_job_finish(ctx, VB2_BUF_STATE_ERROR);
 	}
@@ -2029,6 +2069,17 @@ static int rkvdec_probe(struct platform_device *pdev)
 	rkvdec->sram_pool = of_gen_pool_get(pdev->dev.of_node, "sram", 0);
 	if (!rkvdec->sram_pool && rkvdec->variant->num_rcb_sizes > 0)
 		dev_info(&pdev->dev, "No sram node, RCB will be stored in RAM\n");
+
+	rkvdec->rstc = devm_reset_control_array_get(&pdev->dev, RESET_CONTROL_OPTIONAL_EXCLUSIVE);
+	if (IS_ERR(rkvdec->rstc)) {
+		dev_err(&pdev->dev,
+			"get resets failed %ld\n", PTR_ERR(rkvdec->rstc));
+		return PTR_ERR(rkvdec->rstc);
+	} else {
+		dev_dbg(&pdev->dev,
+			 "requested %d resets\n",
+			 reset_control_get_count(&pdev->dev));
+	}
 
 	pm_runtime_set_autosuspend_delay(&pdev->dev, 100);
 	pm_runtime_use_autosuspend(&pdev->dev);

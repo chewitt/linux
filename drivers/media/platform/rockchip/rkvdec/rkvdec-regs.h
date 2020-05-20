@@ -35,6 +35,12 @@
 #define RKVDEC_SOFTRESET_RDY				BIT(22)
 #define RKVDEC_WR_DDR_ALIGN_EN				BIT(23)
 
+#define RKVDEC_ERR_MASK					(RKVDEC_BUS_STA \
+							 | RKVDEC_ERR_STA \
+							 | RKVDEC_TIMEOUT_STA \
+							 | RKVDEC_BUF_EMPTY_STA \
+							 | RKVDEC_COLMV_REF_ERR_STA )
+
 #define RKVDEC_REG_QOS_CTRL				0x18C
 
 /*
