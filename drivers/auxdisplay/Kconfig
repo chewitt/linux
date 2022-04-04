@@ -526,6 +526,17 @@ config SEG_LED_GPIO
 	  This driver can also be built as a module. If so, the module
 	  will be called seg-led-gpio.
 
+config TM1628
+	tristate "TM1628 driver for LED 7/11 segment displays"
+	depends on SPI
+	depends on OF || COMPILE_TEST
+	help
+	  Say Y to enable support for Titan Micro Electronics TM1628
+	  LED controller.
+
+	  It's a 3-wire SPI device controlling a two-dimensional grid of
+	  LEDs. Dimming is applied to all outputs through an internal PWM.
+
 #
 # Character LCD with non-conforming interface section
 #
