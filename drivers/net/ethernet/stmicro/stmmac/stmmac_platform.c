@@ -9,6 +9,9 @@
 *******************************************************************************/
 
 #include <linux/device.h>
+#include <linux/acpi.h>
+#include <linux/clk-provider.h>
+#include <linux/clkdev.h>
 #include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
 #include <linux/module.h>
@@ -729,6 +732,248 @@ static int stmmac_pltfr_get_irq_array(struct platform_device *pdev,
 	return 0;
 }
 
+#ifdef CONFIG_ACPI
+/*
+ * Parse ACPI _DSD to setup AXI register
+ */
+static struct stmmac_axi * stmmac_axi_setup_acpi(struct platform_device *pdev)
+{
+	struct fwnode_handle *np = dev_fwnode(&(pdev->dev));
+	struct stmmac_axi * axi;
+	u32 axi_blen[AXI_BLEN];
+
+	axi = devm_kzalloc(&pdev->dev, sizeof(*axi), GFP_KERNEL);
+	if (!axi)
+		return ERR_PTR(-ENOMEM);
+
+	axi->axi_lpi_en = fwnode_property_read_bool(np, "snps,lpi_en");
+	axi->axi_xit_frm = fwnode_property_read_bool(np, "snps,xit_frm");
+	axi->axi_fb = fwnode_property_read_bool(np, "snps,axi_fb");
+
+	if (fwnode_property_read_u32(np, "snps,wr_osr_lmt", &axi->axi_wr_osr_lmt))
+		axi->axi_wr_osr_lmt = 1;
+	if (fwnode_property_read_u32(np, "snps,rd_osr_lmt", &axi->axi_rd_osr_lmt))
+		axi->axi_rd_osr_lmt = 1;
+	fwnode_property_read_u32_array(np, "snps,blen", axi_blen, AXI_BLEN);
+	stmmac_axi_blen_to_mask(&axi->axi_blen_regval, axi_blen, AXI_BLEN);
+
+	return axi;
+}
+
+/**
+ * Parse ACPI _DSD parameters for multiple queues configuration
+ */
+static void stmmac_mtl_setup_acpi(struct platform_device *pdev,
+				  struct plat_stmmacenet_data *plat)
+{
+	plat->rx_queues_to_use = 1;
+	plat->tx_queues_to_use = 1;
+
+	/**
+	 * First Queue must always be in DCB mode. As MTL_QUEUE_DCB=1 we need
+	 * to always set this, otherwise Queue will be classified as AVB
+	 * (because MTL_QUEUE_AVB = 0).
+	 */
+	plat->rx_queues_cfg[0].mode_to_use = MTL_QUEUE_DCB;
+	plat->tx_queues_cfg[0].mode_to_use = MTL_QUEUE_DCB;
+
+	plat->rx_queues_cfg[0].use_prio = true;
+
+	plat->rx_queues_cfg[0].pkt_route = 0x0;
+
+	plat->rx_sched_algorithm = MTL_RX_ALGORITHM_SP;
+	plat->tx_sched_algorithm = MTL_TX_ALGORITHM_SP;
+
+	plat->tx_queues_cfg[0].use_prio = true;
+}
+
+static int stmmac_acpi_phy(struct plat_stmmacenet_data *plat,
+			   struct fwnode_handle *np, struct device *dev)
+{
+	plat->mdio_bus_data = devm_kzalloc(dev,
+					   sizeof(struct stmmac_mdio_bus_data),
+					   GFP_KERNEL);
+
+	return 0;
+}
+
+static int fw_get_phy_mode(struct fwnode_handle *np)
+{
+	const char *pm;
+	int err, i;
+
+	err = fwnode_property_read_string(np, "phy-mode", &pm);
+	if (err < 0)
+		err = fwnode_property_read_string(np, "phy-connection-mode", &pm);
+	if (err < 0)
+		return err;
+
+	for (i = 0; i < PHY_INTERFACE_MODE_MAX; i++) {
+		if (!strcasecmp(pm, phy_modes(i)))
+			return i;
+	}
+
+	return -ENODEV;
+}
+
+static int stmmac_acpi_clock_setup(struct plat_stmmacenet_data *plat,
+			    struct platform_device *pdev)
+{
+	struct fwnode_handle *np = dev_fwnode(&(pdev->dev));
+	struct device * dev = &pdev->dev;
+	struct clk *clk = ERR_PTR(-ENODEV);
+	u64 clk_freq = 0;
+	int err;
+
+	err = fwnode_property_read_u64(np, "clock-frequency", &clk_freq);
+	if (err < 0)
+		clk_freq = 125000000; /* default to 125MHz */
+
+	plat->stmmac_clk = devm_clk_get(dev, dev_name(dev));
+	if (IS_ERR(plat->stmmac_clk)) {
+		clk = clk_register_fixed_rate(dev, dev_name(dev), NULL, 0, clk_freq);
+		if (IS_ERR(clk))
+			return -1;
+		if (clk_register_clkdev(clk, dev_name(dev), dev_name(dev)))
+			return -1;
+		plat->stmmac_clk = clk;
+	}
+	clk_prepare_enable(plat->stmmac_clk);
+
+	plat->pclk = devm_clk_get(dev, "pclk");
+	if (IS_ERR(plat->pclk))
+		plat->pclk = NULL;
+	clk_prepare_enable(plat->pclk);
+
+	plat->clk_ptp_ref = devm_clk_get(dev, "ptp_ref");
+	if (IS_ERR(plat->clk_ptp_ref)) {
+		plat->clk_ptp_rate = clk_get_rate(plat->stmmac_clk);
+		plat->clk_ptp_ref = NULL;
+	}
+
+	plat->stmmac_rst = devm_reset_control_get(dev,STMMAC_RESOURCE_NAME);
+	if (IS_ERR(plat->stmmac_rst)) {
+		dev_info(dev, "no reset control found\n");
+		plat->stmmac_rst = NULL;
+	}
+
+	return 0;
+}
+
+/**
+ * Parse ACPI driver parameters
+ */
+struct plat_stmmacenet_data *
+stmmac_probe_config_acpi(struct platform_device *pdev, u8 *mac)
+{
+	struct fwnode_handle *np;
+	struct plat_stmmacenet_data *plat;
+	struct stmmac_dma_cfg *dma_cfg;
+
+	plat = devm_kzalloc(&pdev->dev, sizeof(*plat), GFP_KERNEL);
+	if (!plat)
+		return ERR_PTR(-ENOMEM);
+
+	np = dev_fwnode(&(pdev->dev));
+
+	plat->phy_interface = fw_get_phy_mode(np);
+
+	/* Get max speed of operation from device tree */
+	if (fwnode_property_read_u32(np, "max-speed", &plat->max_speed))
+		plat->max_speed = -1;
+
+	if (fwnode_property_read_u32(np, "bus_id", &plat->bus_id))
+		plat->bus_id = 2;
+
+	/* Default to PHY auto-detection */
+	plat->phy_addr = -1;
+
+	/* "snps,phy-addr" is not a standard property. Mark it as deprecated
+	 * and warn of its use. Remove this when PHY node support is added.
+         */
+	if (fwnode_property_read_u32(np, "snps,phy-addr", &plat->phy_addr) == 0)
+		dev_warn(&pdev->dev, "snps,phy-addr property is deprecated\n");
+
+	if (stmmac_acpi_phy(plat, np, &pdev->dev))
+		return ERR_PTR(-ENODEV);
+
+	fwnode_property_read_u32(np, "tx-fifo-depth", &plat->tx_fifo_size);
+	fwnode_property_read_u32(np, "rx-fifo-depth", &plat->rx_fifo_size);
+	if (plat->tx_fifo_size == 0)
+		plat->tx_fifo_size = 0x10000;
+	if (plat->rx_fifo_size == 0)
+		plat->rx_fifo_size = 0x10000;
+
+	plat->force_sf_dma_mode =
+		fwnode_property_read_bool(np, "snps,force_sf_dma_mode");
+
+	if (fwnode_property_read_bool(np, "snps,en-tx-lpi-clockgating"))
+		plat->flags |= STMMAC_FLAG_EN_TX_LPI_CLOCKGATING;
+
+	/* Set the maxmtu to a default of JUMBO_LEN in case the
+	 * parameter is not present.
+	 */
+	plat->maxmtu = JUMBO_LEN;
+
+	/* Set default value for multicast hash bins */
+	plat->multicast_filter_bins = HASH_TABLE_SIZE;
+
+	/* Set default value for unicast filter entries */
+	plat->unicast_filter_entries = 1;
+
+	/* Only to "snps,dwmac" */
+	fwnode_property_read_u32(np, "max-frame-size", &plat->maxmtu);
+	fwnode_property_read_u32(np, "snps,multicast-filter-bins",
+				 &plat->multicast_filter_bins);
+	fwnode_property_read_u32(np, "snps,perfect-filter-entries",
+				 &plat->unicast_filter_entries);
+	plat->unicast_filter_entries = dwmac1000_validate_ucast_entries(
+						&pdev->dev, plat->unicast_filter_entries);
+	plat->multicast_filter_bins = dwmac1000_validate_mcast_bins(
+						&pdev->dev, plat->multicast_filter_bins);
+	plat->core_type = DWMAC_CORE_GMAC;
+	plat->pmt = 1;
+
+	dma_cfg = devm_kzalloc(&pdev->dev, sizeof(*dma_cfg), GFP_KERNEL);
+	if (!dma_cfg)
+		return ERR_PTR(-ENOMEM);
+	plat->dma_cfg = dma_cfg;
+
+	fwnode_property_read_u32(np, "snps,pbl", &dma_cfg->pbl);
+	if (!dma_cfg->pbl)
+		dma_cfg->pbl = DEFAULT_DMA_PBL;
+
+	fwnode_property_read_u32(np, "snps,txpbl", &dma_cfg->txpbl);
+	fwnode_property_read_u32(np, "snps,rxpbl", &dma_cfg->rxpbl);
+	dma_cfg->pblx8 = !fwnode_property_read_bool(np, "snps,no-pbl-x8");
+
+	dma_cfg->aal = fwnode_property_read_bool(np, "snps,aal");
+	dma_cfg->fixed_burst = fwnode_property_read_bool(np, "snps,fixed-burst");
+	dma_cfg->mixed_burst = fwnode_property_read_bool(np, "snps,mixed-burst");
+
+	plat->force_thresh_dma_mode = fwnode_property_read_bool(np, "snps,force_thresh_dma_mode");
+	if (plat->force_thresh_dma_mode)
+		plat->force_sf_dma_mode = 0;
+
+	fwnode_property_read_u32(np, "snps,ps-speed", &plat->mac_port_sel_speed);
+
+	plat->axi = stmmac_axi_setup_acpi(pdev);
+
+	stmmac_mtl_setup_acpi(pdev, plat);
+
+	stmmac_acpi_clock_setup(plat,pdev);
+
+	return plat;
+}
+#else
+struct plat_stmmacenet_data *
+stmmac_probe_config_acpi(struct platform_device *pdev, u8 *mac)
+{
+	return ERR_PTR(-EINVAL);
+}
+#endif /* CONFIG_ACPI */
+EXPORT_SYMBOL_GPL(stmmac_probe_config_acpi);
+
 int stmmac_get_platform_resources(struct platform_device *pdev,
 				  struct stmmac_resources *stmmac_res)
 {
@@ -738,8 +983,14 @@ int stmmac_get_platform_resources(struct platform_device *pdev,
 
 	/* Get IRQ information early to have an ability to ask for deferred
 	 * probe if needed before we went too far with resource allocation.
+     * For ACPI _byname does not work, so we have to trust, that the
+     * first interrupt is the right one
 	 */
-	stmmac_res->irq = platform_get_irq_byname(pdev, "macirq");
+    if (has_acpi_companion(&pdev->dev)) {
+	    stmmac_res->irq = platform_get_irq(pdev, 0);
+    } else {
+	    stmmac_res->irq = platform_get_irq_byname(pdev, "macirq");
+    }
 	if (stmmac_res->irq < 0)
 		return stmmac_res->irq;
 

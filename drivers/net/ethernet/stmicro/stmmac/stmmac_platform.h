@@ -13,6 +13,8 @@
 
 struct plat_stmmacenet_data *
 devm_stmmac_probe_config_dt(struct platform_device *pdev, u8 *mac);
+struct plat_stmmacenet_data *
+stmmac_probe_config_acpi(struct platform_device *pdev, u8 *mac);
 
 struct clk *stmmac_pltfr_find_clk(struct plat_stmmacenet_data *plat_dat,
 				  const char *name);

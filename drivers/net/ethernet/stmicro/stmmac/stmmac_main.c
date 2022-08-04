@@ -14,6 +14,7 @@
 	https://bugzilla.stlinux.com/
 *******************************************************************************/
 
+#include <linux/acpi.h>
 #include <linux/circ_buf.h>
 #include <linux/clk.h>
 #include <linux/kernel.h>
