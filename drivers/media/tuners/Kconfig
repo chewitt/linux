@@ -153,6 +153,29 @@ config MEDIA_TUNER_MXL5007T
 	help
 	  A driver for the silicon tuner MxL5007T from MaxLinear.
 
+config MEDIA_TUNER_MXL60X_COMMON
+	tristate
+	depends on MEDIA_SUPPORT && I2C
+	help
+	  Common driver functions for the MxL603/MxL608 silicon
+	  tuners from MaxLinear
+
+config MEDIA_TUNER_MXL603
+	tristate "MaxLinear MxL603 silicon tuner"
+	depends on MEDIA_SUPPORT && I2C
+	select MEDIA_TUNER_MXL60X_COMMON
+	default m if !MEDIA_SUBDRV_AUTOSELECT
+	help
+	  A driver for the silicon tuner MxL603 from MaxLinear.
+
+config MEDIA_TUNER_MXL608
+	tristate "MaxLinear MxL608 silicon tuner"
+	depends on MEDIA_SUPPORT && I2C
+	select MEDIA_TUNER_MXL60X_COMMON
+	default m if !MEDIA_SUBDRV_AUTOSELECT
+	help
+	  A driver for the silicon tuner MxL608 from MaxLinear.
+
 config MEDIA_TUNER_QM1D1B0004
 	tristate "Sharp QM1D1B0004 tuner"
 	depends on MEDIA_SUPPORT && I2C
