@@ -205,6 +205,13 @@ config MEDIA_TUNER_R820T
 	help
 	  Rafael Micro R820T silicon tuner driver.
 
+config MEDIA_TUNER_R848
+	tristate "Rafael Micro R848 silicon tuner"
+	depends on MEDIA_SUPPORT && I2C
+	default m if !MEDIA_SUBDRV_AUTOSELECT
+	help
+	  Rafael Micro R848 silicon tuner driver.
+
 config MEDIA_TUNER_SI2157
 	tristate "Silicon Labs Si2157 silicon tuner"
 	depends on MEDIA_SUPPORT && I2C
