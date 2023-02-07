@@ -24,6 +24,7 @@ obj-$(CONFIG_DVB_AF9013) += af9013.o
 obj-$(CONFIG_DVB_AF9033) += af9033.o
 obj-$(CONFIG_DVB_AS102_FE) += as102_fe.o
 obj-$(CONFIG_DVB_ASCOT2E) += ascot2e.o
+obj-$(CONFIG_DVB_ASCOT3) += ascot3.o
 obj-$(CONFIG_DVB_ATBM8830) += atbm8830.o
 obj-$(CONFIG_DVB_AU8522) += au8522_common.o
 obj-$(CONFIG_DVB_AU8522_DTV) += au8522_dig.o

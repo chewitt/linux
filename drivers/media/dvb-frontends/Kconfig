@@ -810,6 +810,13 @@ config DVB_ASCOT2E
 	help
 	  Say Y when you want to support this frontend.
 
+config DVB_ASCOT3
+	tristate "Sony Ascot3 tuner"
+	depends on DVB_CORE && I2C
+	default m if !MEDIA_SUBDRV_AUTOSELECT
+	help
+	  Say Y when you want to support this frontend.
+
 config DVB_ATBM8830
 	tristate "AltoBeam ATBM8830/8831 DMB-TH demodulator"
 	depends on DVB_CORE && I2C
