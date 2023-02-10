@@ -29,6 +29,7 @@ obj-$(CONFIG_DVB_ATBM8830) += atbm8830.o
 obj-$(CONFIG_DVB_AU8522) += au8522_common.o
 obj-$(CONFIG_DVB_AU8522_DTV) += au8522_dig.o
 obj-$(CONFIG_DVB_AU8522_V4L) += au8522_decoder.o
+obj-$(CONFIG_DVB_AVL6211) += avl6211.o
 obj-$(CONFIG_DVB_BCM3510) += bcm3510.o
 obj-$(CONFIG_DVB_CX22700) += cx22700.o
 obj-$(CONFIG_DVB_CX22702) += cx22702.o

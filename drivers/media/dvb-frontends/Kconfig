@@ -135,6 +135,13 @@ config DVB_TDA18271C2DD
 comment "DVB-S (satellite) frontends"
 	depends on DVB_CORE
 
+config DVB_AVL6211
+	tristate "Availink AVL6211 DVB-S Demod Frontend"
+	depends on DVB_CORE && I2C
+	default m if !MEDIA_SUBDRV_AUTOSELECT
+	help
+	  A DVB-S tuner module. Say Y when you want to support this frontend.
+
 config DVB_CX24110
 	tristate "Conexant CX24110 based"
 	depends on DVB_CORE && I2C
