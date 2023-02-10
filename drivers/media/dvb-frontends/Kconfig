@@ -365,6 +365,14 @@ config DVB_CXD2820R
 	help
 	  Say Y when you want to support this frontend.
 
+config DVB_CXD2837
+	tristate "Sony CXD2837"
+	depends on DVB_CORE && I2C
+	select REGMAP_I2C
+	default m if !MEDIA_SUBDRV_AUTOSELECT
+	help
+	  Say Y when you want to support this frontend.
+
 config DVB_CXD2841ER
 	tristate "Sony CXD2841ER"
 	depends on DVB_CORE && I2C
