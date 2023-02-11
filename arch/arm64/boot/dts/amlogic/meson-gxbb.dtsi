@@ -736,6 +736,22 @@
 				bias-disable;
 			};
 		};
+
+		dvb_p_ts0_pins: dvb_p_ts0_pins {
+			mux {
+				groups = "dvb_p_ts0";
+				function = "dvb_p_ts0";
+				bias-disable;
+			};
+		};
+
+		dvb_s_ts0_pins: dvb_s_ts0_pins {
+			mux {
+				groups = "dvb_s_ts0";
+				function = "dvb_s_ts0";
+				bias-disable;
+			};
+		};
 	};
 };
 
