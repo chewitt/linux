@@ -251,6 +251,12 @@ static const unsigned int tsin_b_d0_pins[]	= { GPIOX_9 };
 
 static const unsigned int spdif_out_y_pins[]	= { GPIOY_12 };
 
+static const unsigned int dvb_p_ts0_pins[]	= {
+	GPIOY_0, GPIOY_1, GPIOY_2, GPIOY_3, GPIOY_4, GPIOY_5, GPIOY_6,
+	GPIOY_7, GPIOY_8, GPIOY_9, GPIOY_10 };
+static const unsigned int dvb_s_ts0_pins[]	= {
+	GPIOY_0, GPIOY_1, GPIOY_2, GPIOY_3 };
+
 static const unsigned int gen_clk_out_pins[]	= { GPIOY_15 };
 
 static const struct pinctrl_pin_desc meson_gxbb_aobus_pins[] = {
@@ -474,6 +480,8 @@ static const struct meson_pmx_group meson_gxbb_periphs_groups[] = {
 	GROUP(i2s_out_ch67_y,	1,	7),
 	GROUP(spdif_out_y,	1,	9),
 	GROUP(gen_clk_out,	6,	15),
+	GROUP(dvb_p_ts0,	1,	37),
+	GROUP(dvb_s_ts0,	1,	17),
 
 	/* Bank Z */
 	GROUP(eth_mdio,		6,	1),
@@ -736,6 +744,14 @@ static const char * const spdif_out_groups[] = {
 	"spdif_out_y",
 };
 
+static const char * const dvb_p_ts0_groups[] = {
+	"dvb_p_ts0",
+};
+
+static const char * const dvb_s_ts0_groups[] = {
+	"dvb_s_ts0",
+};
+
 static const char * const gen_clk_out_groups[] = {
 	"gen_clk_out",
 };
@@ -827,6 +843,8 @@ static const struct meson_pmx_func meson_gxbb_periphs_functions[] = {
 	FUNCTION(gen_clk_out),
 	FUNCTION(tsin_a),
 	FUNCTION(tsin_b),
+	FUNCTION(dvb_p_ts0),
+	FUNCTION(dvb_s_ts0),
 };
 
 static const struct meson_pmx_func meson_gxbb_aobus_functions[] = {
