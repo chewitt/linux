@@ -731,6 +731,7 @@ codec_hevc_prepare_new_frame(struct amvdec_session *sess)
 	vbuf = v4l2_m2m_dst_buf_remove(sess->m2m_ctx);
 	if (!vbuf) {
 		dev_err(sess->core->dev, "No dst buffer available\n");
+		kfree(new_frame);
 		return NULL;
 	}
 
