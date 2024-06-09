@@ -109,7 +109,7 @@
 		/*
 		 * signal name from schematics: TF_3V3N_1V8_EN
 		 */
-		gpios = <&gpio_ao GPIOAO_3 GPIO_ACTIVE_HIGH>;
+		gpios = <&gpio_ao GPIOAO_3 GPIO_OPEN_DRAIN>;
 		gpios-states = <0>;
 
 		states = <3300000 0>,
@@ -392,7 +392,7 @@
 	sd-uhs-sdr12;
 	sd-uhs-sdr25;
 	sd-uhs-sdr50;
-	sd-uhs-ddr50;
+	sd-uhs-sdr104;
 	max-frequency = <100000000>;
 	disable-wp;
 
