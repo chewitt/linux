@@ -2359,6 +2359,12 @@ static int vop2_plane_init(struct vop2 *vop2, struct vop2_win *win,
 		drm_plane_create_rotation_property(&win->base, DRM_MODE_ROTATE_0,
 						   DRM_MODE_ROTATE_0 |
 						   win->data->supported_rotations);
+	if (win->data->supported_color_encodings)
+		drm_plane_create_color_properties(&win->base,
+						  win->data->supported_color_encodings,
+						  win->data->supported_color_ranges,
+						  win->data->default_color_encoding,
+						  win->data->default_color_range);
 	drm_plane_create_alpha_property(&win->base);
 	drm_plane_create_blend_mode_property(&win->base, blend_caps);
 	drm_plane_create_zpos_property(&win->base, win->win_id, 0,

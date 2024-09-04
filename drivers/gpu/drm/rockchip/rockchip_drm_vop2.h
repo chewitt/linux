@@ -186,6 +186,10 @@ struct vop2_win_data {
 	const u32 *formats;
 	const uint64_t *format_modifiers;
 	const unsigned int supported_rotations;
+	u32 supported_color_encodings;
+	enum drm_color_encoding default_color_encoding;
+	u32 supported_color_ranges;
+	enum drm_color_range default_color_range;
 
 	/**
 	 * @layer_sel_id: defined by register OVERLAY_LAYER_SEL or PORTn_LAYER_SEL
