@@ -575,11 +575,6 @@ static int vc4_hdmi_connector_init(struct drm_device *dev,
 	if (ret)
 		return ret;
 
-	ret = drm_mode_create_hdmi_colorspace_property(connector, 0);
-	if (ret)
-		return ret;
-
-	drm_connector_attach_colorspace_property(connector);
 	drm_connector_attach_tv_margin_properties(connector);
 
 	connector->polled = (DRM_CONNECTOR_POLL_CONNECT |
