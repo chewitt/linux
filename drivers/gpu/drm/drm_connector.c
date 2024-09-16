@@ -689,6 +689,14 @@ int drmm_connector_hdmi_init(struct drm_device *dev,
 	if (ret)
 		return ret;
 
+	if (!hdmi_funcs->supported_colorspaces) {
+		ret = drm_mode_create_hdmi_colorspace_property(connector, 0);
+		if (ret)
+			return ret;
+
+		drm_connector_attach_colorspace_property(connector);
+	}
+
 	connector->hdmi.funcs = hdmi_funcs;
 
 	return 0;
@@ -794,6 +802,12 @@ int drmm_connector_hdmi_ini2(struct drm_device *dev,
 	ret = drm_connector_attach_color_format_property(connector, supported_formats);
 	if (ret)
 		return ret;
+
+	ret = drm_mode_create_hdmi_colorspace_property(connector, 0);
+	if (ret)
+		return ret;
+
+	drm_connector_attach_colorspace_property(connector);
 
 	connector->hdmi.funcs = hdmi_funcs;
 
