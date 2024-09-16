@@ -640,6 +640,12 @@ int drmm_connector_hdmi_init(struct drm_device *dev,
 	if (!drm_mode_create_color_format_property(connector, supported_drm_formats))
 		drm_connector_attach_color_format_property(connector);
 
+        ret = drm_mode_create_hdmi_colorspace_property(connector, 0);
+        if (ret)
+                return ret;
+
+        drm_connector_attach_colorspace_property(connector);
+
 	connector->hdmi.funcs = hdmi_funcs;
 
 	return 0;
