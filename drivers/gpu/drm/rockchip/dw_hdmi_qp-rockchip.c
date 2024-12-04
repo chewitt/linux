@@ -9,6 +9,7 @@
 
 #include <linux/clk.h>
 #include <linux/gpio/consumer.h>
+#include <linux/hdmi.h>
 #include <linux/hw_bitfield.h>
 #include <linux/mfd/syscon.h>
 #include <linux/media-bus-format.h>
@@ -143,6 +144,14 @@ dw_hdmi_qp_rockchip_encoder_atomic_check(struct drm_encoder *encoder,
 	union phy_configure_opts phy_cfg = {};
 	int ret;
 
+	switch (conn_state->hdmi.output_format) {
+	case HDMI_COLORSPACE_YUV420:
+		s->output_mode = ROCKCHIP_OUT_MODE_YUV420;
+		break;
+	default:
+		s->output_mode = ROCKCHIP_OUT_MODE_AAAA;
+	}
+
 	if (hdmi->tmds_char_rate == conn_state->hdmi.tmds_char_rate &&
 	    s->output_bpc == conn_state->hdmi.output_bpc &&
 	    s->color_format == conn_state->color_format)
@@ -201,6 +210,11 @@ dw_hdmi_qp_rockchip_encoder_atomic_check(struct drm_encoder *encoder,
 		s->output_type = DRM_MODE_CONNECTOR_HDMIA;
 		s->output_bpc = conn_state->hdmi.output_bpc;
 		s->color_format = conn_state->color_format;
+		/*
+		 * TODO: Adapt for vop2_convert_csc_mode() which uses v4l2_colorspace
+		 * instead of drm_colorspace.
+		 */
+		s->color_space = rockchip_drm_colorimetry_to_v4l_colorspace(conn_state->colorspace);
 	} else {
 		dev_err(hdmi->dev, "Failed to configure phy: %d\n", ret);
 	}
@@ -444,7 +458,10 @@ static void dw_hdmi_qp_rk3576_enc_init(struct rockchip_hdmi_qp *hdmi,
 	else
 		val = FIELD_PREP_WM16(RK3576_COLOR_DEPTH_MASK, RK3576_8BPC);
 
-	val |= FIELD_PREP_WM16(RK3576_COLOR_FORMAT_MASK, color);
+	if (state->output_mode == ROCKCHIP_OUT_MODE_YUV420)
+		val |= FIELD_PREP_WM16(RK3576_COLOR_FORMAT_MASK, RK3576_YUV420);
+	else
+		val |= FIELD_PREP_WM16(RK3576_COLOR_FORMAT_MASK, RK3576_RGB);
 
 	regmap_write(hdmi->vo_regmap, RK3576_VO0_GRF_SOC_CON8, val);
 }
@@ -461,7 +478,10 @@ static void dw_hdmi_qp_rk3588_enc_init(struct rockchip_hdmi_qp *hdmi,
 	else
 		val = FIELD_PREP_WM16(RK3588_COLOR_DEPTH_MASK, RK3588_8BPC);
 
-	val |= FIELD_PREP_WM16(RK3588_COLOR_FORMAT_MASK, color);
+	if (state->output_mode == ROCKCHIP_OUT_MODE_YUV420)
+		val |= FIELD_PREP_WM16(RK3588_COLOR_FORMAT_MASK, RK3588_YUV420);
+	else
+		val |= FIELD_PREP_WM16(RK3588_COLOR_FORMAT_MASK, RK3588_RGB);
 
 	regmap_write(hdmi->vo_regmap,
 		     hdmi->port_id ? RK3588_GRF_VO1_CON6 : RK3588_GRF_VO1_CON3,
@@ -574,7 +594,8 @@ static int dw_hdmi_qp_rockchip_bind(struct device *dev, struct device *master,
 
 	plat_data.supported_formats = BIT(HDMI_COLORSPACE_RGB) |
 				      BIT(HDMI_COLORSPACE_YUV444) |
-				      BIT(HDMI_COLORSPACE_YUV422);
+				      BIT(HDMI_COLORSPACE_YUV422) |
+				      BIT(HDMI_COLORSPACE_YUV420);
 
 	encoder = &hdmi->encoder.encoder;
 	encoder->possible_crtcs = drm_of_find_possible_crtcs(drm, dev->of_node);
