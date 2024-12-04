@@ -600,7 +600,8 @@ static int dw_hdmi_qp_rockchip_bind(struct device *dev, struct device *master,
 
 	plat_data.supported_formats = BIT(HDMI_COLORSPACE_RGB) |
 				      BIT(HDMI_COLORSPACE_YUV444) |
-				      BIT(HDMI_COLORSPACE_YUV422);
+				      BIT(HDMI_COLORSPACE_YUV422) |
+				      BIT(HDMI_COLORSPACE_YUV420);
 
 	encoder = &hdmi->encoder.encoder;
 	encoder->possible_crtcs = drm_of_find_possible_crtcs(drm, dev->of_node);
