@@ -9,6 +9,8 @@
 
 #include "si2168_priv.h"
 
+#define CMD_TIMEOUT 200
+
 static const struct dvb_frontend_ops si2168_ops;
 
 static void cmd_init(struct si2168_cmd *cmd, const u8 *buf, int wlen, int rlen)
@@ -40,8 +42,7 @@ static int si2168_cmd_execute(struct i2c_client *client, struct si2168_cmd *cmd)
 
 	if (cmd->rlen) {
 		/* wait cmd execution terminate */
-		#define TIMEOUT 70
-		timeout = jiffies + msecs_to_jiffies(TIMEOUT);
+		timeout = jiffies + msecs_to_jiffies(CMD_TIMEOUT);
 		while (!time_after(jiffies, timeout)) {
 			ret = i2c_master_recv(client, cmd->args, cmd->rlen);
 			if (ret < 0) {
@@ -58,7 +59,7 @@ static int si2168_cmd_execute(struct i2c_client *client, struct si2168_cmd *cmd)
 
 		dev_dbg(&client->dev, "cmd execution took %d ms\n",
 				jiffies_to_msecs(jiffies) -
-				(jiffies_to_msecs(timeout) - TIMEOUT));
+				(jiffies_to_msecs(timeout) - CMD_TIMEOUT));
 
 		/* error bit set? */
 		if ((cmd->args[0] >> 6) & 0x01) {
