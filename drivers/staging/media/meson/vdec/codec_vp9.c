@@ -665,7 +665,7 @@ static void codec_vp9_flush_output(struct amvdec_session *sess)
 		if (!tmp->done) {
 			if (tmp->show)
 				amvdec_dst_buf_done(sess, tmp->vbuf,
-						    V4L2_FIELD_NONE);
+						    V4L2_FIELD_NONE, 0);
 			else
 				v4l2_m2m_buf_queue(sess->m2m_ctx, tmp->vbuf);
 
@@ -1427,7 +1427,7 @@ static void codec_vp9_show_frame(struct amvdec_session *sess)
 
 		if (!tmp->done) {
 			pr_debug("Doning %u\n", tmp->index);
-			amvdec_dst_buf_done(sess, tmp->vbuf, V4L2_FIELD_NONE);
+			amvdec_dst_buf_done(sess, tmp->vbuf, V4L2_FIELD_NONE, 0);
 			tmp->done = 1;
 			vp9->frames_num--;
 		}
