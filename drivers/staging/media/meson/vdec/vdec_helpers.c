@@ -372,7 +372,7 @@ EXPORT_SYMBOL_GPL(amvdec_remove_ts);
 
 static void dst_buf_done(struct amvdec_session *sess,
 			 struct vb2_v4l2_buffer *vbuf,
-			 u32 field, u64 timestamp,
+			 u32 field, u32 type, u64 timestamp,
 			 struct v4l2_timecode timecode, u32 flags)
 {
 	struct device *dev = sess->core->dev_dec;
@@ -397,6 +397,15 @@ static void dst_buf_done(struct amvdec_session *sess,
 	vbuf->sequence = sess->sequence_cap++;
 	vbuf->flags = flags;
 	vbuf->timecode = timecode;
+
+	if (type == 1)
+		vbuf->flags |= V4L2_BUF_FLAG_KEYFRAME;
+	else if (type == 2)
+		vbuf->flags |= V4L2_BUF_FLAG_PFRAME;
+	else if (type == 3)
+		vbuf->flags |= V4L2_BUF_FLAG_BFRAME;
+	else if (type == 4)
+		vbuf->flags |= V4L2_BUF_FLAG_KEYFRAME;
 
 	if (sess->should_stop &&
 	    atomic_read(&sess->esparser_queued_bufs) <= 1) {
@@ -424,7 +433,7 @@ static void dst_buf_done(struct amvdec_session *sess,
 }
 
 void amvdec_dst_buf_done(struct amvdec_session *sess,
-			 struct vb2_v4l2_buffer *vbuf, u32 field)
+			 struct vb2_v4l2_buffer *vbuf, u32 field, u32 type)
 {
 	struct device *dev = sess->core->dev_dec;
 	struct amvdec_timestamp *tmp;
@@ -452,14 +461,14 @@ void amvdec_dst_buf_done(struct amvdec_session *sess,
 	kfree(tmp);
 	spin_unlock_irqrestore(&sess->ts_spinlock, flags);
 
-	dst_buf_done(sess, vbuf, field, timestamp, timecode, vbuf_flags);
+	dst_buf_done(sess, vbuf, field, type, timestamp, timecode, vbuf_flags);
 	atomic_dec(&sess->esparser_queued_bufs);
 }
 EXPORT_SYMBOL_GPL(amvdec_dst_buf_done);
 
 void amvdec_dst_buf_done_offset(struct amvdec_session *sess,
 				struct vb2_v4l2_buffer *vbuf,
-				u32 offset, u32 field, bool allow_drop)
+				u32 offset, u32 field, u32 type, bool allow_drop)
 {
 	struct device *dev = sess->core->dev_dec;
 	struct amvdec_timestamp *match = NULL;
@@ -506,14 +515,14 @@ void amvdec_dst_buf_done_offset(struct amvdec_session *sess,
 	}
 	spin_unlock_irqrestore(&sess->ts_spinlock, flags);
 
-	dst_buf_done(sess, vbuf, field, timestamp, timecode, vbuf_flags);
+	dst_buf_done(sess, vbuf, field, type, timestamp, timecode, vbuf_flags);
 	if (match)
 		atomic_dec(&sess->esparser_queued_bufs);
 }
 EXPORT_SYMBOL_GPL(amvdec_dst_buf_done_offset);
 
 void amvdec_dst_buf_done_idx(struct amvdec_session *sess,
-			     u32 buf_idx, u32 offset, u32 field)
+			     u32 buf_idx, u32 offset, u32 field, u32 type)
 {
 	struct vb2_v4l2_buffer *vbuf;
 	struct device *dev = sess->core->dev_dec;
@@ -529,9 +538,9 @@ void amvdec_dst_buf_done_idx(struct amvdec_session *sess,
 	}
 
 	if (offset != -1)
-		amvdec_dst_buf_done_offset(sess, vbuf, offset, field, true);
+		amvdec_dst_buf_done_offset(sess, vbuf, offset, field, type, true);
 	else
-		amvdec_dst_buf_done(sess, vbuf, field);
+		amvdec_dst_buf_done(sess, vbuf, field, type);
 }
 EXPORT_SYMBOL_GPL(amvdec_dst_buf_done_idx);
 
