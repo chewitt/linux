@@ -35,6 +35,11 @@
 #define PIC_TOP_BOT	5
 #define PIC_BOT_TOP	6
 
+/* Slice type */
+#define SLICE_TYPE_I 2
+#define SLICE_TYPE_P 5
+#define SLICE_TYPE_B 6
+
 /* Size of Motion Vector per macroblock */
 #define MB_MV_SIZE	96
 
@@ -393,8 +398,11 @@ static void codec_h264_frames_ready(struct amvdec_session *sess, u32 status)
 		u32 buffer_index = frame_status & BUF_IDX_MASK;
 		u32 pic_struct = (frame_status >> PIC_STRUCT_BIT) &
 				 PIC_STRUCT_MASK;
+		u32 idr_flag = (frame_status & 0x400);
 		u32 offset = (frame_status >> OFFSET_BIT) & OFFSET_MASK;
 		u32 field = V4L2_FIELD_NONE;
+		u32 slice_type = (amvdec_read_dos(core, AV_SCRATCH_H) >> (i * 4)) & 0xf;
+		u32 type = 0;
 
 		/*
 		 * A buffer decode error means it was decoded,
@@ -410,8 +418,17 @@ static void codec_h264_frames_ready(struct amvdec_session *sess, u32 status)
 		else if (pic_struct == PIC_BOT_TOP)
 			field = V4L2_FIELD_INTERLACED_BT;
 
+		if (idr_flag)
+			type = 4;
+		else if (slice_type == SLICE_TYPE_I)
+			type = 1;
+		else if (slice_type == SLICE_TYPE_P)
+			type = 2;
+		else if (slice_type == SLICE_TYPE_B || slice_type == 8)
+			type = 3;
+
 		offset |= get_offset_msb(core, i);
-		amvdec_dst_buf_done_idx(sess, buffer_index, offset, field);
+		amvdec_dst_buf_done_idx(sess, buffer_index, offset, field, type);
 	}
 }
 
