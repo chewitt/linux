@@ -499,7 +499,7 @@ static void codec_hevc_show_frames(struct amvdec_session *sess)
 		dev_dbg(sess->core->dev, "DONE frame poc %u; vbuf %u\n",
 			tmp->poc, tmp->vbuf->vb2_buf.index);
 		amvdec_dst_buf_done_offset(sess, tmp->vbuf, tmp->offset,
-					   V4L2_FIELD_NONE, false);
+					   V4L2_FIELD_NONE, 0, false);
 
 		tmp->show = 0;
 		hevc->frames_num--;
@@ -667,7 +667,7 @@ static void codec_hevc_flush_output(struct amvdec_session *sess)
 	struct hevc_frame *tmp, *n;
 
 	while ((tmp = codec_hevc_get_next_ready_frame(hevc))) {
-		amvdec_dst_buf_done(sess, tmp->vbuf, V4L2_FIELD_NONE);
+		amvdec_dst_buf_done(sess, tmp->vbuf, V4L2_FIELD_NONE, 0);
 		tmp->show = 0;
 		hevc->frames_num--;
 	}
