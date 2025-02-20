@@ -41,12 +41,12 @@ u32 amvdec_amfbc_size(u32 width, u32 height, u32 is_10bit, u32 use_mmu);
  * @field: V4L2 interlaced field
  */
 void amvdec_dst_buf_done_idx(struct amvdec_session *sess, u32 buf_idx,
-			     u32 offset, u32 field);
+			     u32 offset, u32 field, u32 type);
 void amvdec_dst_buf_done(struct amvdec_session *sess,
-			 struct vb2_v4l2_buffer *vbuf, u32 field);
+			 struct vb2_v4l2_buffer *vbuf, u32 field, u32 type);
 void amvdec_dst_buf_done_offset(struct amvdec_session *sess,
 				struct vb2_v4l2_buffer *vbuf,
-				u32 offset, u32 field, bool allow_drop);
+				u32 offset, u32 field, u32 type, bool allow_drop);
 
 /**
  * amvdec_add_ts() - Add a timestamp to the list
