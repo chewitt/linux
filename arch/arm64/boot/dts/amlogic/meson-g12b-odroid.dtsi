@@ -437,5 +437,5 @@
 };
 
 &usb2_phy0 {
-	phy-supply = <&vcc_5v>;
+	phy-supply = <&usb_pwr_en>;
 };

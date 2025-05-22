@@ -310,7 +310,7 @@
 };
 
 &usb {
-	vbus-supply = <&usb_pwr_en>;
+	phy-supply = <&vcc_5v>;
 };
 
 &usb2_phy1 {
