@@ -110,10 +110,7 @@
 #define HDMI_PLL_LOCK		BIT(31)
 #define HDMI_PLL_LOCK_G12A	(3 << 30)
 
-#define PIXEL_FREQ_1000_1001(_freq)	\
-	DIV_ROUND_CLOSEST_ULL((_freq) * 1000ULL, 1001ULL)
-#define PHY_FREQ_1000_1001(_freq)	\
-	(PIXEL_FREQ_1000_1001(DIV_ROUND_DOWN_ULL(_freq, 10ULL)) * 10)
+#define FREQ_1000_1001(_freq)	DIV_ROUND_CLOSEST(_freq * 1000, 1001)
 
 /* VID PLL Dividers */
 enum {
@@ -365,11 +362,11 @@ enum {
 };
 
 struct meson_vclk_params {
-	unsigned long long pll_freq;
-	unsigned long long phy_freq;
-	unsigned long long vclk_freq;
-	unsigned long long venc_freq;
-	unsigned long long pixel_freq;
+	unsigned int pll_freq;
+	unsigned int phy_freq;
+	unsigned int vclk_freq;
+	unsigned int venc_freq;
+	unsigned int pixel_freq;
 	unsigned int pll_od1;
 	unsigned int pll_od2;
 	unsigned int pll_od3;
@@ -377,11 +374,11 @@ struct meson_vclk_params {
 	unsigned int vclk_div;
 } params[] = {
 	[MESON_VCLK_HDMI_ENCI_54000] = {
-		.pll_freq = 4320000000,
-		.phy_freq = 270000000,
-		.vclk_freq = 54000000,
-		.venc_freq = 54000000,
-		.pixel_freq = 54000000,
+		.pll_freq = 4320000,
+		.phy_freq = 270000,
+		.vclk_freq = 54000,
+		.venc_freq = 54000,
+		.pixel_freq = 54000,
 		.pll_od1 = 4,
 		.pll_od2 = 4,
 		.pll_od3 = 1,
@@ -389,11 +386,11 @@ struct meson_vclk_params {
 		.vclk_div = 1,
 	},
 	[MESON_VCLK_HDMI_DDR_54000] = {
-		.pll_freq = 4320000000,
-		.phy_freq = 270000000,
-		.vclk_freq = 54000000,
-		.venc_freq = 54000000,
-		.pixel_freq = 27000000,
+		.pll_freq = 4320000,
+		.phy_freq = 270000,
+		.vclk_freq = 54000,
+		.venc_freq = 54000,
+		.pixel_freq = 27000,
 		.pll_od1 = 4,
 		.pll_od2 = 4,
 		.pll_od3 = 1,
@@ -401,11 +398,11 @@ struct meson_vclk_params {
 		.vclk_div = 1,
 	},
 	[MESON_VCLK_HDMI_DDR_148500] = {
-		.pll_freq = 2970000000,
-		.phy_freq = 742500000,
-		.vclk_freq = 148500000,
-		.venc_freq = 148500000,
-		.pixel_freq = 74250000,
+		.pll_freq = 2970000,
+		.phy_freq = 742500,
+		.vclk_freq = 148500,
+		.venc_freq = 148500,
+		.pixel_freq = 74250,
 		.pll_od1 = 4,
 		.pll_od2 = 1,
 		.pll_od3 = 1,
@@ -413,11 +410,11 @@ struct meson_vclk_params {
 		.vclk_div = 1,
 	},
 	[MESON_VCLK_HDMI_74250] = {
-		.pll_freq = 2970000000,
-		.phy_freq = 742500000,
-		.vclk_freq = 74250000,
-		.venc_freq = 74250000,
-		.pixel_freq = 74250000,
+		.pll_freq = 2970000,
+		.phy_freq = 742500,
+		.vclk_freq = 74250,
+		.venc_freq = 74250,
+		.pixel_freq = 74250,
 		.pll_od1 = 2,
 		.pll_od2 = 2,
 		.pll_od3 = 2,
@@ -425,11 +422,11 @@ struct meson_vclk_params {
 		.vclk_div = 1,
 	},
 	[MESON_VCLK_HDMI_148500] = {
-		.pll_freq = 2970000000,
-		.phy_freq = 1485000000,
-		.vclk_freq = 148500000,
-		.venc_freq = 148500000,
-		.pixel_freq = 148500000,
+		.pll_freq = 2970000,
+		.phy_freq = 1485000,
+		.vclk_freq = 148500,
+		.venc_freq = 148500,
+		.pixel_freq = 148500,
 		.pll_od1 = 1,
 		.pll_od2 = 2,
 		.pll_od3 = 2,
@@ -437,11 +434,11 @@ struct meson_vclk_params {
 		.vclk_div = 1,
 	},
 	[MESON_VCLK_HDMI_297000] = {
-		.pll_freq = 5940000000,
-		.phy_freq = 2970000000,
-		.venc_freq = 297000000,
-		.vclk_freq = 297000000,
-		.pixel_freq = 297000000,
+		.pll_freq = 5940000,
+		.phy_freq = 2970000,
+		.venc_freq = 297000,
+		.vclk_freq = 297000,
+		.pixel_freq = 297000,
 		.pll_od1 = 2,
 		.pll_od2 = 1,
 		.pll_od3 = 1,
@@ -449,11 +446,11 @@ struct meson_vclk_params {
 		.vclk_div = 2,
 	},
 	[MESON_VCLK_HDMI_594000] = {
-		.pll_freq = 5940000000,
-		.phy_freq = 5940000000,
-		.venc_freq = 594000000,
-		.vclk_freq = 594000000,
-		.pixel_freq = 594000000,
+		.pll_freq = 5940000,
+		.phy_freq = 5940000,
+		.venc_freq = 594000,
+		.vclk_freq = 594000,
+		.pixel_freq = 594000,
 		.pll_od1 = 1,
 		.pll_od2 = 1,
 		.pll_od3 = 2,
@@ -461,11 +458,11 @@ struct meson_vclk_params {
 		.vclk_div = 1,
 	},
 	[MESON_VCLK_HDMI_594000_YUV420] = {
-		.pll_freq = 5940000000,
-		.phy_freq = 2970000000,
-		.venc_freq = 594000000,
-		.vclk_freq = 594000000,
-		.pixel_freq = 297000000,
+		.pll_freq = 5940000,
+		.phy_freq = 2970000,
+		.venc_freq = 594000,
+		.vclk_freq = 594000,
+		.pixel_freq = 297000,
 		.pll_od1 = 2,
 		.pll_od2 = 1,
 		.pll_od3 = 1,
@@ -634,16 +631,16 @@ static void meson_hdmi_pll_set_params(struct meson_drm *priv, unsigned int m,
 				3 << 20, pll_od_to_reg(od3) << 20);
 }
 
-#define XTAL_FREQ (24 * 1000 * 1000)
+#define XTAL_FREQ 24000
 
 static unsigned int meson_hdmi_pll_get_m(struct meson_drm *priv,
-					 unsigned long long pll_freq)
+					 unsigned int pll_freq)
 {
 	/* The GXBB PLL has a /2 pre-multiplier */
 	if (meson_vpu_is_compatible(priv, VPU_COMPATIBLE_GXBB))
-		pll_freq = DIV_ROUND_DOWN_ULL(pll_freq, 2);
+		pll_freq /= 2;
 
-	return DIV_ROUND_DOWN_ULL(pll_freq, XTAL_FREQ);
+	return pll_freq / XTAL_FREQ;
 }
 
 #define HDMI_FRAC_MAX_GXBB	4096
@@ -652,13 +649,12 @@ static unsigned int meson_hdmi_pll_get_m(struct meson_drm *priv,
 
 static unsigned int meson_hdmi_pll_get_frac(struct meson_drm *priv,
 					    unsigned int m,
-					    unsigned long long pll_freq)
+					    unsigned int pll_freq)
 {
-	unsigned long long parent_freq = XTAL_FREQ;
+	unsigned int parent_freq = XTAL_FREQ;
 	unsigned int frac_max = HDMI_FRAC_MAX_GXL;
 	unsigned int frac_m;
 	unsigned int frac;
-	u32 remainder;
 
 	/* The GXBB PLL has a /2 pre-multiplier and a larger FRAC width */
 	if (meson_vpu_is_compatible(priv, VPU_COMPATIBLE_GXBB)) {
@@ -670,11 +666,11 @@ static unsigned int meson_hdmi_pll_get_frac(struct meson_drm *priv,
 		frac_max = HDMI_FRAC_MAX_G12A;
 
 	/* We can have a perfect match !*/
-	if (div_u64_rem(pll_freq, m, &remainder) == parent_freq &&
-	    remainder == 0)
+	if (pll_freq / m == parent_freq &&
+	    pll_freq % m == 0)
 		return 0;
 
-	frac = mul_u64_u64_div_u64(pll_freq, frac_max, parent_freq);
+	frac = div_u64((u64)pll_freq * (u64)frac_max, parent_freq);
 	frac_m = m * frac_max;
 	if (frac_m > frac)
 		return frac_max;
@@ -684,7 +680,7 @@ static unsigned int meson_hdmi_pll_get_frac(struct meson_drm *priv,
 }
 
 static bool meson_hdmi_pll_validate_params(struct meson_drm *priv,
-					   unsigned long long m,
+					   unsigned int m,
 					   unsigned int frac)
 {
 	if (meson_vpu_is_compatible(priv, VPU_COMPATIBLE_GXBB)) {
@@ -712,7 +708,7 @@ static bool meson_hdmi_pll_validate_params(struct meson_drm *priv,
 }
 
 static bool meson_hdmi_pll_find_params(struct meson_drm *priv,
-				       unsigned long long freq,
+				       unsigned int freq,
 				       unsigned int *m,
 				       unsigned int *frac,
 				       unsigned int *od)
@@ -724,7 +720,7 @@ static bool meson_hdmi_pll_find_params(struct meson_drm *priv,
 			continue;
 		*frac = meson_hdmi_pll_get_frac(priv, *m, freq * *od);
 
-		DRM_DEBUG_DRIVER("PLL params for %lluHz: m=%x frac=%x od=%d\n",
+		DRM_DEBUG_DRIVER("PLL params for %dkHz: m=%x frac=%x od=%d\n",
 				 freq, *m, *frac, *od);
 
 		if (meson_hdmi_pll_validate_params(priv, *m, *frac))
@@ -736,7 +732,7 @@ static bool meson_hdmi_pll_find_params(struct meson_drm *priv,
 
 /* pll_freq is the frequency after the OD dividers */
 enum drm_mode_status
-meson_vclk_dmt_supported_freq(struct meson_drm *priv, unsigned long long freq)
+meson_vclk_dmt_supported_freq(struct meson_drm *priv, unsigned int freq)
 {
 	unsigned int od, m, frac;
 
@@ -759,7 +755,7 @@ EXPORT_SYMBOL_GPL(meson_vclk_dmt_supported_freq);
 
 /* pll_freq is the frequency after the OD dividers */
 static void meson_hdmi_pll_generic_set(struct meson_drm *priv,
-				       unsigned long long pll_freq)
+				       unsigned int pll_freq)
 {
 	unsigned int od, m, frac, od1, od2, od3;
 
@@ -774,7 +770,7 @@ static void meson_hdmi_pll_generic_set(struct meson_drm *priv,
 			od1 = od / od2;
 		}
 
-		DRM_DEBUG_DRIVER("PLL params for %lluHz: m=%x frac=%x od=%d/%d/%d\n",
+		DRM_DEBUG_DRIVER("PLL params for %dkHz: m=%x frac=%x od=%d/%d/%d\n",
 				 pll_freq, m, frac, od1, od2, od3);
 
 		meson_hdmi_pll_set_params(priv, m, frac, od1, od2, od3);
@@ -782,18 +778,17 @@ static void meson_hdmi_pll_generic_set(struct meson_drm *priv,
 		return;
 	}
 
-	DRM_ERROR("Fatal, unable to find parameters for PLL freq %lluHz\n",
+	DRM_ERROR("Fatal, unable to find parameters for PLL freq %d\n",
 		  pll_freq);
 }
 
 enum drm_mode_status
-meson_vclk_vic_supported_freq(struct meson_drm *priv,
-			      unsigned long long phy_freq,
-			      unsigned long long vclk_freq)
+meson_vclk_vic_supported_freq(struct meson_drm *priv, unsigned int phy_freq,
+			      unsigned int vclk_freq)
 {
 	int i;
 
-	DRM_DEBUG_DRIVER("phy_freq = %lluHz vclk_freq = %lluHz\n",
+	DRM_DEBUG_DRIVER("phy_freq = %d vclk_freq = %d\n",
 			 phy_freq, vclk_freq);
 
 	/* Check against soc revision/package limits */
@@ -804,19 +799,19 @@ meson_vclk_vic_supported_freq(struct meson_drm *priv,
 	}
 
 	for (i = 0 ; params[i].pixel_freq ; ++i) {
-		DRM_DEBUG_DRIVER("i = %d pixel_freq = %lluHz alt = %lluHz\n",
+		DRM_DEBUG_DRIVER("i = %d pixel_freq = %d alt = %d\n",
 				 i, params[i].pixel_freq,
-				 PIXEL_FREQ_1000_1001(params[i].pixel_freq));
-		DRM_DEBUG_DRIVER("i = %d phy_freq = %lluHz alt = %lluHz\n",
+				 FREQ_1000_1001(params[i].pixel_freq));
+		DRM_DEBUG_DRIVER("i = %d phy_freq = %d alt = %d\n",
 				 i, params[i].phy_freq,
-				 PHY_FREQ_1000_1001(params[i].phy_freq));
+				 FREQ_1000_1001(params[i].phy_freq/10)*10);
 		/* Match strict frequency */
 		if (phy_freq == params[i].phy_freq &&
 		    vclk_freq == params[i].vclk_freq)
 			return MODE_OK;
 		/* Match 1000/1001 variant */
-		if (phy_freq == PHY_FREQ_1000_1001(params[i].phy_freq) &&
-		    vclk_freq == PIXEL_FREQ_1000_1001(params[i].vclk_freq))
+		if (phy_freq == (FREQ_1000_1001(params[i].phy_freq/10)*10) &&
+		    vclk_freq == FREQ_1000_1001(params[i].vclk_freq))
 			return MODE_OK;
 	}
 
@@ -824,9 +819,8 @@ meson_vclk_vic_supported_freq(struct meson_drm *priv,
 }
 EXPORT_SYMBOL_GPL(meson_vclk_vic_supported_freq);
 
-static void meson_vclk_set(struct meson_drm *priv,
-			   unsigned long long pll_base_freq, unsigned int od1,
-			   unsigned int od2, unsigned int od3,
+static void meson_vclk_set(struct meson_drm *priv, unsigned int pll_base_freq,
+			   unsigned int od1, unsigned int od2, unsigned int od3,
 			   unsigned int vid_pll_div, unsigned int vclk_div,
 			   unsigned int hdmi_tx_div, unsigned int venc_div,
 			   bool hdmi_use_enci, bool vic_alternate_clock)
@@ -846,15 +840,15 @@ static void meson_vclk_set(struct meson_drm *priv,
 		meson_hdmi_pll_generic_set(priv, pll_base_freq);
 	} else if (meson_vpu_is_compatible(priv, VPU_COMPATIBLE_GXBB)) {
 		switch (pll_base_freq) {
-		case 2970000000:
+		case 2970000:
 			m = 0x3d;
 			frac = vic_alternate_clock ? 0xd02 : 0xe00;
 			break;
-		case 4320000000:
+		case 4320000:
 			m = vic_alternate_clock ? 0x59 : 0x5a;
 			frac = vic_alternate_clock ? 0xe8f : 0;
 			break;
-		case 5940000000:
+		case 5940000:
 			m = 0x7b;
 			frac = vic_alternate_clock ? 0xa05 : 0xc00;
 			break;
@@ -864,15 +858,15 @@ static void meson_vclk_set(struct meson_drm *priv,
 	} else if (meson_vpu_is_compatible(priv, VPU_COMPATIBLE_GXM) ||
 		   meson_vpu_is_compatible(priv, VPU_COMPATIBLE_GXL)) {
 		switch (pll_base_freq) {
-		case 2970000000:
+		case 2970000:
 			m = 0x7b;
 			frac = vic_alternate_clock ? 0x281 : 0x300;
 			break;
-		case 4320000000:
+		case 4320000:
 			m = vic_alternate_clock ? 0xb3 : 0xb4;
 			frac = vic_alternate_clock ? 0x347 : 0;
 			break;
-		case 5940000000:
+		case 5940000:
 			m = 0xf7;
 			frac = vic_alternate_clock ? 0x102 : 0x200;
 			break;
@@ -881,15 +875,15 @@ static void meson_vclk_set(struct meson_drm *priv,
 		meson_hdmi_pll_set_params(priv, m, frac, od1, od2, od3);
 	} else if (meson_vpu_is_compatible(priv, VPU_COMPATIBLE_G12A)) {
 		switch (pll_base_freq) {
-		case 2970000000:
+		case 2970000:
 			m = 0x7b;
 			frac = vic_alternate_clock ? 0x140b4 : 0x18000;
 			break;
-		case 4320000000:
+		case 4320000:
 			m = vic_alternate_clock ? 0xb3 : 0xb4;
 			frac = vic_alternate_clock ? 0x1a3ee : 0;
 			break;
-		case 5940000000:
+		case 5940000:
 			m = 0xf7;
 			frac = vic_alternate_clock ? 0x8148 : 0x10000;
 			break;
@@ -1049,14 +1043,14 @@ static void meson_vclk_set(struct meson_drm *priv,
 }
 
 void meson_vclk_setup(struct meson_drm *priv, unsigned int target,
-		      unsigned long long phy_freq, unsigned long long vclk_freq,
-		      unsigned long long venc_freq, unsigned long long dac_freq,
+		      unsigned int phy_freq, unsigned int vclk_freq,
+		      unsigned int venc_freq, unsigned int dac_freq,
 		      bool hdmi_use_enci)
 {
 	bool vic_alternate_clock = false;
-	unsigned long long freq;
-	unsigned long long hdmi_tx_div;
-	unsigned long long venc_div;
+	unsigned int freq;
+	unsigned int hdmi_tx_div;
+	unsigned int venc_div;
 
 	if (target == MESON_VCLK_TARGET_CVBS) {
 		meson_venci_cvbs_clock_config(priv);
@@ -1076,27 +1070,27 @@ void meson_vclk_setup(struct meson_drm *priv, unsigned int target,
 		return;
 	}
 
-	hdmi_tx_div = DIV_ROUND_DOWN_ULL(vclk_freq, dac_freq);
+	hdmi_tx_div = vclk_freq / dac_freq;
 
 	if (hdmi_tx_div == 0) {
-		pr_err("Fatal Error, invalid HDMI-TX freq %lluHz\n",
+		pr_err("Fatal Error, invalid HDMI-TX freq %d\n",
 		       dac_freq);
 		return;
 	}
 
-	venc_div = DIV_ROUND_DOWN_ULL(vclk_freq, venc_freq);
+	venc_div = vclk_freq / venc_freq;
 
 	if (venc_div == 0) {
-		pr_err("Fatal Error, invalid HDMI venc freq %lluHz\n",
+		pr_err("Fatal Error, invalid HDMI venc freq %d\n",
 		       venc_freq);
 		return;
 	}
 
 	for (freq = 0 ; params[freq].pixel_freq ; ++freq) {
 		if ((phy_freq == params[freq].phy_freq ||
-		     phy_freq == PHY_FREQ_1000_1001(params[freq].phy_freq)) &&
+		     phy_freq == FREQ_1000_1001(params[freq].phy_freq/10)*10) &&
 		    (vclk_freq == params[freq].vclk_freq ||
-		     vclk_freq == PIXEL_FREQ_1000_1001(params[freq].vclk_freq))) {
+		     vclk_freq == FREQ_1000_1001(params[freq].vclk_freq))) {
 			if (vclk_freq != params[freq].vclk_freq)
 				vic_alternate_clock = true;
 			else
@@ -1122,8 +1116,7 @@ void meson_vclk_setup(struct meson_drm *priv, unsigned int target,
 	}
 
 	if (!params[freq].pixel_freq) {
-		pr_err("Fatal Error, invalid HDMI vclk freq %lluHz\n",
-		       vclk_freq);
+		pr_err("Fatal Error, invalid HDMI vclk freq %d\n", vclk_freq);
 		return;
 	}
 
