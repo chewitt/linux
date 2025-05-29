@@ -183,6 +183,7 @@
 };
 
 &hdmi0 {
+	tmds-enable-gpios = <&gpio4 RK_PB1 GPIO_ACTIVE_HIGH>;
 	status = "okay";
 };
 
@@ -205,6 +206,7 @@
 &hdmi1 {
 	pinctrl-0 = <&hdmim0_tx1_cec &hdmim0_tx1_hpd
 		     &hdmim1_tx1_scl &hdmim1_tx1_sda>;
+	tmds-enable-gpios = <&gpio4 RK_PA1 GPIO_ACTIVE_HIGH>;
 	status = "okay";
 };
 
