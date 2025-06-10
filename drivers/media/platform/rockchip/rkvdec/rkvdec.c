@@ -10,6 +10,7 @@
  */
 
 #include <linux/clk.h>
+#include <linux/genalloc.h>
 #include <linux/interrupt.h>
 #include <linux/iommu.h>
 #include <linux/module.h>
@@ -27,6 +28,7 @@
 
 #include "rkvdec.h"
 #include "rkvdec-regs.h"
+#include "rkvdec-rcb.h"
 
 static bool rkvdec_image_fmt_match(enum rkvdec_image_fmt fmt1,
 				   enum rkvdec_image_fmt fmt2)
@@ -668,6 +670,7 @@ static int rkvdec_start_streaming(struct vb2_queue *q, unsigned int count)
 {
 	struct rkvdec_ctx *ctx = vb2_get_drv_priv(q);
 	const struct rkvdec_coded_fmt_desc *desc;
+	struct rkvdec_config *cfg = ctx->dev->config;
 	int ret;
 
 	if (V4L2_TYPE_IS_CAPTURE(q->type))
@@ -677,13 +680,22 @@ static int rkvdec_start_streaming(struct vb2_queue *q, unsigned int count)
 	if (WARN_ON(!desc))
 		return -EINVAL;
 
+	ret = rkvdec_allocate_rcb(ctx, cfg->rcb_size_info, cfg->rcb_num);
+	if (ret)
+		return ret;
+
 	if (desc->ops->start) {
 		ret = desc->ops->start(ctx);
 		if (ret)
-			return ret;
+			goto err_ops_start;
 	}
 
 	return 0;
+
+err_ops_start:
+	rkvdec_free_rcb(ctx);
+
+	return ret;
 }
 
 static void rkvdec_queue_cleanup(struct vb2_queue *vq, u32 state)
@@ -719,6 +731,8 @@ static void rkvdec_stop_streaming(struct vb2_queue *q)
 
 		if (desc->ops->stop)
 			desc->ops->stop(ctx);
+
+		rkvdec_free_rcb(ctx);
 	}
 
 	rkvdec_queue_cleanup(q, VB2_BUF_STATE_ERROR);
@@ -1183,14 +1197,13 @@ static int rkvdec_probe(struct platform_device *pdev)
 		return ret;
 	}
 
-	if (iommu_get_domain_for_dev(&pdev->dev)) {
+	rkvdec->iommu_domain = iommu_get_domain_for_dev(&pdev->dev);
+	if (rkvdec->iommu_domain) {
 		rkvdec->empty_domain = iommu_paging_domain_alloc(rkvdec->dev);
 
 		if (!rkvdec->empty_domain)
 			dev_warn(rkvdec->dev, "cannot alloc new empty domain\n");
 	}
-
-	vb2_dma_contig_set_max_seg_size(&pdev->dev, DMA_BIT_MASK(32));
 
 	irq = platform_get_irq(pdev, 0);
 	if (irq <= 0)
@@ -1203,6 +1216,10 @@ static int rkvdec_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "Could not request vdec IRQ\n");
 		return ret;
 	}
+
+	rkvdec->sram_pool = of_gen_pool_get(pdev->dev.of_node, "sram", 0);
+	if (!rkvdec->sram_pool && rkvdec->config->rcb_num > 0)
+		dev_info(&pdev->dev, "No sram node, RCB will be stored in RAM\n");
 
 	pm_runtime_set_autosuspend_delay(&pdev->dev, 100);
 	pm_runtime_use_autosuspend(&pdev->dev);
@@ -1217,6 +1234,10 @@ static int rkvdec_probe(struct platform_device *pdev)
 err_disable_runtime_pm:
 	pm_runtime_dont_use_autosuspend(&pdev->dev);
 	pm_runtime_disable(&pdev->dev);
+
+	if (rkvdec->sram_pool)
+		gen_pool_destroy(rkvdec->sram_pool);
+
 	return ret;
 }
 
