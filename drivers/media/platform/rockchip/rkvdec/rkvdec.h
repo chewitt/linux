@@ -70,8 +70,9 @@ vb2_to_rkvdec_decoded_buf(struct vb2_buffer *buf)
 }
 
 struct rkvdec_variant {
-	unsigned int num_regs;
+	const struct rkvdec_config *config;
 	unsigned int capabilities;
+	unsigned int num_regs;
 	unsigned int quirks;
 };
 
@@ -113,6 +114,11 @@ struct rkvdec_coded_fmt_desc {
 	unsigned int capability;
 };
 
+struct rkvdec_config {
+	struct rkvdec_coded_fmt_desc *coded_fmts;
+	size_t coded_fmts_num;
+};
+
 struct rkvdec_dev {
 	struct v4l2_device v4l2_dev;
 	struct media_device mdev;
@@ -125,6 +131,9 @@ struct rkvdec_dev {
 	struct delayed_work watchdog_work;
 	struct iommu_domain *empty_domain;
 	const struct rkvdec_variant *variant;
+	const struct rkvdec_config *config;
+	unsigned int capabilities;
+	unsigned int quirks;
 };
 
 struct rkvdec_ctx {
