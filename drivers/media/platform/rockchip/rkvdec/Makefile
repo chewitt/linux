@@ -4,4 +4,5 @@ rockchip-vdec-y += \
 		   rkvdec.o \
 		   rkvdec-cabac.o \
 		   rkvdec-h264.o \
+		   rkvdec-h264-common.o \
 		   rkvdec-vp9.o
