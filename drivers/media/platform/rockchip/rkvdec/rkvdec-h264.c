@@ -16,8 +16,6 @@
 #include "rkvdec-regs.h"
 #include "rkvdec-h264-common.h"
 
-extern const s8 rkvdec_h264_cabac_table[4][464][2];
-
 /* Size with u32 units. */
 #define RKV_CABAC_INIT_BUFFER_SIZE	(3680 + 128)
 #define RKV_ERROR_INFO_SIZE		(256 * 144 * 4)
@@ -25,40 +23,6 @@ extern const s8 rkvdec_h264_cabac_table[4][464][2];
 struct rkvdec_sps_pps_packet {
 	u32 info[8];
 };
-
-struct rkvdec_rps_entry {
-	u32 dpb_info0:          5;
-	u32 bottom_flag0:       1;
-	u32 view_index_off0:    1;
-	u32 dpb_info1:          5;
-	u32 bottom_flag1:       1;
-	u32 view_index_off1:    1;
-	u32 dpb_info2:          5;
-	u32 bottom_flag2:       1;
-	u32 view_index_off2:    1;
-	u32 dpb_info3:          5;
-	u32 bottom_flag3:       1;
-	u32 view_index_off3:    1;
-	u32 dpb_info4:          5;
-	u32 bottom_flag4:       1;
-	u32 view_index_off4:    1;
-	u32 dpb_info5:          5;
-	u32 bottom_flag5:       1;
-	u32 view_index_off5:    1;
-	u32 dpb_info6:          5;
-	u32 bottom_flag6:       1;
-	u32 view_index_off6:    1;
-	u32 dpb_info7:          5;
-	u32 bottom_flag7:       1;
-	u32 view_index_off7:    1;
-} __packed;
-
-struct rkvdec_rps {
-	u16 frame_num[16];
-	u32 reserved0;
-	struct rkvdec_rps_entry entries[12];
-	u32 reserved1[66];
-} __packed;
 
 struct rkvdec_ps_field {
 	u16 offset;
