@@ -7,6 +7,7 @@
 
 #include "meson-g12a.dtsi"
 #include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/leds/common.h>
 #include <dt-bindings/gpio/meson-g12a-gpio.h>
 #include <dt-bindings/sound/meson-g12a-tohdmitx.h>
 
@@ -50,6 +51,68 @@
 		port {
 			hdmi_connector_in: endpoint {
 				remote-endpoint = <&hdmi_tx_tmds_out>;
+			};
+		};
+	};
+
+	display_client: spi {
+		compatible = "spi-gpio";
+		sck-gpios = <&gpio 64 GPIO_ACTIVE_HIGH>;
+		mosi-gpios = <&gpio 63 GPIO_ACTIVE_HIGH>;
+		cs-gpios = <&gpio_ao 10 GPIO_ACTIVE_LOW>;
+		num-chipselects = <1>;
+
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		display@0 {
+			compatible = "fdhisi,fd628";
+			reg = <0x0>;
+			spi-3wire;
+			spi-lsb-first;
+			spi-rx-delay-us = <1>;
+			spi-max-frequency = <500000>;
+
+			titanmec,transposed;
+			titanmec,digits = [00 01 02 03];
+			titanmec,segment-mapping = [00 01 02 03 04 05 06];
+
+			#address-cells = <2>;
+			#size-cells = <0>;
+
+			led@4,0 {
+				reg = <4 0>;
+				function = "apps";
+			};
+
+			led@4,1 {
+				reg = <4 1>;
+				function = "setup";
+			};
+
+			led@4,2 {
+				reg = <4 2>;
+				function = LED_FUNCTION_USB;
+			};
+
+			led@4,3 {
+				reg = <4 3>;
+				function = LED_FUNCTION_SD;
+			};
+
+			led@4,4 {
+				reg = <4 4>;
+				function = "colon";
+			};
+
+			led@4,5 {
+				reg = <4 5>;
+				function = "hdmi";
+			};
+
+			led@4,6 {
+				reg = <4 6>;
+				function = "video";
 			};
 		};
 	};
