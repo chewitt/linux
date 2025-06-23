@@ -2088,6 +2088,7 @@ struct v4l2_ctrl_mpeg2_quantisation {
 #define V4L2_CID_STATELESS_HEVC_DECODE_MODE	(V4L2_CID_CODEC_STATELESS_BASE + 405)
 #define V4L2_CID_STATELESS_HEVC_START_CODE	(V4L2_CID_CODEC_STATELESS_BASE + 406)
 #define V4L2_CID_STATELESS_HEVC_ENTRY_POINT_OFFSETS (V4L2_CID_CODEC_STATELESS_BASE + 407)
+#define V4L2_CID_STATELESS_HEVC_EXT_SPS_RPS    (V4L2_CID_CODEC_STATELESS_BASE + 408)
 
 enum v4l2_stateless_hevc_decode_mode {
 	V4L2_STATELESS_HEVC_DECODE_MODE_SLICE_BASED,
@@ -2541,6 +2542,53 @@ struct v4l2_ctrl_hevc_scaling_matrix {
 	__u8	scaling_list_32x32[2][64];
 	__u8	scaling_list_dc_coef_16x16[6];
 	__u8	scaling_list_dc_coef_32x32[2];
+};
+
+#define V4L2_HEVC_EXT_SPS_RPS_FLAG_USED_LT			0x1
+#define V4L2_HEVC_EXT_SPS_RPS_FLAG_INTER_REF_PIC_SET_PRED	0x2
+
+/*
+ * struct v4l2_ctrl_hevc_sps_rps_extension - HEVC SPS RPS Extended parameters
+ *
+ * Dynamic size 1-dimension array for long and short term RPS. The number of elements
+ * should be max(num_long_term_ref_pics_sps, num_short_term_ref_pic_sets)
+ *
+ * @lt_ref_pic_poc_lsb_sps: picture order count modulo MaxPicOrderCntLsb
+ *                          of the i-th candidate long-term reference picture.
+ * @delta_idx_minus1: Specifies the delta compare to the index. See details in section 7.4.8
+ *                    "Short-term reference picture set semantics" of the specification.
+ * @delta_rps_sign: Sign of the delta as specified in section 7.4.8 "Short-term reference picture
+ *                  set semantics" of the specification.
+ * @abs_delta_rps_minus1: Absolute delta RPS as specified in section 7.4.8 "Short-term reference
+ *                        picture set semantics" of the specification.
+ * @num_negative_pics: Number of short-term RPS entries that have picture order count values less
+ *                     than the picture order count value of the current picture.
+ * @num_positive_pics: Number of short-term RPS entries that have picture order count values
+ *                     greater than the picture order count value of the current picture.
+ * @used_by_curr_pic_s0: Specifies if short-term RPS i (that has a negative POC) is used by the
+ *                       current picture.
+ * @used_by_curr_pic_s1: Specifies if short-term RPS i (that has a positive POC) is used by the
+ *                       current picture.
+ * @delta_poc_s0: Specifies the negative picture order count delta for the i-th entry in the
+ *                short-term RPS. See details in section 7.4.8 "Short-term reference picture set
+ *                semantics" of the specification.
+ * @delta_poc_s1: Specifies the positive picture order count delta for the i-th entry in the
+ *                short-term RPS. See details in section 7.4.8 "Short-term reference picture set
+ *                semantics" of the specification.
+ * @flags: See V4L2_HEVC_EXT_SPS_RPS_FLAG_{}
+ */
+struct v4l2_ctrl_hevc_ext_sps_rps {
+	__u16	lt_ref_pic_poc_lsb_sps;
+	__u8	delta_idx_minus1;
+	__u8	delta_rps_sign;
+	__u16	abs_delta_rps_minus1;
+	__u8	num_negative_pics;
+	__u8	num_positive_pics;
+	__u8	used_by_curr_pic_s0[16];
+	__u8	used_by_curr_pic_s1[16];
+	__s32	delta_poc_s0[16];
+	__s32	delta_poc_s1[16];
+	__u8	flags;
 };
 
 #define V4L2_CID_COLORIMETRY_CLASS_BASE	(V4L2_CTRL_CLASS_COLORIMETRY | 0x900)
