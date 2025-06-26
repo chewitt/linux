@@ -694,6 +694,8 @@ patternProperties:
     description: International Business Machines (IBM)
   "^ibm,.*":
     description: International Business Machines (IBM)
+  "^icore,.*":
+    description: Wuxi i-Core Electronics Co., Ltd.
   "^icplus,.*":
     description: IC Plus Corp.
   "^idt,.*":
