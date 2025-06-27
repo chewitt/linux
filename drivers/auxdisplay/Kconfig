@@ -526,6 +526,24 @@ config SEG_LED_GPIO
 	  This driver can also be built as a module. If so, the module
 	  will be called seg-led-gpio.
 
+config TM16XX
+	tristate "TM16XX-compatible LED controllers display"
+	depends on SPI || I2C
+	select NEW_LEDS
+	select LEDS_CLASS
+	select LEDS_TRIGGERS
+	help
+	  This driver supports the following TM16XX compatible
+	  (I2C and SPI 7-Segment LED display controller) chips:
+	  - Titanmec: TM1618, TM1620, TM1628, TM1650
+	  - Fuda Hisi: FD620, FD628, FD650, FD655, FD6551
+	  - i-Core: AiP650, AiP1618, AiP1628
+	  - Princeton: PT6964
+	  - Winrise: HBS658
+
+	  This driver can also be built as a module. If so, the module
+	  will be called tm16xx.
+
 #
 # Character LCD with non-conforming interface section
 #
