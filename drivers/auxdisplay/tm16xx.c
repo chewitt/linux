@@ -906,7 +906,7 @@ static int tm16xx_display_init(struct tm16xx_display *display)
 		tm16xx_value_store(display->main_led.dev, NULL, default_value,
 				   strlen(default_value));
 	} else {
-		memset(display->display_data, 0xFF, display->display_data_len);
+		memset(display->display_data, 0x00, display->display_data_len);
 		schedule_work(&display->flush_display);
 		flush_work(&display->flush_display);
 		memset(display->display_data, 0x00, display->display_data_len);
