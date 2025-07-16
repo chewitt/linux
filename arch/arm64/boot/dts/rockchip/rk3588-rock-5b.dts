@@ -27,7 +27,7 @@
 	vqmmc-supply = <&vcc_1v8_s3>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&sdiom0_pins>;
-	status = "okay";
+	status = "disabled";
 };
 
 &uart6 {
