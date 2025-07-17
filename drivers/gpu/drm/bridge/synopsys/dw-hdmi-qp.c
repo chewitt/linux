@@ -481,7 +481,7 @@ static int dw_hdmi_qp_audio_prepare(struct drm_bridge *bridge,
 	bool ref2stream = false;
 
 	if (!hdmi->tmds_char_rate)
-		return -ENODEV;
+		return 0;
 
 	if (fmt->bit_clk_provider | fmt->frame_clk_provider) {
 		dev_err(hdmi->dev, "unsupported clock settings\n");
