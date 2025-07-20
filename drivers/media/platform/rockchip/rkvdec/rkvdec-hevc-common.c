@@ -19,12 +19,10 @@ enum rkvdec_image_fmt rkvdec_hevc_get_image_fmt(struct rkvdec_ctx *ctx,
 	if (ctrl->id != V4L2_CID_STATELESS_HEVC_SPS)
 		return RKVDEC_IMG_FMT_ANY;
 
-	if (sps->bit_depth_luma_minus8 == 0) {
-		if (sps->chroma_format_idc == 2)
-			return RKVDEC_IMG_FMT_422_8BIT;
-		else
-			return RKVDEC_IMG_FMT_420_8BIT;
-	}
+	if (sps->bit_depth_luma_minus8 == 0)
+		return RKVDEC_IMG_FMT_420_8BIT;
+	else if (sps->bit_depth_luma_minus8 == 2)
+		return RKVDEC_IMG_FMT_420_10BIT;
 
 	return RKVDEC_IMG_FMT_ANY;
 }
