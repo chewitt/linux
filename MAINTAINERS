@@ -25448,7 +25448,10 @@ F:	drivers/net/ethernet/ti/tlan.*
 TM16XX-COMPATIBLE LED CONTROLLERS DISPLAY DRIVER
 M:	Jean-François Lessard <jefflessard3@gmail.com>
 S:	Maintained
+F:	Documentation/ABI/testing/sysfs-class-leds-tm16xx
 F:	Documentation/devicetree/bindings/auxdisplay/titanmec,tm16xx.yaml
+F:	drivers/auxdisplay/tm16xx.h
+F:	drivers/auxdisplay/tm16xx_core.c
 
 TMIO/SDHI MMC DRIVER
 M:	Wolfram Sang <wsa+renesas@sang-engineering.com>
