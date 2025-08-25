@@ -674,6 +674,13 @@ static int hantro_open(struct file *filp)
 	}
 	ctx->fh.ctrl_handler = &ctx->ctrl_handler;
 
+	if (use_dma_iommu(ctx->dev->v4l2_dev.dev)) {
+		ctx->iommu_domain = iommu_paging_domain_alloc(ctx->dev->v4l2_dev.dev);
+
+		if (!ctx->iommu_domain)
+			vpu_err("cannot alloc new empty domain\n");
+	}
+
 	return 0;
 
 err_fh_free:
@@ -697,6 +704,10 @@ static int hantro_release(struct file *filp)
 	v4l2_fh_del(&ctx->fh);
 	v4l2_fh_exit(&ctx->fh);
 	v4l2_ctrl_handler_free(&ctx->ctrl_handler);
+
+	if (ctx->iommu_domain)
+		iommu_domain_free(ctx->iommu_domain);
+
 	kfree(ctx);
 
 	return 0;

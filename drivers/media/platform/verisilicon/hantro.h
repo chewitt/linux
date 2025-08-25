@@ -12,6 +12,9 @@
 #ifndef HANTRO_H_
 #define HANTRO_H_
 
+#include <linux/dma-map-ops.h>
+#include <linux/iommu.h>
+#include <linux/iommu-dma.h>
 #include <linux/platform_device.h>
 #include <linux/videodev2.h>
 #include <linux/wait.h>
@@ -265,6 +268,8 @@ struct hantro_ctx {
 	const struct hantro_codec_ops *codec_ops;
 	struct hantro_postproc_ctx postproc;
 	bool need_postproc;
+
+	struct iommu_domain *iommu_domain;
 
 	/* Specific for particular codec modes. */
 	union {

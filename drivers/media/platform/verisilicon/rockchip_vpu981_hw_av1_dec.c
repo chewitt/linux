@@ -2095,11 +2095,21 @@ rockchip_vpu981_av1_dec_set_output_buffer(struct hantro_ctx *ctx)
 	hantro_write_addr(vpu, AV1_TILE_OUT_MV, mv_addr);
 }
 
+static void rockchip_vpu981_av1_restore_iommu(struct hantro_ctx *ctx)
+{
+	if (ctx->iommu_domain) {
+		iommu_attach_device(ctx->iommu_domain, ctx->dev->v4l2_dev.dev);
+		iommu_detach_device(ctx->iommu_domain, ctx->dev->v4l2_dev.dev);
+	}
+}
+
 int rockchip_vpu981_av1_dec_run(struct hantro_ctx *ctx)
 {
 	struct hantro_dev *vpu = ctx->dev;
 	struct vb2_v4l2_buffer *vb2_src;
 	int ret;
+
+	rockchip_vpu981_av1_restore_iommu(ctx);
 
 	hantro_start_prepare_run(ctx);
 
