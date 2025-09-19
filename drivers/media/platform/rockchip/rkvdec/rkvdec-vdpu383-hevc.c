@@ -275,11 +275,11 @@ static void set_pps_ref_pic_poc(struct rkvdec_hevc_sps_pps *hw_ps, u32 poc, int 
 static void assemble_hw_pps(struct rkvdec_ctx *ctx,
 			    struct rkvdec_hevc_run *run)
 {
-	struct rkvdec_hevc_ctx *h264_ctx = ctx->priv;
+	struct rkvdec_hevc_ctx *h265_ctx = ctx->priv;
 	const struct v4l2_ctrl_hevc_sps *sps = run->sps;
 	const struct v4l2_ctrl_hevc_pps *pps = run->pps;
 	const struct v4l2_ctrl_hevc_decode_params *dec_params = run->decode_params;
-	struct rkvdec_hevc_priv_tbl *priv_tbl = h264_ctx->priv_tbl.cpu;
+	struct rkvdec_hevc_priv_tbl *priv_tbl = h265_ctx->priv_tbl.cpu;
 	struct rkvdec_hevc_sps_pps *hw_ps;
 	bool tiles_enabled;
 	s32 max_cu_width;
@@ -479,7 +479,7 @@ static void config_registers(struct rkvdec_ctx *ctx,
 
 	memset(regs, 0, sizeof(*regs));
 
-	/* Set H264 mode */
+	/* Set HEVC mode */
 	regs->common.reg008_dec_mode = VDPU383_MODE_HEVC;
 
 	/* Set input stream length */
