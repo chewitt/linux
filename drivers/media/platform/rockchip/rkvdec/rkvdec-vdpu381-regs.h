@@ -90,7 +90,7 @@ struct rkvdec_vdpu381_regs_common {
 		u32 reserved4			: 7;
 	} reg011;
 
-	struct rkvdec_vdpu381_sencodary_en {
+	struct rkvdec_vdpu381_secondary_en {
 		u32 wr_ddr_align_en		: 1;
 		u32 colmv_compress_en		: 1;
 		u32 fbc_e			: 1;
