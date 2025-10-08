@@ -862,6 +862,10 @@
 };
 
 &ufshc {
+	vcc-supply = <&vcc_3v3_s0>;
+	vccq-supply = <&vcc_1v2_ufs_vccq_s0>;
+	vccq2-supply = <&vcc_1v8_ufs_vccq2_s0>;
+	vdd-hba-supply = <&vdda_1v2_s0>;
 	status = "okay";
 };
 
