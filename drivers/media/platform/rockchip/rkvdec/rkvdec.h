@@ -77,6 +77,7 @@ struct rkvdec_variant {
 	size_t num_coded_fmts;
 	const struct rcb_size_info *rcb_sizes;
 	size_t num_rcb_sizes;
+	irqreturn_t (*irq_handler)(struct rkvdec_ctx *ctx);
 	unsigned int capabilities;
 	unsigned int quirks;
 };
