@@ -78,6 +78,8 @@ struct rkvdec_variant {
 	const struct rcb_size_info *rcb_sizes;
 	size_t num_rcb_sizes;
 	irqreturn_t (*irq_handler)(struct rkvdec_ctx *ctx);
+	u32 (*colmv_size)(u16 width, u16 height);
+	bool named_regs;
 	unsigned int capabilities;
 	unsigned int quirks;
 };
@@ -130,6 +132,7 @@ struct rkvdec_dev {
 	unsigned int num_clocks;
 	struct clk *axi_clk;
 	void __iomem *regs;
+	void __iomem *link;
 	struct mutex vdev_lock; /* serializes ioctls */
 	struct delayed_work watchdog_work;
 	struct gen_pool *sram_pool;
@@ -174,10 +177,15 @@ void rkvdec_memcpy_toio(void __iomem *dst, void *src, size_t len);
 
 void rkvdec_quirks_disable_qos(struct rkvdec_ctx *ctx);
 
+/* RKVDEC ops */
 extern const struct rkvdec_coded_fmt_ops rkvdec_h264_fmt_ops;
 extern const struct rkvdec_coded_fmt_ops rkvdec_hevc_fmt_ops;
 extern const struct rkvdec_coded_fmt_ops rkvdec_vp9_fmt_ops;
 
+/* VDPU381 ops */
 extern const struct rkvdec_coded_fmt_ops rkvdec_vdpu381_h264_fmt_ops;
+
+/* VDPU383 ops */
+extern const struct rkvdec_coded_fmt_ops rkvdec_vdpu383_h264_fmt_ops;
 
 #endif /* RKVDEC_H_ */
