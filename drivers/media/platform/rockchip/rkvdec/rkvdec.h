@@ -79,6 +79,7 @@ struct rkvdec_variant {
 	size_t num_rcb_sizes;
 	irqreturn_t (*irq_handler)(struct rkvdec_ctx *ctx);
 	u32 (*colmv_size)(u16 width, u16 height);
+	void (*flatten_matrices)(u8 *output, const u8 *input, int matrices, int row_length);
 	bool named_regs;
 	unsigned int capabilities;
 	unsigned int quirks;
@@ -190,5 +191,6 @@ extern const struct rkvdec_coded_fmt_ops rkvdec_vdpu381_hevc_fmt_ops;
 
 /* VDPU383 ops */
 extern const struct rkvdec_coded_fmt_ops rkvdec_vdpu383_h264_fmt_ops;
+extern const struct rkvdec_coded_fmt_ops rkvdec_vdpu383_hevc_fmt_ops;
 
 #endif /* RKVDEC_H_ */
