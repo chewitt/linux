@@ -2136,7 +2136,7 @@
 		};
 
 		vdec: video-decoder@ff620000 {
-			compatible = "amlogic,g12a-vdec";
+			compatible = "amlogic,meson-g12b-vdec";
 			reg = <0x0 0xff620000 0x0 0x10000>,
 			      <0x0 0xffd0e180 0x0 0xe4>;
 			reg-names = "dos", "esparser";
@@ -2146,6 +2146,7 @@
 
 			amlogic,ao-sysctrl = <&rti>;
 			amlogic,canvas = <&canvas>;
+			amlogic,hhi-sysctrl = <&hhi>;
 
 			clocks = <&clkc CLKID_PARSER>,
 				 <&clkc CLKID_DOS>,
@@ -2154,8 +2155,9 @@
 				 <&clkc CLKID_VDEC_HEVCF>;
 			clock-names = "dos_parser", "dos", "vdec_1",
 				      "vdec_hevc", "vdec_hevcf";
-			resets = <&reset RESET_PARSER>;
-			reset-names = "esparser";
+			resets = <&reset RESET_DOS>,
+			         <&reset RESET_PARSER>;
+			reset-names = "dos", "esparser";
 		};
 
 		vpu: vpu@ff900000 {
