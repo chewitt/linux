@@ -37,10 +37,13 @@ properties:
           - const: amlogic,gx-vdec
       - enum:
           - amlogic,g12a-vdec # G12A (S905X2, S905D2)
+          - amlogic,g12b-vdec # G12B (S922X, A311D)
+          - amlogic,meson-g12b-vdec # experimental
           - amlogic,sm1-vdec # SM1 (S905X3, S905D3)
 
   interrupts:
     minItems: 2
+    maxItems: 4
 
   interrupt-names:
     items:
@@ -56,10 +59,11 @@ properties:
       - const: esparser
 
   resets:
-    maxItems: 1
+    maxItems: 2
 
   reset-names:
     items:
+      - const: dos
       - const: esparser
 
   clocks:
@@ -74,14 +78,23 @@ properties:
       - const: vdec_1
       - const: vdec_hevc
       - const: vdec_hevcf
+      - const: vdec_hcodec
 
   amlogic,ao-sysctrl:
     description: should point to the AOBUS sysctrl node
     $ref: /schemas/types.yaml#/definitions/phandle
 
+  amlogic,hhi-sysctrl:
+    description: should point to the HHI sysctrl node
+    $ref: /schemas/types.yaml#/definitions/phandle
+
   amlogic,canvas:
     description: should point to a canvas provider node
     $ref: /schemas/types.yaml#/definitions/phandle
+
+  memory-region:
+    description: cma or reserved region for vdec workspace
+    maxItems: 1
 
 allOf:
   - if:
