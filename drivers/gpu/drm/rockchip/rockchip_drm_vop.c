@@ -1239,10 +1239,10 @@ static bool vop_crtc_mode_fixup(struct drm_crtc *crtc,
 	 * 4. Store the rounded up rate so that we don't need to worry about
 	 *    this in the actual clk_set_rate().
 	 */
-	rate = clk_round_rate(vop->dclk, adjusted_mode->clock * 1000);
+	rate = clk_round_rate(vop->dclk, adjusted_mode->clock * 1000UL);
 	if (rate / 1000 != adjusted_mode->clock)
 		rate = clk_round_rate(vop->dclk,
-				      adjusted_mode->clock * 1000 + 999);
+				      adjusted_mode->clock * 1000UL + 999);
 	adjusted_mode->clock = DIV_ROUND_UP(rate, 1000);
 
 	return true;
