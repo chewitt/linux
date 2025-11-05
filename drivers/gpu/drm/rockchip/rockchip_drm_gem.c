@@ -286,6 +286,7 @@ static struct rockchip_gem_object *
 {
 	struct rockchip_gem_object *rk_obj;
 	struct drm_gem_object *obj;
+	int ret;
 
 	size = round_up(size, PAGE_SIZE);
 
@@ -297,7 +298,12 @@ static struct rockchip_gem_object *
 
 	obj->funcs = &rockchip_gem_object_funcs;
 
-	drm_gem_object_init(drm, obj, size);
+	ret = drm_gem_object_init(drm, obj, size);
+	if (ret) {
+		DRM_ERROR("failed to initialize gem object: %d\n", ret);
+		kfree(rk_obj);
+		return ERR_PTR(ret);
+	}
 
 	return rk_obj;
 }
