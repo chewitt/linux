@@ -45,7 +45,3 @@
 &usb {
 	dr_mode = "host";
 };
-
-&vdec {
-	compatible = "amlogic,gxlx-vdec", "amlogic,gx-vdec";
-};
