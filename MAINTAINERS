@@ -16703,15 +16703,6 @@ S:	Maintained
 F:	Documentation/devicetree/bindings/mtd/amlogic,meson-nand.yaml
 F:	drivers/mtd/nand/raw/meson_*
 
-MESON VIDEO DECODER DRIVER FOR AMLOGIC SOCS
-M:	Neil Armstrong <neil.armstrong@linaro.org>
-L:	linux-media@vger.kernel.org
-L:	linux-amlogic@lists.infradead.org
-S:	Supported
-T:	git git://linuxtv.org/media.git
-F:	Documentation/devicetree/bindings/media/amlogic,gx-vdec.yaml
-F:	drivers/staging/media/meson/vdec/
-
 META ETHERNET DRIVERS
 M:	Alexander Duyck <alexanderduyck@fb.com>
 M:	Jakub Kicinski <kuba@kernel.org>
