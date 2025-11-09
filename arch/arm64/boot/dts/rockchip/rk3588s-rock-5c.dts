@@ -619,7 +619,7 @@
 				regulator-always-on;
 				regulator-boot-on;
 				regulator-min-microvolt = <675000>;
-				regulator-max-microvolt = <750000>;
+				regulator-max-microvolt = <800000>;
 				regulator-ramp-delay = <12500>;
 
 				regulator-state-mem {
@@ -666,12 +666,11 @@
 			};
 
 			vcc_2v0_pldo_s3: dcdc-reg7 {
-				regulator-name = "vdd_2v0_pldo_s3";
+				regulator-name = "vcc_2v0_pldo_s3";
 				regulator-always-on;
 				regulator-boot-on;
 				regulator-min-microvolt = <2000000>;
 				regulator-max-microvolt = <2000000>;
-				regulator-ramp-delay = <12500>;
 
 				regulator-state-mem {
 					regulator-on-in-suspend;
@@ -702,8 +701,8 @@
 				};
 			};
 
-			vcc1v8_pmu_ddr_s3: dcdc-reg10 {
-				regulator-name = "vcc1v8_pmu_ddr_s3";
+			vcc_1v8_s3: dcdc-reg10 {
+				regulator-name = "vcc_1v8_s3";
 				regulator-always-on;
 				regulator-boot-on;
 				regulator-min-microvolt = <1800000>;
@@ -778,8 +777,8 @@
 				};
 			};
 
-			pldo6_s3: pldo-reg6 {
-				regulator-name = "pldo6_s3";
+			pldo-reg6 {
+				regulator-name = "pldo_reg6";
 				regulator-always-on;
 				regulator-boot-on;
 				regulator-min-microvolt = <1800000>;
@@ -821,11 +820,12 @@
 				regulator-name = "vdda_0v75_s0";
 				regulator-always-on;
 				regulator-boot-on;
-				regulator-min-microvolt = <750000>;
-				regulator-max-microvolt = <750000>;
+				regulator-min-microvolt = <837500>;
+				regulator-max-microvolt = <837500>;
 
 				regulator-state-mem {
-					regulator-off-in-suspend;
+					regulator-on-in-suspend;
+					regulator-suspend-microvolt = <750000>;
 				};
 			};
 
