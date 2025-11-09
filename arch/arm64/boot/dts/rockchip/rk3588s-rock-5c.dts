@@ -148,7 +148,7 @@
 		regulator-boot-on;
 		regulator-min-microvolt = <3300000>;
 		regulator-max-microvolt = <3300000>;
-		vin-supply = <&vcc_1v8_s0>;
+		vin-supply = <&vcc_3v3_s3>;
 	};
 
 	vcc_5v0: regulator-vcc-5v0 {
