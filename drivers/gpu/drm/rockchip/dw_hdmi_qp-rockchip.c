@@ -468,6 +468,28 @@ static const struct of_device_id dw_hdmi_qp_rockchip_dt_ids[] = {
 };
 MODULE_DEVICE_TABLE(of, dw_hdmi_qp_rockchip_dt_ids);
 
+static const u32 supported_colorformats = DRM_COLOR_FORMAT_AUTO |
+					  DRM_COLOR_FORMAT_RGB444 |
+					  DRM_COLOR_FORMAT_YCBCR444;
+
+static unsigned int __pure drm_to_hdmi_fmts(const u32 fmt)
+{
+	unsigned int res = 0;
+
+	if (fmt & DRM_COLOR_FORMAT_AUTO)
+		res |= BIT(HDMI_COLORSPACE_RGB);
+	if (fmt & DRM_COLOR_FORMAT_RGB444)
+		res |= BIT(HDMI_COLORSPACE_RGB);
+	if (fmt & DRM_COLOR_FORMAT_YCBCR444)
+		res |= BIT(HDMI_COLORSPACE_YUV444);
+	if (fmt & DRM_COLOR_FORMAT_YCBCR422)
+		res |= BIT(HDMI_COLORSPACE_YUV422);
+	if (fmt & DRM_COLOR_FORMAT_YCBCR420)
+		res |= BIT(HDMI_COLORSPACE_YUV420);
+
+	return res;
+}
+
 static int dw_hdmi_qp_rockchip_bind(struct device *dev, struct device *master,
 				    void *data)
 {
@@ -520,6 +542,8 @@ static int dw_hdmi_qp_rockchip_bind(struct device *dev, struct device *master,
 	plat_data.phy_ops = cfg->phy_ops;
 	plat_data.phy_data = hdmi;
 	plat_data.max_bpc = 10;
+
+	plat_data.supported_formats = drm_to_hdmi_fmts(supported_colorformats);
 
 	encoder = &hdmi->encoder.encoder;
 	encoder->possible_crtcs = drm_of_find_possible_crtcs(drm, dev->of_node);
