@@ -1019,6 +1019,59 @@ static int select_bus_fmt_recursive(struct drm_bridge *first_bridge,
 	return ret;
 }
 
+static bool __pure bus_format_is_color_fmt(u32 bus_fmt, enum drm_color_format fmt)
+{
+	if (bus_fmt == MEDIA_BUS_FMT_FIXED)
+		return true;
+
+	switch (fmt) {
+	case DRM_COLOR_FORMAT_NONE:
+	case DRM_COLOR_FORMAT_AUTO:
+		return true;
+	case DRM_COLOR_FORMAT_RGB444:
+		switch (bus_fmt) {
+		case MEDIA_BUS_FMT_RGB888_1X24:
+		case MEDIA_BUS_FMT_RGB101010_1X30:
+		case MEDIA_BUS_FMT_RGB121212_1X36:
+		case MEDIA_BUS_FMT_RGB161616_1X48:
+			return true;
+		default:
+			return false;
+		}
+	case DRM_COLOR_FORMAT_YCBCR444:
+		switch (bus_fmt) {
+		case MEDIA_BUS_FMT_YUV8_1X24:
+		case MEDIA_BUS_FMT_YUV10_1X30:
+		case MEDIA_BUS_FMT_YUV12_1X36:
+		case MEDIA_BUS_FMT_YUV16_1X48:
+			return true;
+		default:
+			return false;
+		}
+	case DRM_COLOR_FORMAT_YCBCR422:
+		switch (bus_fmt) {
+		case MEDIA_BUS_FMT_UYVY8_1X16:
+		case MEDIA_BUS_FMT_UYVY10_1X20:
+		case MEDIA_BUS_FMT_UYVY12_1X24:
+			return true;
+		default:
+			return false;
+		}
+	case DRM_COLOR_FORMAT_YCBCR420:
+		switch (bus_fmt) {
+		case MEDIA_BUS_FMT_UYYVYY8_0_5X24:
+		case MEDIA_BUS_FMT_UYYVYY10_0_5X30:
+		case MEDIA_BUS_FMT_UYYVYY12_0_5X36:
+		case MEDIA_BUS_FMT_UYYVYY16_0_5X48:
+			return true;
+		default:
+			return false;
+		}
+	}
+
+	return false;
+}
+
 /*
  * This function is called by &drm_atomic_bridge_chain_check() just before
  * calling &drm_bridge_funcs.atomic_check() on all elements of the chain.
@@ -1104,6 +1157,10 @@ drm_atomic_bridge_chain_select_bus_fmts(struct drm_bridge *bridge,
 	}
 
 	for (i = 0; i < num_out_bus_fmts; i++) {
+		if (!bus_format_is_color_fmt(out_bus_fmts[i], conn_state->color_format)) {
+			ret = -ENOTSUPP;
+			continue;
+		}
 		ret = select_bus_fmt_recursive(bridge, last_bridge, crtc_state,
 					       conn_state, out_bus_fmts[i]);
 		if (ret != -ENOTSUPP)
