@@ -438,11 +438,37 @@ static const struct rkvdec_ctrl_desc rkvdec_vp9_ctrl_descs[] = {
 		.cfg.max = V4L2_MPEG_VIDEO_VP9_PROFILE_0,
 		.cfg.def = V4L2_MPEG_VIDEO_VP9_PROFILE_0,
 	},
+
 };
 
 static const struct rkvdec_ctrls rkvdec_vp9_ctrls = {
 	.ctrls = rkvdec_vp9_ctrl_descs,
 	.num_ctrls = ARRAY_SIZE(rkvdec_vp9_ctrl_descs),
+};
+
+static const struct rkvdec_ctrl_desc vdpu381_vp9_ctrl_descs[] = {
+	{
+		.cfg.id = V4L2_CID_STATELESS_VP9_FRAME,
+	},
+	{
+		.cfg.id = V4L2_CID_STATELESS_VP9_COMPRESSED_HDR,
+	},
+	{
+		.cfg.id = V4L2_CID_MPEG_VIDEO_VP9_PROFILE,
+		.cfg.min = V4L2_MPEG_VIDEO_VP9_PROFILE_0,
+		.cfg.max = V4L2_MPEG_VIDEO_VP9_PROFILE_0,
+		.cfg.def = V4L2_MPEG_VIDEO_VP9_PROFILE_0,
+	},
+	{
+		.cfg.id = V4L2_CID_MPEG_VIDEO_VP9_LEVEL,
+		.cfg.min = V4L2_MPEG_VIDEO_VP9_LEVEL_1_0,
+		.cfg.max = V4L2_MPEG_VIDEO_VP9_LEVEL_6_1,
+	},
+};
+
+static const struct rkvdec_ctrls vdpu381_vp9_ctrls = {
+	.ctrls = vdpu381_vp9_ctrl_descs,
+	.num_ctrls = ARRAY_SIZE(vdpu381_vp9_ctrl_descs),
 };
 
 static const struct rkvdec_decoded_fmt_desc rkvdec_vp9_decoded_fmts[] = {
@@ -585,6 +611,22 @@ static const struct rkvdec_coded_fmt_desc vdpu381_coded_fmts[] = {
 		.ops = &rkvdec_vdpu381_h264_fmt_ops,
 		.num_decoded_fmts = ARRAY_SIZE(rkvdec_h264_decoded_fmts),
 		.decoded_fmts = rkvdec_h264_decoded_fmts,
+		.subsystem_flags = VB2_V4L2_FL_SUPPORTS_M2M_HOLD_CAPTURE_BUF,
+	},
+	{
+		.fourcc = V4L2_PIX_FMT_VP9_FRAME,
+		.frmsize = {
+			.min_width = 64,
+			.max_width = 65472,
+			.step_width = 64,
+			.min_height = 64,
+			.max_height = 65472,
+			.step_height = 64,
+		},
+		.ctrls = &vdpu381_vp9_ctrls,
+		.ops = &rkvdec_vdpu381_vp9_fmt_ops,
+		.num_decoded_fmts = ARRAY_SIZE(rkvdec_vp9_decoded_fmts),
+		.decoded_fmts = rkvdec_vp9_decoded_fmts,
 		.subsystem_flags = VB2_V4L2_FL_SUPPORTS_M2M_HOLD_CAPTURE_BUF,
 	},
 };
@@ -1075,6 +1117,8 @@ static void rkvdec_stop_streaming(struct vb2_queue *q)
 {
 	struct rkvdec_ctx *ctx = vb2_get_drv_priv(q);
 
+	vb2_wait_for_all_buffers(q);
+
 	if (V4L2_TYPE_IS_OUTPUT(q->type)) {
 		const struct rkvdec_coded_fmt_desc *desc = ctx->coded_fmt_desc;
 
@@ -1503,15 +1547,18 @@ static irqreturn_t vdpu381_irq_handler(struct rkvdec_ctx *ctx)
 		state = VB2_BUF_STATE_ERROR;
 		if (status & (VDPU381_STA_INT_SOFTRESET_RDY |
 			      VDPU381_STA_INT_TIMEOUT |
-			      VDPU381_STA_INT_ERROR))
+			      VDPU381_STA_INT_ERROR))    					
 			rkvdec_iommu_restore(rkvdec);
 	}
 
-	if (need_reset)
+	if (need_reset){		
 		rkvdec_iommu_restore(rkvdec);
+	}
+
+
 
 	if (cancel_delayed_work(&rkvdec->watchdog_work))
-		rkvdec_job_finish(ctx, state);
+    	rkvdec_job_finish(ctx, state);
 
 	return IRQ_HANDLED;
 }
