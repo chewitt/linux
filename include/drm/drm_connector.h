@@ -2586,6 +2586,9 @@ drm_color_format_to_color_format_enum(enum drm_color_format fmt);
 u32
 drm_color_format_enum_to_color_format(enum drm_color_format_enum fmt_enum);
 
+enum hdmi_colorspace
+color_format_to_hdmi_colorspace(enum drm_color_format fmt);
+
 /**
  * drm_for_each_connector_iter - connector_list iterator macro
  * @connector: &struct drm_connector pointer used as cursor
