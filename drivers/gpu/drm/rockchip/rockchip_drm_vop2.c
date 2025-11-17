@@ -1543,6 +1543,50 @@ static void vop2_dither_setup(struct drm_crtc *crtc, u32 *dsp_ctrl)
 				DITHER_DOWN_ALLEGRO);
 }
 
+static void vop2_bcsh_config(struct drm_crtc *crtc, struct vop2_video_port *vp)
+{
+	struct drm_connector_list_iter conn_iter;
+	struct drm_connector *connector;
+	u32 format = 0;
+	enum drm_colorspace colorspace = 0;
+	u32 val = 0;
+
+	drm_connector_list_iter_begin(crtc->dev, &conn_iter);
+	drm_for_each_connector_iter(connector, &conn_iter) {
+		if (!(crtc->state->connector_mask & drm_connector_mask(connector)))
+			continue;
+
+		format = connector->state->color_format;
+		colorspace = connector->state->colorspace;
+		break;
+	}
+	drm_connector_list_iter_end(&conn_iter);
+
+	if (format == DRM_COLOR_FORMAT_YCBCR420 ||
+	    format == DRM_COLOR_FORMAT_YCBCR444 ||
+	    format == DRM_COLOR_FORMAT_YCBCR422) {
+		val = RK3568_VP_BCSH_CTRL__BCSH_R2Y_EN | BIT(7);
+
+		switch (colorspace) {
+		case DRM_MODE_COLORIMETRY_BT2020_RGB:
+		case DRM_MODE_COLORIMETRY_BT2020_YCC:
+			val |= BIT(7) | BIT(6);
+			break;
+		case DRM_MODE_COLORIMETRY_BT709_YCC:
+			val |= BIT(6);
+			break;
+		default:
+			break;
+		}
+		if (colorspace == DRM_MODE_COLORIMETRY_BT2020_RGB ||
+		    colorspace == DRM_MODE_COLORIMETRY_BT2020_YCC)
+			val |= BIT(6);
+	}
+
+	vop2_vp_write(vp, RK3568_VP_BCSH_CTRL, val);
+	vop2_vp_write(vp, RK3568_VP_BCSH_COLOR_BAR, 0);
+}
+
 static void vop2_post_config(struct drm_crtc *crtc)
 {
 	struct vop2_video_port *vp = to_vop2_video_port(crtc);
@@ -1594,6 +1638,8 @@ static void vop2_post_config(struct drm_crtc *crtc)
 	}
 
 	vop2_vp_write(vp, RK3568_VP_DSP_BG, 0);
+
+	vop2_bcsh_config(crtc, vp);
 }
 
 static int us_to_vertical_line(struct drm_display_mode *mode, int us)
