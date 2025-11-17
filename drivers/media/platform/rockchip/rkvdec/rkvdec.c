@@ -407,6 +407,32 @@ static const struct rkvdec_ctrls vdpu38x_hevc_ctrls = {
 	.num_ctrls = ARRAY_SIZE(vdpu38x_hevc_ctrl_descs),
 };
 
+static const struct rkvdec_ctrl_desc vdpu381_vp9_ctrl_descs[] = {
+	{
+		.cfg.id = V4L2_CID_STATELESS_VP9_FRAME,
+	},
+	{
+		.cfg.id = V4L2_CID_STATELESS_VP9_COMPRESSED_HDR,
+	},
+	{
+		.cfg.id = V4L2_CID_MPEG_VIDEO_VP9_PROFILE,
+		.cfg.min = V4L2_MPEG_VIDEO_VP9_PROFILE_0,
+		.cfg.max = V4L2_MPEG_VIDEO_VP9_PROFILE_0,
+		.cfg.def = V4L2_MPEG_VIDEO_VP9_PROFILE_0,
+	},
+	{
+		.cfg.id = V4L2_CID_MPEG_VIDEO_VP9_LEVEL,
+		.cfg.min = V4L2_MPEG_VIDEO_VP9_LEVEL_1_0,
+		.cfg.max = V4L2_MPEG_VIDEO_VP9_LEVEL_6_1,		
+	
+	},
+};
+
+static const struct rkvdec_ctrls vdpu381_vp9_ctrls = {
+	.ctrls = vdpu381_vp9_ctrl_descs,
+	.num_ctrls = ARRAY_SIZE(vdpu381_vp9_ctrl_descs),
+};
+
 static const struct rkvdec_decoded_fmt_desc rkvdec_h264_decoded_fmts[] = {
 	{
 		.fourcc = V4L2_PIX_FMT_NV12,
@@ -439,6 +465,7 @@ static const struct rkvdec_ctrl_desc rkvdec_vp9_ctrl_descs[] = {
 		.cfg.max = V4L2_MPEG_VIDEO_VP9_PROFILE_0,
 		.cfg.def = V4L2_MPEG_VIDEO_VP9_PROFILE_0,
 	},
+
 };
 
 static const struct rkvdec_ctrls rkvdec_vp9_ctrls = {
@@ -577,6 +604,23 @@ static const struct rkvdec_coded_fmt_desc vdpu381_coded_fmts[] = {
 		.subsystem_flags = VB2_V4L2_FL_SUPPORTS_M2M_HOLD_CAPTURE_BUF,
 		.capability = RKVDEC_CAPABILITY_HEVC,
 	},
+	{
+		.fourcc = V4L2_PIX_FMT_VP9_FRAME,
+		.frmsize = {
+			.min_width = 64,
+			.max_width = 65472,
+			.step_width = 64,
+			.min_height = 64,
+			.max_height = 65472,
+			.step_height = 64,
+		},
+		.ctrls = &vdpu381_vp9_ctrls,
+		.ops = &rkvdec_vdpu381_vp9_fmt_ops,
+		.num_decoded_fmts = ARRAY_SIZE(rkvdec_vp9_decoded_fmts),
+		.decoded_fmts = rkvdec_vp9_decoded_fmts,
+		.subsystem_flags = VB2_V4L2_FL_SUPPORTS_M2M_HOLD_CAPTURE_BUF,
+		.capability = RKVDEC_CAPABILITY_VP9,
+	}
 };
 
 static const struct rkvdec_coded_fmt_desc vdpu383_coded_fmts[] = {
@@ -1074,6 +1118,8 @@ static void rkvdec_stop_streaming(struct vb2_queue *q)
 {
 	struct rkvdec_ctx *ctx = vb2_get_drv_priv(q);
 
+	vb2_wait_for_all_buffers(q);
+
 	if (V4L2_TYPE_IS_OUTPUT(q->type)) {
 		const struct rkvdec_coded_fmt_desc *desc = ctx->coded_fmt_desc;
 
@@ -1506,13 +1552,19 @@ static irqreturn_t vdpu381_irq_handler(struct rkvdec_ctx *ctx)
 		if (status & (VDPU381_STA_INT_SOFTRESET_RDY |
 			      VDPU381_STA_INT_TIMEOUT |
 			      VDPU381_STA_INT_ERROR))
+    		//dev_err(ctx->dev->dev, "iommu error. here : 16\n");			
 			rkvdec_iommu_restore(rkvdec);
 	}
 
-	if (need_reset)
+	if (need_reset){
+		//dev_err(ctx->dev->dev, "iommu error. here : 14\n");
 		rkvdec_iommu_restore(rkvdec);
+	}
+
+
 
 	if (cancel_delayed_work(&rkvdec->watchdog_work))
+    	//dev_err(ctx->dev->dev, "iommu error. here : 15\n");
 		rkvdec_job_finish(ctx, state);
 
 	return IRQ_HANDLED;
@@ -1772,7 +1824,9 @@ static const struct rkvdec_variant rk3588_vdpu381_variant = {
 	.ops = &vdpu381_variant_ops,
 	.named_regs = true,
 	.capabilities = RKVDEC_CAPABILITY_H264 |
-			RKVDEC_CAPABILITY_HEVC,
+			RKVDEC_CAPABILITY_HEVC |
+			// testing 
+			RKVDEC_CAPABILITY_VP9,
 };
 
 static const struct rkvdec_variant_ops vdpu383_variant_ops = {

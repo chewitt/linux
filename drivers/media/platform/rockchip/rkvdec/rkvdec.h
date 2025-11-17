@@ -159,6 +159,7 @@ struct rkvdec_ctx {
 	struct rkvdec_dev *dev;
 	enum rkvdec_image_fmt image_fmt;
 	struct rkvdec_rcb_config *rcb_config;
+	int bit_depth;
 	u32 colmv_offset;
 	void *priv;
 	u8 has_sps_st_rps: 1;
@@ -196,6 +197,7 @@ extern const struct rkvdec_coded_fmt_ops rkvdec_vp9_fmt_ops;
 /* VDPU381 ops */
 extern const struct rkvdec_coded_fmt_ops rkvdec_vdpu381_h264_fmt_ops;
 extern const struct rkvdec_coded_fmt_ops rkvdec_vdpu381_hevc_fmt_ops;
+extern const struct rkvdec_coded_fmt_ops rkvdec_vdpu381_vp9_fmt_ops;
 
 /* VDPU383 ops */
 extern const struct rkvdec_coded_fmt_ops rkvdec_vdpu383_h264_fmt_ops;
