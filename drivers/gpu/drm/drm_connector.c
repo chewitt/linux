@@ -1348,6 +1348,55 @@ static const char * const colorspace_names[] = {
 	[DRM_MODE_COLORIMETRY_BT601_YCC] = "BT601_YCC",
 };
 
+u32
+drm_color_format_to_color_format_enum(enum drm_color_format fmt)
+{
+	switch (fmt) {
+	default:
+	case DRM_COLOR_FORMAT_AUTO:
+		return DRM_MODE_COLOR_FORMAT_AUTO;
+	case DRM_COLOR_FORMAT_RGB444:
+		return DRM_MODE_COLOR_FORMAT_RGB444;
+	case DRM_COLOR_FORMAT_YCBCR444:
+		return DRM_MODE_COLOR_FORMAT_YCBCR444;
+	case DRM_COLOR_FORMAT_YCBCR422:
+		return DRM_MODE_COLOR_FORMAT_YCBCR422;
+	case DRM_COLOR_FORMAT_YCBCR420:
+		return DRM_MODE_COLOR_FORMAT_YCBCR420;
+	}
+}
+
+u32
+drm_color_format_enum_to_color_format(enum drm_color_format_enum fmt_enum)
+{
+	switch (fmt_enum) {
+	default:
+	case DRM_MODE_COLOR_FORMAT_RGB444:
+		return DRM_COLOR_FORMAT_RGB444;
+	case DRM_MODE_COLOR_FORMAT_AUTO:
+		return DRM_COLOR_FORMAT_AUTO;
+	case DRM_MODE_COLOR_FORMAT_YCBCR444:
+		return DRM_COLOR_FORMAT_YCBCR444;
+	case DRM_MODE_COLOR_FORMAT_YCBCR422:
+		return DRM_COLOR_FORMAT_YCBCR422;
+	case DRM_MODE_COLOR_FORMAT_YCBCR420:
+		return DRM_COLOR_FORMAT_YCBCR420;
+	}
+}
+
+/**
+ * drm_get_color_format_name - return a string for color format
+ * @colorspace: color format to compute name of
+ *
+ */
+const char *drm_get_color_format_name(enum drm_color_format color_fmt)
+{
+	u32 conv_color_fmt = drm_color_format_to_color_format_enum(color_fmt);
+
+	return drm_hdmi_connector_get_output_format_name(conv_color_fmt);
+}
+EXPORT_SYMBOL(drm_get_color_format_name);
+
 /**
  * drm_get_colorspace_name - return a string for color encoding
  * @colorspace: color space to compute name of
@@ -1376,6 +1425,22 @@ static const u32 hdmi_colorspaces =
 	BIT(DRM_MODE_COLORIMETRY_BT2020_YCC) |
 	BIT(DRM_MODE_COLORIMETRY_DCI_P3_RGB_D65) |
 	BIT(DRM_MODE_COLORIMETRY_DCI_P3_RGB_THEATER);
+
+/* already bit-shifted */
+static const u32 hdmi_colorformats =
+	DRM_COLOR_FORMAT_AUTO |
+	DRM_COLOR_FORMAT_RGB444 |
+	DRM_COLOR_FORMAT_YCBCR444 |
+	DRM_COLOR_FORMAT_YCBCR422 |
+	DRM_COLOR_FORMAT_YCBCR420;
+
+/* already bit-shifted */
+static const u32 dp_colorformats =
+	DRM_COLOR_FORMAT_AUTO |
+	DRM_COLOR_FORMAT_RGB444 |
+	DRM_COLOR_FORMAT_YCBCR444 |
+	DRM_COLOR_FORMAT_YCBCR422 |
+	DRM_COLOR_FORMAT_YCBCR420;
 
 /*
  * As per DP 1.4a spec, 2.2.5.7.5 VSC SDP Payload for Pixel Encoding/Colorimetry
@@ -2628,6 +2693,101 @@ int drm_mode_create_hdmi_colorspace_property(struct drm_connector *connector,
 }
 EXPORT_SYMBOL(drm_mode_create_hdmi_colorspace_property);
 
+static int drm_mode_create_color_format_property(struct drm_connector *connector,
+						 u32 supported_color_formats)
+{
+	struct drm_device *dev = connector->dev;
+	struct drm_prop_enum_list enum_list[DRM_MODE_COLOR_FORMAT_COUNT];
+	int i, len;
+
+	if (connector->color_format_property)
+		return 0;
+
+	if (!supported_color_formats) {
+		drm_err(dev, "No supported color formats provded on [CONNECTOR:%d:%s]\n",
+			    connector->base.id, connector->name);
+		return -EINVAL;
+	}
+
+	if ((supported_color_formats & -BIT(DRM_MODE_COLOR_FORMAT_COUNT)) != 0) {
+		drm_err(dev, "Unknown colorspace provded on [CONNECTOR:%d:%s]\n",
+			    connector->base.id, connector->name);
+		return -EINVAL;
+	}
+
+	len = 0;
+	for (i = 0; i < DRM_MODE_COLOR_FORMAT_COUNT; i++) {
+		if (!(supported_color_formats & BIT(i)))
+			continue;
+
+		enum_list[len].type = i;
+		if (i != DRM_MODE_COLOR_FORMAT_AUTO)
+			enum_list[len].name = output_format_str[i];
+		else
+			enum_list[len].name = "AUTO";
+		len++;
+	}
+
+	connector->color_format_property =
+		drm_property_create_enum(dev, DRM_MODE_PROP_ENUM, "color format",
+					enum_list, len);
+
+	if (!connector->color_format_property)
+		return -ENOMEM;
+
+	return 0;
+}
+
+/**
+ * drm_mode_create_hdmi_color_format_property - create hdmi color format property
+ * @connector: connector to create the color format property on.
+ * @supported_color_formats: bitmap of supported color formats
+ *
+ * Called by a driver the first time it's needed, must be attached to desired
+ * HDMI connectors.
+ *
+ * Returns:
+ * Zero on success, negative errno on failure.
+ */
+int drm_mode_create_hdmi_color_format_property(struct drm_connector *connector,
+					       u32 supported_color_formats)
+{
+	u32 color_formats;
+
+	if (supported_color_formats)
+		color_formats = supported_color_formats & hdmi_colorformats;
+	else
+		color_formats = hdmi_colorformats;
+
+	return drm_mode_create_color_format_property(connector, color_formats);
+}
+EXPORT_SYMBOL(drm_mode_create_hdmi_color_format_property);
+
+/**
+ * drm_mode_create_dp_color_format_property - create dp color format property
+ * @connector: connector to create the Colorspace property on.
+ * @supported_color_formats: bitmap of supported color formats
+ *
+ * Called by a driver the first time it's needed, must be attached to desired
+ * DP connectors.
+ *
+ * Returns:
+ * Zero on success, negative errno on failure.
+ */
+int drm_mode_create_dp_color_format_property(struct drm_connector *connector,
+					     u32 supported_color_formats)
+{
+	u32 color_formats;
+
+	if (supported_color_formats)
+		color_formats = supported_color_formats & dp_colorformats;
+	else
+		color_formats = dp_colorformats;
+
+	return drm_mode_create_color_format_property(connector, color_formats);
+}
+EXPORT_SYMBOL(drm_mode_create_dp_color_format_property);
+
 /**
  * drm_mode_create_dp_colorspace_property - create dp colorspace property
  * @connector: connector to create the Colorspace property on.
@@ -2844,6 +3004,26 @@ int drm_connector_attach_max_bpc_property(struct drm_connector *connector,
 	return 0;
 }
 EXPORT_SYMBOL(drm_connector_attach_max_bpc_property);
+
+/**
+ * drm_connector_attach_color_format_property - attach "force color format" property
+ * @connector: connector to attach force color format property on.
+ *
+ * This is used to add support for selecting a color format on a connector.
+ *
+ * Returns:
+ * Zero on success, negative errno on failure.
+ */
+int drm_connector_attach_color_format_property(struct drm_connector *connector)
+{
+	struct drm_property *prop = connector->color_format_property;
+
+	drm_object_attach_property(&connector->base, prop, DRM_COLOR_FORMAT_AUTO);
+
+	return 0;
+}
+EXPORT_SYMBOL(drm_connector_attach_color_format_property);
+
 
 /**
  * drm_connector_attach_hdr_output_metadata_property - attach "HDR_OUTPUT_METADA" property

@@ -556,6 +556,26 @@ enum drm_colorspace {
 	DRM_MODE_COLORIMETRY_COUNT
 };
 
+enum drm_color_format_enum {
+	DRM_MODE_COLOR_FORMAT_RGB444		= HDMI_COLORSPACE_RGB,
+	DRM_MODE_COLOR_FORMAT_YCBCR422		= HDMI_COLORSPACE_YUV422,
+	DRM_MODE_COLOR_FORMAT_YCBCR444		= HDMI_COLORSPACE_YUV444,
+	DRM_MODE_COLOR_FORMAT_YCBCR420		= HDMI_COLORSPACE_YUV420,
+	/* auto case, driver will set the color_format */
+	DRM_MODE_COLOR_FORMAT_AUTO,
+	DRM_MODE_COLOR_FORMAT_COUNT
+};
+
+enum drm_color_format {
+	DRM_COLOR_FORMAT_NONE			= 0,
+	DRM_COLOR_FORMAT_RGB444			= (1 << 0),
+	DRM_COLOR_FORMAT_YCBCR422		= (1 << 1),
+	DRM_COLOR_FORMAT_YCBCR444		= (1 << 2),
+	DRM_COLOR_FORMAT_YCBCR420		= (1 << 3),
+	/* auto case, driver will set the color_format */
+	DRM_COLOR_FORMAT_AUTO			= (1 << 4),
+};
+
 /**
  * enum drm_bus_flags - bus_flags info for &drm_display_info
  *
@@ -698,11 +718,6 @@ struct drm_display_info {
 	 * @subpixel_order: Subpixel order of LCD panels.
 	 */
 	enum subpixel_order subpixel_order;
-
-#define DRM_COLOR_FORMAT_RGB444		(1<<0)
-#define DRM_COLOR_FORMAT_YCBCR444	(1<<1)
-#define DRM_COLOR_FORMAT_YCBCR422	(1<<2)
-#define DRM_COLOR_FORMAT_YCBCR420	(1<<3)
 
 	/**
 	 * @panel_orientation: Read only connector property for built-in panels,
@@ -1106,6 +1121,13 @@ struct drm_connector_state {
 	 * to wider color gamuts like BT2020.
 	 */
 	enum drm_colorspace colorspace;
+
+	/**
+	 * @color_format: State variable for Connector property to request
+	 * color format change on Sink. This is most commonly used to switch
+	 * between RGB to YUV and vice-versa.
+	 */
+	enum drm_color_format color_format;
 
 	/**
 	 * @writeback_job: Writeback job for writeback connectors
@@ -2061,6 +2083,12 @@ struct drm_connector {
 	struct drm_property *colorspace_property;
 
 	/**
+	 * @color_format_property: Connector property to set the suitable
+	 * color format supported by the sink.
+	 */
+	struct drm_property *color_format_property;
+
+	/**
 	 * @path_blob_ptr:
 	 *
 	 * DRM blob property data for the DP MST path property. This should only
@@ -2461,6 +2489,12 @@ int drm_mode_create_dp_colorspace_property(struct drm_connector *connector,
 int drm_mode_create_content_type_property(struct drm_device *dev);
 int drm_mode_create_suggested_offset_properties(struct drm_device *dev);
 
+int drm_mode_create_hdmi_color_format_property(struct drm_connector *connector,
+					       u32 supported_color_formats);
+
+int drm_mode_create_dp_color_format_property(struct drm_connector *connector,
+					     u32 supported_color_formats);
+
 int drm_connector_set_path_property(struct drm_connector *connector,
 				    const char *path);
 int drm_connector_set_tile_property(struct drm_connector *connector);
@@ -2541,6 +2575,16 @@ void drm_connector_list_iter_end(struct drm_connector_list_iter *iter);
 bool drm_connector_has_possible_encoder(struct drm_connector *connector,
 					struct drm_encoder *encoder);
 const char *drm_get_colorspace_name(enum drm_colorspace colorspace);
+
+int drm_connector_attach_color_format_property(struct drm_connector *connector);
+
+const char *drm_get_color_format_name(enum drm_color_format color_fmt);
+
+u32
+drm_color_format_to_color_format_enum(enum drm_color_format fmt);
+
+u32
+drm_color_format_enum_to_color_format(enum drm_color_format_enum fmt_enum);
 
 /**
  * drm_for_each_connector_iter - connector_list iterator macro
