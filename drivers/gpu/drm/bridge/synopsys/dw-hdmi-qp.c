@@ -1269,6 +1269,11 @@ struct dw_hdmi_qp *dw_hdmi_qp_bind(struct platform_device *pdev,
 		dev_warn(dev, "Set ref_clk_rate to vendor default\n");
 	}
 
+	if (plat_data->supported_formats)
+		hdmi->bridge.supported_formats = plat_data->supported_formats;
+	else
+		hdmi->bridge.supported_formats = BIT(HDMI_COLORSPACE_RGB);
+
 	dw_hdmi_qp_init_hw(hdmi);
 
 	hdmi->main_irq = plat_data->main_irq;
