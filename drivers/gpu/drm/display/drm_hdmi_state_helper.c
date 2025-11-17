@@ -650,9 +650,15 @@ hdmi_compute_config(const struct drm_connector *connector,
 				       conn_state->max_bpc,
 				       8, connector->max_bpc);
 	int ret;
+	enum hdmi_colorspace hdmi_colorspace;
+
+	if (conn_state->color_format && conn_state->color_format != DRM_COLOR_FORMAT_AUTO)
+		hdmi_colorspace = color_format_to_hdmi_colorspace(conn_state->color_format);
+	else
+		hdmi_colorspace = HDMI_COLORSPACE_RGB;
 
 	ret = hdmi_compute_format_bpc(connector, conn_state, mode, max_bpc,
-				      HDMI_COLORSPACE_RGB);
+				      hdmi_colorspace);
 	if (ret) {
 		if (connector->ycbcr_420_allowed) {
 			ret = hdmi_compute_format_bpc(connector, conn_state,
