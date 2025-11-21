@@ -528,15 +528,24 @@ config SEG_LED_GPIO
 
 config TM16XX
 	tristate "TM16xx LED matrix display controllers" if COMPILE_TEST
+	depends on INPUT
+	select INPUT_MATRIXKMAP
 	select LEDS_CLASS
 	select LEDS_TRIGGERS
 	select LINEDISP
 	select NEW_LEDS
+	select TM16XX_KEYPAD if (INPUT)
 	help
 	  Core support for TM16xx-compatible 7-segment LED matrix display
 	  controllers from multiple vendors (Titan Micro, Fuda Hisi, i-Core,
 	  Princeton, Winrise). Provides LED class integration for display
 	  control and optional keypad scanning support.
+
+config TM16XX_KEYPAD
+	bool
+	depends on TM16XX
+	help
+	  Enable optional keyscan support for TM16XX driver.
 
 #
 # Character LCD with non-conforming interface section
