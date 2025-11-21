@@ -526,6 +526,18 @@ config SEG_LED_GPIO
 	  This driver can also be built as a module. If so, the module
 	  will be called seg-led-gpio.
 
+config TM16XX
+	tristate "TM16xx LED matrix display controllers" if COMPILE_TEST
+	select LEDS_CLASS
+	select LEDS_TRIGGERS
+	select LINEDISP
+	select NEW_LEDS
+	help
+	  Core support for TM16xx-compatible 7-segment LED matrix display
+	  controllers from multiple vendors (Titan Micro, Fuda Hisi, i-Core,
+	  Princeton, Winrise). Provides LED class integration for display
+	  control and optional keypad scanning support.
+
 #
 # Character LCD with non-conforming interface section
 #
