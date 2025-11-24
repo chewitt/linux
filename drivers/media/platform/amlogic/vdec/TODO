@@ -1,0 +1,7 @@
+TODO list for Amlogic V4L2 stateless decoder driver:
+
+1. Support decoding for HEVC, VP9, AV1, and MPEG-2.
+2. Support more SoCs, including the new T7/S7 series and legacy SoCs (e.g., GXL, SM1, G12B).
+3. Support 10-bit decoding and P010 output.
+   Note: P010 output requires hardware support.
+4. Support interlaced stream decoding for H.264, HEVC, and MPEG-2.
