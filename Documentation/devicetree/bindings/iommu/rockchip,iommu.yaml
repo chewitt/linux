@@ -42,14 +42,22 @@ properties:
     minItems: 1
 
   clocks:
+    minItems: 2
     items:
       - description: Core clock
       - description: Interface clock
+      - description: Interface clock 1
+      - description: Interface clock 2
+      - description: Interface clock 3
 
   clock-names:
+    minItems: 2
     items:
       - const: aclk
       - const: iface
+      - const: iface_1
+      - const: iface_2
+      - const: iface_3
 
   "#iommu-cells":
     const: 0
