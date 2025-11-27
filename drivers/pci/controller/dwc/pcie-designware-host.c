@@ -565,6 +565,59 @@ static int dw_pcie_host_get_resources(struct dw_pcie_rp *pp)
 	return 0;
 }
 
+static int dw_pcie_host_initial_scan(struct dw_pcie_rp *pp)
+{
+	struct dw_pcie *pci = to_dw_pcie_from_pp(pp);
+	struct pci_host_bridge *bridge = pp->bridge;
+	int ret;
+
+	ret = pci_host_probe(bridge);
+	if (ret)
+		return ret;
+
+	if (pp->ops->post_init)
+		pp->ops->post_init(pp);
+
+	dwc_pcie_debugfs_init(pci, DW_PCIE_RC_TYPE);
+
+	return 0;
+}
+
+void dw_pcie_handle_link_up_irq(struct dw_pcie_rp *pp)
+{
+	if (!pp->initial_linkup_irq_done) {
+		int ret;
+
+		ret = dw_pcie_host_initial_scan(pp);
+		if (ret) {
+			struct dw_pcie *pci = to_dw_pcie_from_pp(pp);
+			struct device *dev = pci->dev;
+
+			dev_err(dev, "Initial scan from IRQ failed: %d\n", ret);
+
+			dw_pcie_stop_link(pci);
+
+			dw_pcie_edma_remove(pci);
+
+			if (pp->has_msi_ctrl)
+				dw_pcie_free_msi(pp);
+
+			if (pp->ops->deinit)
+				pp->ops->deinit(pp);
+
+			if (pp->cfg)
+				pci_ecam_free(pp->cfg);
+		} else {
+			pp->initial_linkup_irq_done = true;
+		}
+	} else {
+		/* Rescan the bus to enumerate endpoint devices */
+		pci_lock_rescan_remove();
+		pci_rescan_bus(pp->bridge->bus);
+		pci_unlock_rescan_remove();
+	}
+}
+
 int dw_pcie_host_init(struct dw_pcie_rp *pp)
 {
 	struct dw_pcie *pci = to_dw_pcie_from_pp(pp);
@@ -669,18 +722,17 @@ int dw_pcie_host_init(struct dw_pcie_rp *pp)
 	 * If there is no Link Up IRQ, we should not bypass the delay
 	 * because that would require users to manually rescan for devices.
 	 */
-	if (!pp->use_linkup_irq)
+	if (!pp->use_linkup_irq) {
 		/* Ignore errors, the link may come up later */
 		dw_pcie_wait_for_link(pci);
 
-	ret = pci_host_probe(bridge);
-	if (ret)
-		goto err_stop_link;
-
-	if (pp->ops->post_init)
-		pp->ops->post_init(pp);
-
-	dwc_pcie_debugfs_init(pci, DW_PCIE_RC_TYPE);
+		/*
+		 * For platforms with Link Up IRQ, initial scan will be done
+		 * on first Link Up IRQ.
+		 */
+		if (dw_pcie_host_initial_scan(pp))
+			goto err_stop_link;
+	}
 
 	return 0;
 
