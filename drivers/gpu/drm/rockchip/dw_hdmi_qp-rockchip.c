@@ -11,6 +11,7 @@
 #include <linux/gpio/consumer.h>
 #include <linux/hw_bitfield.h>
 #include <linux/mfd/syscon.h>
+#include <linux/media-bus-format.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>
 #include <linux/phy/phy.h>
@@ -135,14 +136,60 @@ dw_hdmi_qp_rockchip_encoder_atomic_check(struct drm_encoder *encoder,
 					 struct drm_crtc_state *crtc_state,
 					 struct drm_connector_state *conn_state)
 {
-	struct rockchip_hdmi_qp *hdmi = to_rockchip_hdmi_qp(encoder);
+	struct drm_display_info *info = &conn_state->connector->display_info;
 	struct rockchip_crtc_state *s = to_rockchip_crtc_state(crtc_state);
+	struct rockchip_hdmi_qp *hdmi = to_rockchip_hdmi_qp(encoder);
 	union phy_configure_opts phy_cfg = {};
 	int ret;
 
 	if (hdmi->tmds_char_rate == conn_state->hdmi.tmds_char_rate &&
-	    s->output_bpc == conn_state->hdmi.output_bpc)
+	    s->output_bpc == conn_state->hdmi.output_bpc &&
+	    s->color_format == conn_state->color_format)
 		return 0;
+
+	if (conn_state->color_format &&
+	    !(info->color_formats & conn_state->color_format))
+		return -EINVAL;
+
+	switch (conn_state->color_format) {
+	case DRM_COLOR_FORMAT_AUTO:
+	case DRM_COLOR_FORMAT_RGB444:
+		if (conn_state->hdmi.output_bpc == 8)
+			s->bus_format = MEDIA_BUS_FMT_RGB888_1X24;
+		else if (conn_state->hdmi.output_bpc == 10)
+			s->bus_format = MEDIA_BUS_FMT_RGB101010_1X30;
+		else
+			return -EINVAL;
+		s->output_mode = ROCKCHIP_OUT_MODE_AAAA;
+		break;
+	case DRM_COLOR_FORMAT_YCBCR444:
+		if (conn_state->hdmi.output_bpc == 8)
+			s->bus_format = MEDIA_BUS_FMT_YUV8_1X24;
+		else if (conn_state->hdmi.output_bpc == 10)
+			s->bus_format = MEDIA_BUS_FMT_YUV10_1X30;
+		else
+			return -EINVAL;
+		s->output_mode = ROCKCHIP_OUT_MODE_AAAA;
+		break;
+	case DRM_COLOR_FORMAT_YCBCR422:
+		if (conn_state->hdmi.output_bpc == 8)
+			s->bus_format = MEDIA_BUS_FMT_YUYV8_1X16;
+		else /* 10 bpc possible, but currently busted */
+			return -EINVAL;
+		s->output_mode = ROCKCHIP_OUT_MODE_YUV422;
+		break;
+	case DRM_COLOR_FORMAT_YCBCR420:
+		if (conn_state->hdmi.output_bpc == 8)
+			s->bus_format = MEDIA_BUS_FMT_UYYVYY8_0_5X24;
+		else if (conn_state->hdmi.output_bpc == 10)
+			s->bus_format = MEDIA_BUS_FMT_UYYVYY10_0_5X30;
+		else
+			return -EINVAL;
+		s->output_mode = ROCKCHIP_OUT_MODE_YUV420;
+		break;
+	default:
+		return -EINVAL;
+	}
 
 	phy_cfg.hdmi.tmds_char_rate = conn_state->hdmi.tmds_char_rate;
 	phy_cfg.hdmi.bpc = conn_state->hdmi.output_bpc;
@@ -150,9 +197,9 @@ dw_hdmi_qp_rockchip_encoder_atomic_check(struct drm_encoder *encoder,
 	ret = phy_configure(hdmi->phy, &phy_cfg);
 	if (!ret) {
 		hdmi->tmds_char_rate = conn_state->hdmi.tmds_char_rate;
-		s->output_mode = ROCKCHIP_OUT_MODE_AAAA;
 		s->output_type = DRM_MODE_CONNECTOR_HDMIA;
 		s->output_bpc = conn_state->hdmi.output_bpc;
+		s->color_format = conn_state->color_format;
 	} else {
 		dev_err(hdmi->dev, "Failed to configure phy: %d\n", ret);
 	}
@@ -391,6 +438,8 @@ static void dw_hdmi_qp_rk3588_io_init(struct rockchip_hdmi_qp *hdmi)
 static void dw_hdmi_qp_rk3576_enc_init(struct rockchip_hdmi_qp *hdmi,
 				       struct rockchip_crtc_state *state)
 {
+	enum hdmi_colorspace color =
+		drm_color_format_to_hdmi_colorspace(state->color_format);
 	u32 val;
 
 	if (state->output_bpc == 10)
@@ -398,18 +447,24 @@ static void dw_hdmi_qp_rk3576_enc_init(struct rockchip_hdmi_qp *hdmi,
 	else
 		val = FIELD_PREP_WM16(RK3576_COLOR_DEPTH_MASK, RK3576_8BPC);
 
+	val |= FIELD_PREP_WM16(RK3576_COLOR_FORMAT_MASK, color);
+
 	regmap_write(hdmi->vo_regmap, RK3576_VO0_GRF_SOC_CON8, val);
 }
 
 static void dw_hdmi_qp_rk3588_enc_init(struct rockchip_hdmi_qp *hdmi,
 				       struct rockchip_crtc_state *state)
 {
+	enum hdmi_colorspace color =
+		drm_color_format_to_hdmi_colorspace(state->color_format);
 	u32 val;
 
 	if (state->output_bpc == 10)
 		val = FIELD_PREP_WM16(RK3588_COLOR_DEPTH_MASK, RK3588_10BPC);
 	else
 		val = FIELD_PREP_WM16(RK3588_COLOR_DEPTH_MASK, RK3588_8BPC);
+
+	val |= FIELD_PREP_WM16(RK3588_COLOR_FORMAT_MASK, color);
 
 	regmap_write(hdmi->vo_regmap,
 		     hdmi->port_id ? RK3588_GRF_VO1_CON6 : RK3588_GRF_VO1_CON3,
