@@ -409,6 +409,11 @@ static int mt7601u_load_firmware(struct mt7601u_dev *dev)
 	const struct mt76_fw_header *hdr;
 	int len, ret;
 	u32 val;
+	const char *fw_paths[] = {
+		"mediatek/" MT7601U_FIRMWARE,
+		MT7601U_FIRMWARE,
+	};
+	int i;
 
 	mt7601u_wr(dev, MT_USB_DMA_CFG, (MT_USB_DMA_CFG_RX_BULK_EN |
 					 MT_USB_DMA_CFG_TX_BULK_EN));
@@ -416,7 +421,14 @@ static int mt7601u_load_firmware(struct mt7601u_dev *dev)
 	if (firmware_running(dev))
 		return firmware_request_cache(dev->dev, MT7601U_FIRMWARE);
 
-	ret = request_firmware(&fw, MT7601U_FIRMWARE, dev->dev);
+	/* Try loading firmware from multiple locations */
+	fw = NULL;
+	for (i = 0; i < ARRAY_SIZE(fw_paths); i++) {
+		ret = request_firmware(&fw, fw_paths[i], dev->dev);
+		if (ret == 0)
+			break;
+	}
+
 	if (ret)
 		return ret;
 
