@@ -1647,10 +1647,7 @@ static irqreturn_t qcom_pcie_global_irq_thread(int irq, void *data)
 	if (FIELD_GET(PARF_INT_ALL_LINK_UP, status)) {
 		msleep(PCIE_RESET_CONFIG_WAIT_MS);
 		dev_dbg(dev, "Received Link up event. Starting enumeration!\n");
-		/* Rescan the bus to enumerate endpoint devices */
-		pci_lock_rescan_remove();
-		pci_rescan_bus(pp->bridge->bus);
-		pci_unlock_rescan_remove();
+		dw_pcie_handle_link_up_irq(pp);
 
 		qcom_pcie_icc_opp_update(pcie);
 	} else {
@@ -1967,8 +1964,8 @@ static int qcom_pcie_probe(struct platform_device *pdev)
 		goto err_phy_exit;
 	}
 
-	name = devm_kasprintf(dev, GFP_KERNEL, "qcom_pcie_global_irq%d",
-			      pci_domain_nr(pp->bridge->bus));
+	name = devm_kasprintf(dev, GFP_KERNEL, "qcom_pcie_global_irq_%pOFP",
+			      dev->of_node);
 	if (!name) {
 		ret = -ENOMEM;
 		goto err_host_deinit;
