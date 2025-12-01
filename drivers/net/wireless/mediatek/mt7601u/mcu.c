@@ -403,16 +403,17 @@ error:
 	return ret;
 }
 
+static const char * const mt7601u_fw_paths[] = {
+	"mediatek/" MT7601U_FIRMWARE,
+	MT7601U_FIRMWARE,
+};
+
 static int mt7601u_load_firmware(struct mt7601u_dev *dev)
 {
 	const struct firmware *fw;
 	const struct mt76_fw_header *hdr;
 	int len, ret;
 	u32 val;
-	const char *fw_paths[] = {
-		"mediatek/" MT7601U_FIRMWARE,
-		MT7601U_FIRMWARE,
-	};
 	int i;
 
 	mt7601u_wr(dev, MT_USB_DMA_CFG, (MT_USB_DMA_CFG_RX_BULK_EN |
@@ -423,8 +424,8 @@ static int mt7601u_load_firmware(struct mt7601u_dev *dev)
 
 	/* Try loading firmware from multiple locations */
 	fw = NULL;
-	for (i = 0; i < ARRAY_SIZE(fw_paths); i++) {
-		ret = request_firmware(&fw, fw_paths[i], dev->dev);
+	for (i = 0; i < MT7601U_FIRMWARE_PATHS; i++) {
+		ret = request_firmware(&fw, mt7601u_fw_paths[i], dev->dev);
 		if (ret == 0)
 			break;
 	}
