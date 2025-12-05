@@ -659,6 +659,11 @@ out:
 	return ret;
 }
 
+static bool rockchip_pd_regulator_is_enabled(struct rockchip_pm_domain *pd)
+{
+	return IS_ERR_OR_NULL(pd->supply) ? false : regulator_is_enabled(pd->supply);
+}
+
 static int rockchip_pd_regulator_disable(struct rockchip_pm_domain *pd)
 {
 	return IS_ERR_OR_NULL(pd->supply) ? 0 : regulator_disable(pd->supply);
@@ -862,6 +867,15 @@ static int rockchip_pm_add_one_domain(struct rockchip_pmu *pmu,
 		pd->genpd.name = pd->info->name;
 	else
 		pd->genpd.name = kbasename(node->full_name);
+
+	if (pd->info->need_regulator) {
+		if (IS_ERR_OR_NULL(pd->supply))
+			pd->supply = devm_of_regulator_get(pmu->dev, pd->node, "domain");
+
+		if (!rockchip_pd_regulator_is_enabled(pd))
+			rockchip_pd_power(pd, false);
+	}
+
 	pd->genpd.power_off = rockchip_pd_power_off;
 	pd->genpd.power_on = rockchip_pd_power_on;
 	pd->genpd.attach_dev = rockchip_pd_attach_dev;
