@@ -66,6 +66,8 @@ struct rkvdec_vp9_inter_frame_probs {
 		u8 fr[2][3];
 		u8 class0_hp[2];
 		u8 hp[2];
+		/* 32 bit alignment */
+		u8 padding6[3];
 	} mv;
 };
 
@@ -85,7 +87,7 @@ struct rkvdec_vp9_probs {
 		struct rkvdec_vp9_intra_only_frame_probs intra_only;
 	};
 	/* 128 bit alignment */
-	u8 padding1[11];
+	u8 padding1[8];
 };
 
 /* Data structure describing auxiliary buffer format. */
