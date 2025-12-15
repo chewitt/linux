@@ -49,6 +49,7 @@ config VIDEO_HANTRO_ROCKCHIP
 	bool "Hantro VPU Rockchip support"
 	depends on VIDEO_HANTRO
 	depends on ARCH_ROCKCHIP || COMPILE_TEST
+	select VSI_IOMMU
 	default y
 	help
 	  Enable support for RK3288, RK3328, and RK3399 SoCs.
