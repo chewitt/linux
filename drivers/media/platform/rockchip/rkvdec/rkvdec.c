@@ -407,6 +407,32 @@ static const struct rkvdec_ctrls vdpu38x_hevc_ctrls = {
 	.num_ctrls = ARRAY_SIZE(vdpu38x_hevc_ctrl_descs),
 };
 
+static const struct rkvdec_ctrl_desc vdpu346_vp9_ctrl_descs[] = {
+	{
+		.cfg.id = V4L2_CID_STATELESS_VP9_FRAME,
+	},
+	{
+		.cfg.id = V4L2_CID_STATELESS_VP9_COMPRESSED_HDR,
+	},
+	{
+		.cfg.id = V4L2_CID_MPEG_VIDEO_VP9_PROFILE,
+		.cfg.min = V4L2_MPEG_VIDEO_VP9_PROFILE_0,
+		.cfg.max = V4L2_MPEG_VIDEO_VP9_PROFILE_0,
+		.cfg.def = V4L2_MPEG_VIDEO_VP9_PROFILE_0,
+	},
+	{
+		.cfg.id = V4L2_CID_MPEG_VIDEO_VP9_LEVEL,
+		.cfg.min = V4L2_MPEG_VIDEO_VP9_LEVEL_1_0,
+		.cfg.max = V4L2_MPEG_VIDEO_VP9_LEVEL_5_1,
+
+	},
+};
+
+static const struct rkvdec_ctrls vdpu346_vp9_ctrls = {
+	.ctrls = vdpu346_vp9_ctrl_descs,
+	.num_ctrls = ARRAY_SIZE(vdpu346_vp9_ctrl_descs),
+};
+
 static const struct rkvdec_ctrl_desc vdpu381_vp9_ctrl_descs[] = {
 	{
 		.cfg.id = V4L2_CID_STATELESS_VP9_FRAME,
@@ -567,6 +593,23 @@ static const struct rkvdec_coded_fmt_desc vdpu346_coded_fmts[] = {
 		.subsystem_flags = VB2_V4L2_FL_SUPPORTS_M2M_HOLD_CAPTURE_BUF,
 		.capability = RKVDEC_CAPABILITY_HEVC,
 	},
+	{
+		.fourcc = V4L2_PIX_FMT_VP9_FRAME,
+		.frmsize = {
+			.min_width = 64,
+			.max_width = 65472,
+			.step_width = 64,
+			.min_height = 64,
+			.max_height = 65472,
+			.step_height = 16,
+		},
+		.ctrls = &vdpu346_vp9_ctrls,
+		.ops = &rkvdec_vdpu381_vp9_fmt_ops,
+		.num_decoded_fmts = ARRAY_SIZE(rkvdec_vp9_decoded_fmts),
+		.decoded_fmts = rkvdec_vp9_decoded_fmts,
+		.subsystem_flags = VB2_V4L2_FL_SUPPORTS_M2M_HOLD_CAPTURE_BUF,
+		.capability = RKVDEC_CAPABILITY_VP9,
+	}
 };
 
 static const struct rkvdec_coded_fmt_desc vdpu381_coded_fmts[] = {
@@ -1807,7 +1850,8 @@ static const struct rkvdec_variant rk3568_vdpu346_variant = {
 	.ops = &vdpu381_variant_ops,
 	.named_regs = true,
 	.capabilities = RKVDEC_CAPABILITY_H264 |
-			RKVDEC_CAPABILITY_HEVC,
+			RKVDEC_CAPABILITY_HEVC |
+			RKVDEC_CAPABILITY_VP9,
 };
 
 static const struct rkvdec_variant_ops vdpu381_variant_ops = {
