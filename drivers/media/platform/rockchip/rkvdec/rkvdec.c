@@ -612,7 +612,7 @@ static const struct rkvdec_coded_fmt_desc vdpu381_coded_fmts[] = {
 			.step_width = 64,
 			.min_height = 64,
 			.max_height = 65472,
-			.step_height = 64,
+			.step_height = 16,
 		},
 		.ctrls = &vdpu381_vp9_ctrls,
 		.ops = &rkvdec_vdpu381_vp9_fmt_ops,
