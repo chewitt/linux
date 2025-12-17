@@ -29,6 +29,7 @@
 
 #include "rkvdec.h"
 #include "rkvdec-regs.h"
+#include "rkvdec-vdpu381-regs.h"
 #include "rkvdec-rcb.h"
 
 static bool rkvdec_image_fmt_match(enum rkvdec_image_fmt fmt1,
@@ -90,6 +91,9 @@ static void rkvdec_fill_decoded_pixfmt(struct rkvdec_ctx *ctx,
 {
 	v4l2_fill_pixfmt_mp(pix_mp, pix_mp->pixelformat,
 			    pix_mp->width, pix_mp->height);
+
+	ctx->colmv_offset = pix_mp->plane_fmt[0].sizeimage;
+
 	pix_mp->plane_fmt[0].sizeimage += 128 *
 		DIV_ROUND_UP(pix_mp->width, 16) *
 		DIV_ROUND_UP(pix_mp->height, 16);
@@ -365,6 +369,26 @@ static const struct rkvdec_coded_fmt_desc rkvdec_coded_fmts[] = {
 		.decoded_fmts = rkvdec_vp9_decoded_fmts,
 		.capability = RKVDEC_CAPABILITY_VP9,
 	}
+};
+
+static const struct rkvdec_coded_fmt_desc vdpu381_coded_fmts[] = {
+	{
+		.fourcc = V4L2_PIX_FMT_H264_SLICE,
+		.frmsize = {
+			.min_width = 64,
+			.max_width =  65520,
+			.step_width = 64,
+			.min_height = 64,
+			.max_height =  65520,
+			.step_height = 16,
+		},
+		.ctrls = &rkvdec_h264_ctrls,
+		.ops = &rkvdec_vdpu381_h264_fmt_ops,
+		.num_decoded_fmts = ARRAY_SIZE(rkvdec_h264_decoded_fmts),
+		.decoded_fmts = rkvdec_h264_decoded_fmts,
+		.subsystem_flags = VB2_V4L2_FL_SUPPORTS_M2M_HOLD_CAPTURE_BUF,
+		.capability = RKVDEC_CAPABILITY_H264,
+	},
 };
 
 static bool rkvdec_is_capable(struct rkvdec_ctx *ctx, unsigned int capability)
@@ -1241,6 +1265,35 @@ static irqreturn_t rk3399_irq_handler(struct rkvdec_ctx *ctx)
 	return IRQ_HANDLED;
 }
 
+static irqreturn_t vdpu381_irq_handler(struct rkvdec_ctx *ctx)
+{
+	struct rkvdec_dev *rkvdec = ctx->dev;
+	enum vb2_buffer_state state;
+	bool need_reset = 0;
+	u32 status;
+
+	status = readl(rkvdec->regs + VDPU381_REG_STA_INT);
+	writel(0, rkvdec->regs + VDPU381_REG_STA_INT);
+
+	if (status & VDPU381_STA_INT_DEC_RDY_STA) {
+		state = VB2_BUF_STATE_DONE;
+	} else {
+		state = VB2_BUF_STATE_ERROR;
+		if (status & (VDPU381_STA_INT_SOFTRESET_RDY |
+			      VDPU381_STA_INT_TIMEOUT |
+			      VDPU381_STA_INT_ERROR))
+			rkvdec_iommu_restore(rkvdec);
+	}
+
+	if (need_reset)
+		rkvdec_iommu_restore(rkvdec);
+
+	if (cancel_delayed_work(&rkvdec->watchdog_work))
+		rkvdec_job_finish(ctx, state);
+
+	return IRQ_HANDLED;
+}
+
 static irqreturn_t rkvdec_irq_handler(int irq, void *priv)
 {
 	struct rkvdec_dev *rkvdec = priv;
@@ -1308,6 +1361,19 @@ static int rkvdec_disable_multicore(struct rkvdec_dev *rkvdec)
 	return 0;
 }
 
+static const struct rcb_size_info vdpu381_rcb_sizes[] = {
+	{6,	PIC_WIDTH},	// intrar
+	{1,	PIC_WIDTH},	// transdr (Is actually 0.4*pic_width)
+	{1,	PIC_HEIGHT},	// transdc (Is actually 0.1*pic_height)
+	{3,	PIC_WIDTH},	// streamdr
+	{6,	PIC_WIDTH},	// interr
+	{3,	PIC_HEIGHT},	// interc
+	{22,	PIC_WIDTH},	// dblkr
+	{6,	PIC_WIDTH},	// saor
+	{11,	PIC_WIDTH},	// fbcr
+	{67,	PIC_HEIGHT},	// filtc col
+};
+
 static const struct rkvdec_variant_ops rk3399_variant_ops = {
 	.irq_handler = rk3399_irq_handler,
 };
@@ -1341,6 +1407,19 @@ static const struct rkvdec_variant rk3399_rkvdec_variant = {
 			RKVDEC_CAPABILITY_VP9,
 };
 
+static const struct rkvdec_variant_ops vdpu381_variant_ops = {
+	.irq_handler = vdpu381_irq_handler,
+};
+
+static const struct rkvdec_variant rk3588_vdpu381_variant = {
+	.coded_fmts = vdpu381_coded_fmts,
+	.num_coded_fmts = ARRAY_SIZE(vdpu381_coded_fmts),
+	.rcb_sizes = vdpu381_rcb_sizes,
+	.num_rcb_sizes = ARRAY_SIZE(vdpu381_rcb_sizes),
+	.ops = &vdpu381_variant_ops,
+	.capabilities = RKVDEC_CAPABILITY_H264,
+};
+
 static const struct of_device_id of_rkvdec_match[] = {
 	{
 		.compatible = "rockchip,rk3288-vdec",
@@ -1353,6 +1432,10 @@ static const struct of_device_id of_rkvdec_match[] = {
 	{
 		.compatible = "rockchip,rk3399-vdec",
 		.data = &rk3399_rkvdec_variant,
+	},
+	{
+		.compatible = "rockchip,rk3588-vdec",
+		.data = &rk3588_vdpu381_variant,
 	},
 	{ /* sentinel */ }
 };
@@ -1387,6 +1470,7 @@ static int rkvdec_probe(struct platform_device *pdev)
 		return ret;
 
 	rkvdec->num_clocks = ret;
+	rkvdec->axi_clk = devm_clk_get(&pdev->dev, "axi");
 
 	rkvdec->regs = devm_platform_ioremap_resource(pdev, 0);
 	if (IS_ERR(rkvdec->regs))
