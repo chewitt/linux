@@ -499,6 +499,45 @@ static const struct rkvdec_decoded_fmt_desc rkvdec_vp9_decoded_fmts[] = {
 	},
 };
 
+static const struct rkvdec_ctrl_desc vdpu346_vp9_ctrl_descs[] = {
+	{
+		.cfg.id = V4L2_CID_STATELESS_VP9_FRAME,
+		.cfg.ops = &rkvdec_ctrl_ops,
+	},
+	{
+		.cfg.id = V4L2_CID_STATELESS_VP9_COMPRESSED_HDR,
+	},
+	{
+		.cfg.id = V4L2_CID_MPEG_VIDEO_VP9_PROFILE,
+		.cfg.min = V4L2_MPEG_VIDEO_VP9_PROFILE_0,
+		.cfg.max = V4L2_MPEG_VIDEO_VP9_PROFILE_2,
+		.cfg.def = V4L2_MPEG_VIDEO_VP9_PROFILE_0,
+		/* profiles 1/3 are 4:2:2/4:4:4 which VDPU346 cannot decode */
+		.cfg.menu_skip_mask = BIT(V4L2_MPEG_VIDEO_VP9_PROFILE_1),
+	},
+	{
+		.cfg.id = V4L2_CID_MPEG_VIDEO_VP9_LEVEL,
+		.cfg.min = V4L2_MPEG_VIDEO_VP9_LEVEL_1_0,
+		.cfg.max = V4L2_MPEG_VIDEO_VP9_LEVEL_5_1,
+	},
+};
+
+static const struct rkvdec_ctrls vdpu346_vp9_ctrls = {
+	.ctrls = vdpu346_vp9_ctrl_descs,
+	.num_ctrls = ARRAY_SIZE(vdpu346_vp9_ctrl_descs),
+};
+
+static const struct rkvdec_decoded_fmt_desc rkvdec_vdpu346_vp9_decoded_fmts[] = {
+	{
+		.fourcc = V4L2_PIX_FMT_NV12,
+		.image_fmt = RKVDEC_IMG_FMT_420_8BIT,
+	},
+	{
+		.fourcc = V4L2_PIX_FMT_NV15,
+		.image_fmt =  RKVDEC_IMG_FMT_420_10BIT,
+	},
+};
+
 static const struct rkvdec_ctrl_desc vdpu381_vp9_ctrl_descs[] = {
 	{
 		.cfg.id = V4L2_CID_STATELESS_VP9_FRAME,
@@ -637,6 +676,21 @@ static const struct rkvdec_coded_fmt_desc vdpu346_coded_fmts[] = {
 		.num_decoded_fmts = ARRAY_SIZE(rkvdec_h264_decoded_fmts),
 		.decoded_fmts = rkvdec_h264_decoded_fmts,
 		.subsystem_flags = VB2_V4L2_FL_SUPPORTS_M2M_HOLD_CAPTURE_BUF,
+	},
+	{
+		.fourcc = V4L2_PIX_FMT_VP9_FRAME,
+		.frmsize = {
+			.min_width = 64,
+			.max_width = 4096,
+			.step_width = 64,
+			.min_height = 64,
+			.max_height = 2304,
+			.step_height = 64,
+		},
+		.ctrls = &vdpu346_vp9_ctrls,
+		.ops = &rkvdec_vdpu381_vp9_fmt_ops,
+		.num_decoded_fmts = ARRAY_SIZE(rkvdec_vp9_decoded_fmts),
+		.decoded_fmts = rkvdec_vdpu346_vp9_decoded_fmts,
 	},
 };
 
