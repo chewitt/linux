@@ -8,7 +8,6 @@
 #include <media/v4l2-h264.h>
 #include <media/v4l2-mem2mem.h>
 
-
 #include "rkvdec.h"
 #include "rkvdec-vp9-common.h"
 
@@ -33,8 +32,9 @@ void write_coeff_plane(const u8 coef[6][6][3], u8 *coeff_plane)
 	}
 }
 
-struct rkvdec_decoded_buffer *
-get_ref_buf_vp9(struct rkvdec_ctx *ctx, struct vb2_v4l2_buffer *dst, u64 timestamp)
+struct rkvdec_decoded_buffer *get_ref_buf_vp9(struct rkvdec_ctx *ctx,
+					      struct vb2_v4l2_buffer *dst,
+					      u64 timestamp)
 {
 	struct v4l2_m2m_ctx *m2m_ctx = ctx->fh.m2m_ctx;
 	struct vb2_queue *cap_q = &m2m_ctx->cap_q_ctx.q;
@@ -64,7 +64,7 @@ dma_addr_t get_mv_base_addr(struct rkvdec_decoded_buffer *buf)
 }
 
 void update_dec_buf_info(struct rkvdec_decoded_buffer *buf,
-				const struct v4l2_ctrl_vp9_frame *dec_params)
+			 const struct v4l2_ctrl_vp9_frame *dec_params)
 {
 	buf->vp9.width = dec_params->frame_width_minus_1 + 1;
 	buf->vp9.height = dec_params->frame_height_minus_1 + 1;

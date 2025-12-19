@@ -2,10 +2,11 @@
 /*
  * Rockchip VDPU381 Video Decoder driver registers description
  *
- * Copyright (C) 2025 Venkata Atchuta Bheemeswara Sarma Darbha <vdarbha0473@gmail.com>
- *
  * Copyright (C) 2024 Collabora, Ltd.
  *  Detlev Casanova <detlev.casanova@collabora.com>
+ *
+ * Copyright (C) 2025 Venkata Atchuta Bheemeswara Sarma Darbha <vdarbha0473@gmail.com>
+ *
  */
 
 #include <linux/types.h>
@@ -264,11 +265,10 @@ struct rkvdec_vdpu381_regs_common {
 	u32 timeout_threshold;
 } __packed;
 
-/* experimental vp9, still developing. might not work with my luck*/
 struct rkvdec_vdpu381_vp9_set {
-	u32 vp9_cprheader_offset : 16;
-	u32 reserved			 : 16;
-}__packed;
+	u32 vp9_cprheader_offset	: 16;
+	u32 reserved			: 16;
+} __packed;
 
 /* base: OFFSET_COMMON_ADDR_REGS */
 struct rkvdec_vdpu381_regs_common_addr {
@@ -383,6 +383,7 @@ struct rkvdec_vdpu381_regs_hevc_params {
 	} reg112;
 
 } __packed;
+
 /* base: OFFSET_CODEC_PARAMS_REGS */
 struct rkvdec_vdpu381_regs_vp9_params {
 	struct rkvdec_vdpu381_vp9_set reg064; // 0x0100
@@ -390,230 +391,200 @@ struct rkvdec_vdpu381_regs_vp9_params {
 	u32 reserved0 ; // 0x0108
 
 	struct rkvdec_vdpu381_vp9_segid_grp {
-		u32 vp9_segid_abs_delta 		 : 1;
-		u32 vp9_segid_frame_qp_delta_en  : 1;
-		u32 vp9_segid_frame_qp_delta     : 9;
-		u32 vp9_segid_frame_loopfilter_value_en : 1;
-		u32 vp9_segid_frame_loopfilter_value : 7;
-		u32 vp9_segid_referinfo_en : 1;
-		u32 vp9_segid_referinfo : 2;
-		u32 vp9_segid_frame_skip_en : 1;
-		u32 reserved : 9;
+		u32 vp9_segid_abs_delta 		: 1;
+		u32 vp9_segid_frame_qp_delta_en		: 1;
+		u32 vp9_segid_frame_qp_delta		: 9;
+		u32 vp9_segid_frame_loopfilter_value_en	: 1;
+		u32 vp9_segid_frame_loopfilter_value	: 7;
+		u32 vp9_segid_referinfo_en		: 1;
+		u32 vp9_segid_referinfo			: 2;
+		u32 vp9_segid_frame_skip_en		: 1;
+		u32 reserved				: 9;
 	} reg67_74[8]; // 0x010c - 0x0128
 
 	struct rkvdec_vdpu381_vp9_info_lastframe {
-		u32 vp9_mode_deltas_lastframe : 14;
-		u32 reserved0 : 2;
-		u32 segmentation_enable_lstframe : 1;
-		u32 vp9_last_showframe : 1;
-		u32 vp9_last_intra_only : 1;
-		u32 vp9_last_widhheight_eqcur :1;
-		u32 vp9_color_sapce_lastkeyframe : 3;
-		u32 reserved1 : 9;
+		u32 vp9_mode_deltas_lastframe		: 14;
+		u32 reserved0				: 2;
+		u32 segmentation_enable_lstframe	: 1;
+		u32 vp9_last_showframe			: 1;
+		u32 vp9_last_intra_only			: 1;
+		u32 vp9_last_widhheight_eqcur		: 1;
+		u32 vp9_color_sapce_lastkeyframe	: 3;
+		u32 reserved1				: 9;
 	} reg75; // 0x012c
 
-
 	struct rkvdec_vdpu381_vp9_cprheader_config {
-		u32 vp9_tx_mode : 3;
-		u32 vp9_frame_reference_mode : 2;
-		u32 reserved : 27;
-
+		u32 vp9_tx_mode				: 3;
+		u32 vp9_frame_reference_mode		: 2;
+		u32 reserved				: 27;
 	} reg76; // 0x0130
 
 	struct rkvdec_vdpu381_vp9_intercmd_num {
-		u32 vp9_intercmd_num : 24;
-		u32 reserved : 8;
-
+		u32 vp9_intercmd_num			: 24;
+		u32 reserved				: 8;
 	} reg77; // 0x0134
 
 	u32 reg78_vp9_stream_size; // 0x0138
 
 	struct rkvdec_vdpu381_vp9_lastf_y_hor_virstride {
-		u32 vp9_lastfy_hor_virstride : 16;
-		u32 reserved : 16;
-
+		u32 vp9_lastfy_hor_virstride		: 16;
+		u32 reserved				: 16;
 	} reg79; // 0x013c
 
 	struct rkvdec_vdpu381_vp9_lastf_uv_hor_virstride {
-		u32 vp9_lastfuv_hor_virstride : 16;
-		u32 reserved : 16;
-
+		u32 vp9_lastfuv_hor_virstride		: 16;
+		u32 reserved				: 16;
 	} reg80 ; // 0x0140
 
 	struct rkvdec_vdpu381_vp9_goldenf_y_hor_virstride {
-		u32 vp9_goldenfy_hor_virstride : 16;
-		u32 reserved : 16;
-		
+		u32 vp9_goldenfy_hor_virstride		: 16;
+		u32 reserved				: 16;
 	} reg81; // 0x0144
 
 	struct rkvdec_vdpu381_vp9_golden_uv_hot_virstride {
-		u32 vp9_goldenuv_hor_virstride : 16;
-		u32 reserved : 16;
-
+		u32 vp9_goldenuv_hor_virstride		: 16;
+		u32 reserved				: 16;
 	} reg82; // 0x0148
 
 	struct rkvdec_vdpu381_vp9_altreff_y_hor_virstride {
-		u32 vp9_altreffy_hor_virstride :16;
-		u32 reserved : 16;
-
+		u32 vp9_altreffy_hor_virstride		: 16;
+		u32 reserved				: 16;
 	} reg83; // 0x014c
 
 	struct rkvdec_vdpu381_vp9_altreff_uv_hor_virstride {
-		u32 vp9_altreff_uv_hor_virstride : 16;
-		u32 reserved : 16;
-
+		u32 vp9_altreff_uv_hor_virstride	: 16;
+		u32 reserved				: 16;
 	} reg84; // 0x0150
 
 	struct rkvdec_vdpu381_vp9_lastf_y_virstride {
-		u32 vp9_lastfy_virstride : 28;
-		u32 reserved : 4;		
-
+		u32 vp9_lastfy_virstride		: 28;
+		u32 reserved				: 4;
 	} reg85; // 0x0154
 
 	struct rkvdec_vdpu381_vp9_golden_y_virstride {
-		u32 vp9_goldeny_virstride : 28;
-		u32 reserved : 4;
-
+		u32 vp9_goldeny_virstride		: 28;
+		u32 reserved				: 4;
 	} reg86; // 0x0158
 
 	struct rkvdec_vdpu381_vp9_altref_y_virstride {
-		u32 vp9_altrefy_virstride : 28;
-		u32 reserved : 4;
-
+		u32 vp9_altrefy_virstride		: 28;
+		u32 reserved				: 4;
 	} reg87; // 0x015c
 
 	struct rkvdec_vdpu381_vp9_lref_hor_scale {
-		u32 vp9_lref_hor_scale : 16;
-		u32 reserved : 16;
-
+		u32 vp9_lref_hor_scale			: 16;
+		u32 reserved				: 16;
 	} reg88; // 0x0160
 
 	struct rkvdec_vdpu381_vp9_lref_ver_scale {
-		u32 vp9_lref_ver_scale : 16;
-		u32 reserved : 16;
-
+		u32 vp9_lref_ver_scale			: 16;
+		u32 reserved				: 16;
 	} reg89; // 0x0164
 
 	struct rkvdec_vdpu381_vp9_gref_hor_scale {
-		u32 vp9_gref_hor_scale : 16;
-		u32 reserved : 16;
-
+		u32 vp9_gref_hor_scale			: 16;
+		u32 reserved				: 16;
 	} reg90; // 0x0168
 
 	struct rkvdec_vdpu381_vp9_gref_ver_scale {
-		u32 vp9_gref_ver_scale :16;
-		u32 reserved : 16;
-
+		u32 vp9_gref_ver_scale			: 16;
+		u32 reserved				: 16;
 	} reg91; // 0x016c
 
 	struct rkvdec_vdpu381_vp9_aref_hor_scale {
-		u32 vp9_aref_hor_scale : 16;
-		u32 reserved : 16;
-
+		u32 vp9_aref_hor_scale			: 16;
+		u32 reserved				: 16;
 	} reg92; // 0x0170
 
 	struct rkvdec_vdpu381_vp9_aref_ver_scale {
-		u32 vp9_aref_ver_scale : 16;
-		u32 reserved : 16;
-
+		u32 vp9_aref_ver_scale			: 16;
+		u32 reserved				: 16;
 	} reg93; // 0x0174
 
 	struct rkvdec_vdpu381_vp9_ref_deltas_lastframe {
-		u32 vp9_ref_deltas_lastframe : 28;
-		u32 reserved : 4;
-
+		u32 vp9_ref_deltas_lastframe		: 28;
+		u32 reserved				: 4;
 	} reg94; // 0x0178
 
 	u32 reg95_vp9_last_poc; // 0x017c
 
 	u32 reg96_vp9_golden_poc; // 0x0180
-    
+
 	u32 reg97_vp9_altref_poc; // 0x0184
 
 	u32 reg98_vp9_col_ref_poc; // 0x0188
 
 	struct rkvdec_vdpu381_vp9_prob_ref_poc {
-		u32 vp9_prob_ref_poc : 16;
-		u32 reserved : 16;
-
+		u32 vp9_prob_ref_poc			: 16;
+		u32 reserved				: 16;
 	} reg99; // 0x018c
 
 	struct rkvdec_vdpu381_vp9_segid_ref_poc {
-		u32 vp9_segid_ref_poc : 16;
-		u32 reserved : 16;
-
+		u32 vp9_segid_ref_poc			: 16;
+		u32 reserved				: 16;
 	} reg100; // 0x0190
 
 	u32 reserved1[2]; // 0x0194 - 0x0198 [2 bits [101,102]]
 
 	struct rkvdec_vdpu381_vp9_prob_en {
-		u32 reserved : 20;
-		u32 vp9_prob_update_en : 1;
-		u32 vp9_refresh_en : 1;
-		u32 vp9_prob_save_en : 1;
-		u32 vp9_intra_only_flag : 1;
-		u32 vp9_txfmmode_rfsh_en : 1;
-		u32 vp9_ref_mode_rfsh_en : 1;
-		u32 vp9_single_ref_rfsh_en : 1;
-		u32 vp9_comp_ref_rfsh_en : 1;
-		u32 vp9_interp_filter_switch_en : 1;
-		u32 vp9_allow_high_precision_mv : 1;
-		u32 vp9_last_key_frame_flag : 1;
-		u32 vp9_inter_coef_rfsh_flag :1;
-
+		u32 reserved				: 20;
+		u32 vp9_prob_update_en			: 1;
+		u32 vp9_refresh_en			: 1;
+		u32 vp9_prob_save_en			: 1;
+		u32 vp9_intra_only_flag			: 1;
+		u32 vp9_txfmmode_rfsh_en		: 1;
+		u32 vp9_ref_mode_rfsh_en		: 1;
+		u32 vp9_single_ref_rfsh_en		: 1;
+		u32 vp9_comp_ref_rfsh_en		: 1;
+		u32 vp9_interp_filter_switch_en		: 1;
+		u32 vp9_allow_high_precision_mv		: 1;
+		u32 vp9_last_key_frame_flag		: 1;
+		u32 vp9_inter_coef_rfsh_flag		: 1;
 	} reg103; // 0x019c
 
 	u32 reserved2; // 0x01a0 [1 bit [104]]
 
 	struct rkvdec_vdpu381_vp9_cnt_upd_en_avs2_headlen {
-		u32 avs2_head_len : 4;
-		u32 vp9count_update_en : 1;
-		u32 reserved : 27;
-
+		u32 avs2_head_len			: 4;
+		u32 vp9count_update_en			: 1;
+		u32 reserved				: 27;
 	} reg105; // 0x01a4
 
 	struct rkvdec_vdpu381_vp9_frame_width_last {
-		u32 vp9_framewidth_last : 16;
-		u32 reserved : 16;
+		u32 vp9_framewidth_last			: 16;
+		u32 reserved				: 16;
 
 	} reg106; // 0x01a8
 
 	struct rkvdec_vdpu381_vp9_frame_height_last {
-		u32 vp9_frameheight_last: 16;
-		u32 reserved : 16;
-
+		u32 vp9_frameheight_last		: 16;
+		u32 reserved				: 16;
 	} reg107; // 0x01ac
 
 	struct rkvdec_vdpu381_vp9_frame_width_golden {
-		u32 vp9_framewidth_golden : 16;
-		u32 reserved : 16;
-
+		u32 vp9_framewidth_golden		: 16;
+		u32 reserved				: 16;
 	} reg108; // 0x01b0
 
 	struct rkvdec_vdpu381_vp9_frame_height_golden {
-		u32 vp9_frameheight_golden : 16;
-		u32 reserved : 16;
-
+		u32 vp9_frameheight_golden		: 16;
+		u32 reserved				: 16;
 	} reg109; // 0x01b4
 
 	struct rkvdec_vdpu381_vp9_frame_width_altref {
-		u32 vp9_framewidth_altref : 16;
-		u32 reserved : 16;
-
+		u32 vp9_framewidth_altref		: 16;
+		u32 reserved				: 16;
 	} reg110; // 0x01b8
 
 	struct rkvdec_vdpu381_vp9_frame_height_altref {
-		u32 vp9_frameheight_altref : 16;
-		u32 reserved : 16;
-
+		u32 vp9_frameheight_altref		: 16;
+		u32 reserved				: 16;
 	} reg111; // 0x01bc
 
 	u32 reserved3; // 0x01c0 [1 bit [reg112]]
-
 } __packed;
 
 struct rkvdec_vdpu381_regs_vp9_addr {
-
 	u32 vp9_delta_prob_base; // 0x0280 [reg160]
 	u32 reserved0; // 0x0284 [reg161]
 	u32 vp9_last_prob_base; // 0x0288 [reg162]
@@ -632,9 +603,7 @@ struct rkvdec_vdpu381_regs_vp9_addr {
 	u32 scanlist_addr; // 0x02d0 [reg180]
 	u32 colmv_base[16]; // 0x02d4 - 0x0310 [reg181 - reg196]
 	u32 cabactbl_base;
-
-
-}__packed;
+} __packed;
 
 /* base: OFFSET_CODEC_ADDR_REGS */
 struct rkvdec_vdpu381_regs_h26x_addr {
@@ -647,7 +616,6 @@ struct rkvdec_vdpu381_regs_h26x_addr {
 	u32 colmv_base[16];
 	u32 cabactbl_base;
 } __packed;
-
 
 struct rkvdec_vdpu381_regs_h26x_highpoc {
 	struct rkvdec_vdpu381_ref_poc_highbit {
@@ -691,8 +659,6 @@ struct rkvdec_vdpu381_regs_h264 {
 	struct rkvdec_vdpu381_regs_h26x_highpoc		h264_highpoc;
 } __packed;
 
-
-
 struct rkvdec_vdpu381_regs_hevc {
 	struct rkvdec_vdpu381_regs_common		common;
 	struct rkvdec_vdpu381_regs_hevc_params		hevc_param;
@@ -702,11 +668,11 @@ struct rkvdec_vdpu381_regs_hevc {
 } __packed;
 
 struct rkvdec_vdpu381_regs_vp9 {
-	struct rkvdec_vdpu381_regs_common 			common;
+	struct rkvdec_vdpu381_regs_common 		common;
 	struct rkvdec_vdpu381_regs_vp9_params		vp9_param;
 	struct rkvdec_vdpu381_regs_common_addr		common_addr;
-	struct rkvdec_vdpu381_regs_vp9_addr			vp9_addr;
-	//struct rkvdec_vdpu381_regs_h26x_highpoc		vp9_highpoc;
-}__packed;
+	struct rkvdec_vdpu381_regs_vp9_addr		vp9_addr;
+	//struct rkvdec_vdpu381_regs_h26x_highpoc	vp9_highpoc;
+} __packed;
 
 #endif /* __RKVDEC_REGS_H__ */
