@@ -1814,6 +1814,19 @@ static const struct rkvdec_variant rk3399_rkvdec_variant = {
 	.has_single_reg_region = true,
 };
 
+static const struct rcb_size_info vdpu346_rcb_sizes[] = {
+	{6,     PIC_WIDTH},     // intrar       (n/a on rkvdec2?)
+	{1,     PIC_WIDTH},     // transdr      (n/a on rkvdec2?)
+	{1,     PIC_HEIGHT},    // transdc      (n/a on rkvdec2?)
+	{3,     PIC_WIDTH},     // streamdr     (n/a on rkvdec2?)
+	{6,	PIC_WIDTH},	// interr	(same)
+	{3,	PIC_HEIGHT},	// interc	(same)
+	{22,	PIC_WIDTH},	// dblkr	(h265=9, h264=16, vp9=22)
+	{6,	PIC_WIDTH},	// saor		(6 on vdpu381)
+	{11,	PIC_WIDTH},	// fbcr		(h264=3, vp9=10)
+	{67,	PIC_HEIGHT},	// filtc col	(h265=36, vp9=31)
+};
+
 static const struct rcb_size_info vdpu381_rcb_sizes[] = {
 	{6,	PIC_WIDTH},	// intrar
 	{1,	PIC_WIDTH},	// transdr (Is actually 0.4*pic_width)
@@ -1836,8 +1849,8 @@ static const struct rkvdec_variant_ops vdpu381_variant_ops = {
 static const struct rkvdec_variant vdpu346_variant = {
 	.coded_fmts = vdpu346_coded_fmts,
 	.num_coded_fmts = ARRAY_SIZE(vdpu346_coded_fmts),
-	.rcb_sizes = vdpu381_rcb_sizes,
-	.num_rcb_sizes = ARRAY_SIZE(vdpu381_rcb_sizes),
+	.rcb_sizes = vdpu346_rcb_sizes,
+	.num_rcb_sizes = ARRAY_SIZE(vdpu346_rcb_sizes),
 	.ops = &vdpu381_variant_ops,
 };
 
