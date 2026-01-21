@@ -1367,6 +1367,13 @@ S:	Maintained
 F:	Documentation/devicetree/bindings/spi/amlogic,a4-spisg.yaml
 F:	drivers/spi/spi-amlogic-spisg.c
 
+AMLOGIC VDEC DRIVER
+M:	Zhentao Guo <zhentao.guo@amlogic.com>
+L:	linux-media@vger.kernel.org
+S:	Maintained
+F:	Documentation/devicetree/bindings/media/amlogic,s4-vcodec-dec.yaml
+F:	drivers/media/platform/amlogic/vdec/
+
 AMPHENOL CHIPCAP 2 DRIVER
 M:	Javier Carrasco <javier.carrasco.cruz@gmail.com>
 L:	linux-hwmon@vger.kernel.org
