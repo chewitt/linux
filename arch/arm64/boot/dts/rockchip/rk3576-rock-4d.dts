@@ -272,7 +272,7 @@
 &gmac0 {
 	clock_in_out = "output";
 	phy-handle = <&rgmii_phy0>;
-	phy-mode = "rgmii-rxid";
+	phy-mode = "rgmii-id";
 	pinctrl-names = "default";
 	pinctrl-0 = <&eth0m0_miim
 		     &eth0m0_tx_bus2
@@ -281,8 +281,6 @@
 		     &eth0m0_rgmii_bus
 		     &ethm0_clk0_25m_out>;
 	status = "okay";
-	tx_delay = <0x20>;
-	rx_delay = <0x00>;
 };
 
 &gpu {
@@ -696,6 +694,7 @@
 		reset-assert-us = <20000>;
 		reset-deassert-us = <100000>;
 		reset-gpios = <&gpio2 RK_PB5 GPIO_ACTIVE_LOW>;
+		tx-internal-delay-ps = <1950>;
 	};
 };
 
