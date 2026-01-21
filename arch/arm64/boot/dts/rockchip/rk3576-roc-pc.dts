@@ -275,10 +275,8 @@
 		     &eth0m0_rgmii_clk
 		     &eth0m0_rgmii_bus
 		     &ethm0_clk0_25m_out>;
-	/* Use rgmii-rxid mode to disable rx delay inside Soc */
-	phy-mode = "rgmii-rxid";
+	phy-mode = "rgmii-id";
 	phy-handle = <&rgmii_phy0>;
-	tx_delay = <0x21>;
 	status = "okay";
 };
 
@@ -313,6 +311,7 @@
 		reset-delay-us = <20000>;
 		reset-gpios = <&gpio2 RK_PB5 GPIO_ACTIVE_LOW>;
 		reset-post-delay-us = <100000>;
+		tx-internal-delay-ps = <1950>;
 	};
 };
 
