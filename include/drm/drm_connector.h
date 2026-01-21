@@ -2613,6 +2613,60 @@ int drm_connector_attach_color_format_property(struct drm_connector *connector);
 const char *drm_get_color_format_name(enum drm_color_format color_fmt);
 
 /**
+ * drm_color_format_to_hdmi_colorspace - convert DRM color format to HDMI
+ * @fmt: the &enum drm_color_format to convert
+ *
+ * Convert a given &enum drm_color_format to an equivalent
+ * &enum hdmi_colorspace. For non-representable values and
+ * %DRM_COLOR_FORMAT_AUTO, the value %HDMI_COLORSPACE_RGB is returned.
+ *
+ * Returns: the corresponding &enum hdmi_colorspace value
+ */
+static inline enum hdmi_colorspace __pure
+drm_color_format_to_hdmi_colorspace(enum drm_color_format fmt)
+{
+	switch (fmt) {
+	default:
+	case DRM_COLOR_FORMAT_AUTO:
+	case DRM_COLOR_FORMAT_RGB444:
+		return HDMI_COLORSPACE_RGB;
+	case DRM_COLOR_FORMAT_YCBCR444:
+		return HDMI_COLORSPACE_YUV444;
+	case DRM_COLOR_FORMAT_YCBCR422:
+		return HDMI_COLORSPACE_YUV422;
+	case DRM_COLOR_FORMAT_YCBCR420:
+		return HDMI_COLORSPACE_YUV420;
+	}
+}
+
+/**
+ * drm_color_format_from_hdmi_colorspace - convert HDMI color format to DRM
+ * @fmt: the &enum hdmi_colorspace to convert
+ *
+ * Convert a given &enum hdmi_colorspace to an equivalent
+ * &enum drm_color_format. For non-representable values,
+ * %-EINVAL is returned.
+ *
+ * Returns: the corresponding &enum drm_color_format value, or %-EINVAL
+ */
+static inline enum drm_color_format __pure
+drm_color_format_from_hdmi_colorspace(enum hdmi_colorspace fmt)
+{
+	switch (fmt) {
+	default:
+		return -EINVAL;
+	case HDMI_COLORSPACE_RGB:
+		return DRM_COLOR_FORMAT_RGB444;
+	case HDMI_COLORSPACE_YUV444:
+		return DRM_COLOR_FORMAT_YCBCR444;
+	case HDMI_COLORSPACE_YUV422:
+		return DRM_COLOR_FORMAT_YCBCR422;
+	case HDMI_COLORSPACE_YUV420:
+		return DRM_COLOR_FORMAT_YCBCR420;
+	}
+}
+
+/**
  * drm_for_each_connector_iter - connector_list iterator macro
  * @connector: &struct drm_connector pointer used as cursor
  * @iter: &struct drm_connector_list_iter
