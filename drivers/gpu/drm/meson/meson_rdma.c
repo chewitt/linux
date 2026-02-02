@@ -68,6 +68,18 @@ void meson_rdma_setup(struct meson_drm *priv)
 			    priv->io_base + _REG(RDMA_ACCESS_AUTO));
 }
 
+static void meson_rdma_trigger(struct meson_drm *priv, u32 trigger)
+{
+	if (meson_vpu_is_compatible(priv, VPU_COMPATIBLE_S4)) {
+		writel_relaxed(trigger, priv->io_base + _REG(RDMA_AUTO_SRC1_SEL));
+		return;
+	}
+
+	writel_bits_relaxed(RDMA_ACCESS_TRIGGER_CHAN1,
+			    FIELD_PREP(RDMA_ACCESS_TRIGGER_CHAN1, trigger),
+			    priv->io_base + _REG(RDMA_ACCESS_AUTO));
+}
+
 void meson_rdma_stop(struct meson_drm *priv)
 {
 	writel_bits_relaxed(RDMA_IRQ_CLEAR_CHAN1,
@@ -75,10 +87,7 @@ void meson_rdma_stop(struct meson_drm *priv)
 			    priv->io_base + _REG(RDMA_CTRL));
 
 	/* Stop Channel 1 */
-	writel_bits_relaxed(RDMA_ACCESS_TRIGGER_CHAN1,
-			    FIELD_PREP(RDMA_ACCESS_ADDR_INC_CHAN1,
-				       RDMA_ACCESS_TRIGGER_STOP),
-			    priv->io_base + _REG(RDMA_ACCESS_AUTO));
+	meson_rdma_trigger(priv, RDMA_ACCESS_TRIGGER_STOP);
 }
 
 void meson_rdma_reset(struct meson_drm *priv)
@@ -126,10 +135,7 @@ void meson_rdma_flush(struct meson_drm *priv)
 	       priv->io_base + _REG(RDMA_AHB_END_ADDR_1));
 
 	/* Trigger Channel 1 on VSYNC event */
-	writel_bits_relaxed(RDMA_ACCESS_TRIGGER_CHAN1,
-			    FIELD_PREP(RDMA_ACCESS_TRIGGER_CHAN1,
-				       RDMA_ACCESS_TRIGGER_VSYNC),
-			    priv->io_base + _REG(RDMA_ACCESS_AUTO));
+	meson_rdma_trigger(priv, RDMA_ACCESS_TRIGGER_VSYNC);
 
 	priv->rdma.offset = 0;
 }

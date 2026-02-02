@@ -102,11 +102,13 @@ void meson_vpp_init(struct meson_drm *priv)
 				priv->io_base + _REG(VPP_DUMMY_DATA1));
 		writel_relaxed(0x42020,
 				priv->io_base + _REG(VPP_DUMMY_DATA));
-	} else if (meson_vpu_is_compatible(priv, VPU_COMPATIBLE_G12A))
+	} else if (meson_vpu_is_compatible(priv, VPU_COMPATIBLE_G12A) ||
+		   meson_vpu_is_compatible(priv, VPU_COMPATIBLE_S4))
 		writel_relaxed(0xf, priv->io_base + _REG(DOLBY_PATH_CTRL));
 
 	/* Initialize vpu fifo control registers */
-	if (meson_vpu_is_compatible(priv, VPU_COMPATIBLE_G12A))
+	if (meson_vpu_is_compatible(priv, VPU_COMPATIBLE_G12A) ||
+	    meson_vpu_is_compatible(priv, VPU_COMPATIBLE_S4))
 		writel_relaxed(VPP_OFIFO_SIZE_DEFAULT,
 			       priv->io_base + _REG(VPP_OFIFO_SIZE));
 	else
@@ -115,7 +117,8 @@ void meson_vpp_init(struct meson_drm *priv)
 	writel_relaxed(VPP_POSTBLEND_HOLD_LINES(4) | VPP_PREBLEND_HOLD_LINES(4),
 		       priv->io_base + _REG(VPP_HOLD_LINES));
 
-	if (!meson_vpu_is_compatible(priv, VPU_COMPATIBLE_G12A)) {
+	if (!meson_vpu_is_compatible(priv, VPU_COMPATIBLE_G12A) &&
+	    !meson_vpu_is_compatible(priv, VPU_COMPATIBLE_S4)) {
 		/* Turn off preblend */
 		writel_bits_relaxed(VPP_PREBLEND_ENABLE, 0,
 				    priv->io_base + _REG(VPP_MISC));
@@ -136,6 +139,9 @@ void meson_vpp_init(struct meson_drm *priv)
 		writel_relaxed(4096,
 				priv->io_base + _REG(VPP_BLEND_VD2_H_START_END));
 	}
+
+	if (meson_vpu_is_compatible(priv, VPU_COMPATIBLE_S4))
+		writel_bits_relaxed(VPP_WATER_MARK_10BIT, 0, priv->io_base + _REG(VPP_MISC));
 
 	/* Disable Scalers */
 	writel_relaxed(0, priv->io_base + _REG(VPP_OSD_SC_CTRL0));

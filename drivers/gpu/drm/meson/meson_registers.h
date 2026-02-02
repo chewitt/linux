@@ -152,6 +152,7 @@
 #define VD1_AFBCD0_MISC_CTRL 0x1a0a
 #define		VD1_AXI_SEL_AFBC		(1 << 12)
 #define		AFBC_VD1_SEL			(1 << 10)
+#define		VD1_AFBC0_MEM_SEL		(1 << 22)
 #define VD2_AFBCD1_MISC_CTRL 0x1a0b
 #define VIU_OSD1_CTRL_STAT 0x1a10
 #define		VIU_OSD1_OSD_BLK_ENABLE         BIT(0)
@@ -328,6 +329,32 @@
 #define VIU_VD2_FMT_CTRL 0x1a88
 #define VIU_VD2_FMT_W 0x1a89
 
+#define VD1_IF0_GEN_REG_S4 0x4800
+#define VD1_IF0_LUMA_FIFO_SIZE_S4 0x4813
+#define VD1_IF0_RANGE_MAP_Y_S4 0x4816
+#define VD1_IF0_RANGE_MAP_CB_S4 0x4817
+#define VD1_IF0_RANGE_MAP_CR_S4 0x4818
+#define VD1_IF0_GEN_REG2_S4 0x4819
+#define VD1_IF0_GEN_REG3_S4 0x481c
+#define		VD1_IF0_BIT_MODE_MASK GENMASK(9, 8)
+#define		VD1_IF0_BIT_MODE_10BIT BIT(8)
+#define		VD1_IF0_BURST_LEN_MASK GENMASK(2, 1)
+#define		VD1_IF0_BURST_LEN(x) FIELD_PREP(VD1_IF0_BURST_LEN_MASK, x)
+#define VIU_VD1_FMT_CTRL_S4 0x481d
+#define VIU_VD1_FMT_W_S4 0x481e
+
+#define VD2_IF0_GEN_REG_S4 0x4880
+#define VD2_IF0_LUMA_FIFO_SIZE_S4 0x4893
+#define VD2_IF0_RANGE_MAP_Y_S4 0x4896
+#define VD2_IF0_RANGE_MAP_CB_S4 0x4897
+#define VD2_IF0_RANGE_MAP_CR_S4  0x4898
+#define VD2_IF0_GEN_REG2_S4 0x4899
+#define VD2_IF0_GEN_REG3_S4 0x489c
+#define VIU_VD2_FMT_CTRL_S4 0x489d
+#define VIU_VD2_FMT_W_S4    0x489e
+
+#define AFBC_ENABLE_S4 0x4840
+
 /* VIU Matrix Registers */
 #define VIU_OSD1_MATRIX_CTRL 0x1a90
 #define VIU_OSD1_MATRIX_COEF00_01 0x1a91
@@ -393,6 +420,7 @@
 #define AFBC_PIXEL_HOR_SCOPE 0x1aef
 #define AFBC_PIXEL_VER_SCOPE 0x1af0
 #define AFBC_VD_CFMT_H 0x1af1
+#define AFBCDEC_IQUANT_ENABLE 0x1af2
 
 /* vpp */
 #define VPP_DUMMY_DATA 0x1d00
@@ -447,6 +475,7 @@
 #define		VPP_OSD2_ALPHA_PREMULT          BIT(8)
 #define		VPP_OSD1_ALPHA_PREMULT          BIT(9)
 #define		VPP_VD1_POSTBLEND               BIT(10)
+#define		VPP_WATER_MARK_10BIT            BIT(10)
 #define		VPP_VD2_POSTBLEND               BIT(11)
 #define		VPP_OSD1_POSTBLEND              BIT(12)
 #define		VPP_OSD2_POSTBLEND              BIT(13)
@@ -1307,6 +1336,7 @@
 #define		RDMA_IRQ_STAT_CHAN_MAN	BIT(24)
 #define RDMA_STATUS2 0x1116
 #define RDMA_STATUS3 0x1117
+#define RDMA_AUTO_SRC1_SEL 0x1123
 #define L_GAMMA_CNTL_PORT 0x1400
 #define		L_GAMMA_CNTL_PORT_VCOM_POL	BIT(7)	/* RW */
 #define		L_GAMMA_CNTL_PORT_RVS_OUT	BIT(6)	/* RW */
@@ -1608,6 +1638,7 @@
 #define		VPU_HDMI_OUTPUT_CRCBY           (5 << 5)
 #define		VPU_HDMI_WR_RATE(rate)          (((rate & 0x1f) - 1) << 8)
 #define		VPU_HDMI_RD_RATE(rate)          (((rate & 0x1f) - 1) << 12)
+#define		VPU_HDMI_420_S4                 BIT(20)
 #define ENCI_INFO_READ 0x271c
 #define ENCP_INFO_READ 0x271d
 #define ENCT_INFO_READ 0x271e

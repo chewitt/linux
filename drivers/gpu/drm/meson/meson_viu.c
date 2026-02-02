@@ -425,7 +425,8 @@ void meson_viu_init(struct meson_drm *priv)
 	if (meson_vpu_is_compatible(priv, VPU_COMPATIBLE_GXM) ||
 	    meson_vpu_is_compatible(priv, VPU_COMPATIBLE_GXL))
 		meson_viu_load_matrix(priv);
-	else if (meson_vpu_is_compatible(priv, VPU_COMPATIBLE_G12A)) {
+	else if (meson_vpu_is_compatible(priv, VPU_COMPATIBLE_G12A) ||
+		 meson_vpu_is_compatible(priv, VPU_COMPATIBLE_S4)) {
 		meson_viu_set_g12a_osd1_matrix(priv, RGB709_to_YUV709l_coeff,
 					       true);
 		/* fix green/pink color distortion from vendor u-boot */
@@ -440,7 +441,8 @@ void meson_viu_init(struct meson_drm *priv)
 		VIU_OSD_WORDS_PER_BURST(4) | /* 4 words in 1 burst */
 		VIU_OSD_FIFO_LIMITS(2);      /* fifo_lim: 2*16=32 */
 
-	if (meson_vpu_is_compatible(priv, VPU_COMPATIBLE_G12A))
+	if (meson_vpu_is_compatible(priv, VPU_COMPATIBLE_G12A) ||
+	    meson_vpu_is_compatible(priv, VPU_COMPATIBLE_S4))
 		reg |= (VIU_OSD_BURST_LENGTH_32 | VIU_OSD_HOLD_FIFO_LINES(31));
 	else
 		reg |= (VIU_OSD_BURST_LENGTH_64 | VIU_OSD_HOLD_FIFO_LINES(4));
@@ -460,14 +462,22 @@ void meson_viu_init(struct meson_drm *priv)
 	/* di_mif0_en=0 mif0_to_vpp_en=0 di_mad_en=0 and afbc vd1 set=0*/
 	writel_bits_relaxed(VIU_CTRL0_VD1_AFBC_MASK, 0,
 			    priv->io_base + _REG(VIU_MISC_CTRL0));
-	writel_relaxed(0, priv->io_base + _REG(AFBC_ENABLE));
+	if (meson_vpu_is_compatible(priv, VPU_COMPATIBLE_S4)) {
+		writel_relaxed(0, priv->io_base + _REG(AFBC_ENABLE_S4));
+		writel_relaxed(0x00FF00C0,
+				priv->io_base + _REG(VD1_IF0_LUMA_FIFO_SIZE_S4));
+		writel_relaxed(0x00FF00C0,
+				priv->io_base + _REG(VD2_IF0_LUMA_FIFO_SIZE_S4));
+	} else {
+		writel_relaxed(0, priv->io_base + _REG(AFBC_ENABLE));
+		writel_relaxed(0x00FF00C0,
+				priv->io_base + _REG(VD1_IF0_LUMA_FIFO_SIZE));
+		writel_relaxed(0x00FF00C0,
+				priv->io_base + _REG(VD2_IF0_LUMA_FIFO_SIZE));
+	}
 
-	writel_relaxed(0x00FF00C0,
-			priv->io_base + _REG(VD1_IF0_LUMA_FIFO_SIZE));
-	writel_relaxed(0x00FF00C0,
-			priv->io_base + _REG(VD2_IF0_LUMA_FIFO_SIZE));
-
-	if (meson_vpu_is_compatible(priv, VPU_COMPATIBLE_G12A)) {
+	if (meson_vpu_is_compatible(priv, VPU_COMPATIBLE_G12A) ||
+	    meson_vpu_is_compatible(priv, VPU_COMPATIBLE_S4)) {
 		u32 val = (u32)VIU_OSD_BLEND_REORDER(0, 1) |
 			  (u32)VIU_OSD_BLEND_REORDER(1, 0) |
 			  (u32)VIU_OSD_BLEND_REORDER(2, 0) |
