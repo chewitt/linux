@@ -287,6 +287,13 @@ static int meson_g12a_afbcd_reset(struct meson_drm *priv)
 	return 0;
 }
 
+static int meson_s4_afbcd_reset(struct meson_drm *priv)
+{
+	meson_rdma_reset(priv);
+
+	return 0;
+}
+
 static int meson_g12a_afbcd_init(struct meson_drm *priv)
 {
 	int ret;
@@ -299,6 +306,22 @@ static int meson_g12a_afbcd_init(struct meson_drm *priv)
 
 	/* Handle AFBC Decoder reset manually */
 	writel_bits_relaxed(MALI_AFBCD_MANUAL_RESET, MALI_AFBCD_MANUAL_RESET,
+			    priv->io_base + _REG(MALI_AFBCD_TOP_CTRL));
+
+	return 0;
+}
+
+static int meson_s4_afbcd_init(struct meson_drm *priv)
+{
+	int ret;
+
+	ret = meson_rdma_init(priv);
+	if (ret)
+		return ret;
+
+	meson_rdma_setup(priv);
+
+	writel_bits_relaxed(MALI_AFBCD_MANUAL_RESET, 0,
 			    priv->io_base + _REG(MALI_AFBCD_TOP_CTRL));
 
 	return 0;
@@ -394,6 +417,17 @@ struct meson_afbcd_ops meson_afbcd_g12a_ops = {
 	.init = meson_g12a_afbcd_init,
 	.exit = meson_g12a_afbcd_exit,
 	.reset = meson_g12a_afbcd_reset,
+	.enable = meson_g12a_afbcd_enable,
+	.disable = meson_g12a_afbcd_disable,
+	.setup = meson_g12a_afbcd_setup,
+	.fmt_to_blk_mode = meson_g12a_afbcd_fmt_to_blk_mode,
+	.supported_fmt = meson_g12a_afbcd_supported_fmt,
+};
+
+struct meson_afbcd_ops meson_afbcd_s4_ops = {
+	.init = meson_s4_afbcd_init,
+	.exit = meson_g12a_afbcd_exit,
+	.reset = meson_s4_afbcd_reset,
 	.enable = meson_g12a_afbcd_enable,
 	.disable = meson_g12a_afbcd_disable,
 	.setup = meson_g12a_afbcd_setup,

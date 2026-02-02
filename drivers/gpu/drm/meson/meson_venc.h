@@ -54,8 +54,8 @@ void meson_encl_load_gamma(struct meson_drm *priv);
 /* HDMI Clock parameters */
 enum drm_mode_status
 meson_venc_hdmi_supported_mode(const struct drm_display_mode *mode);
-bool meson_venc_hdmi_supported_vic(int vic);
-bool meson_venc_hdmi_venc_repeat(int vic);
+bool meson_venc_hdmi_supported_vic(struct meson_drm *priv, int vic);
+bool meson_venc_hdmi_venc_repeat(struct meson_drm *priv, int vic);
 
 /* CVBS Timings and Parameters */
 extern struct meson_cvbs_enci_mode meson_cvbs_enci_pal;
