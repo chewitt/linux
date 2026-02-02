@@ -22,6 +22,7 @@ enum vpu_compatible {
 	VPU_COMPATIBLE_GXL  = 1,
 	VPU_COMPATIBLE_GXM  = 2,
 	VPU_COMPATIBLE_G12A = 3,
+	VPU_COMPATIBLE_S4 = 4,
 };
 
 enum {
@@ -45,6 +46,11 @@ struct meson_drm {
 	enum vpu_compatible compat;
 	void __iomem *io_base;
 	struct regmap *hhi;
+	struct regmap *sysctrl;
+	struct regmap *clkctrl;
+	struct regmap *pwrctrl;
+	struct clk *vpu_clk;
+	struct clk *vapb_clk;
 	int vsync_irq;
 
 	struct meson_canvas *canvas;

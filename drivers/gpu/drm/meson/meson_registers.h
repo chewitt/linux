@@ -328,6 +328,22 @@
 #define VIU_VD2_FMT_CTRL 0x1a88
 #define VIU_VD2_FMT_W 0x1a89
 
+#define VD1_IF0_RANGE_MAP_Y_S4 0x4816
+#define VD1_IF0_RANGE_MAP_CB_S4 0x4817
+#define VD1_IF0_RANGE_MAP_CR_S4 0x4818
+#define VD1_IF0_GEN_REG2_S4 0x4819
+#define VD1_IF0_GEN_REG3_S4 0x481c
+#define VIU_VD1_FMT_CTRL_S4 0x481d
+#define VIU_VD1_FMT_W_S4 0x481e
+
+#define VD2_IF0_RANGE_MAP_Y_S4 0x4896
+#define VD2_IF0_RANGE_MAP_CB_S4 0x4897
+#define VD2_IF0_RANGE_MAP_CR_S4  0x4898
+#define VD2_IF0_GEN_REG2_S4 0x4899
+#define VD2_IF0_GEN_REG3_S4 0x489c
+#define VIU_VD2_FMT_CTRL_S4 0x489d
+#define VIU_VD2_FMT_W_S4    0x489e
+
 /* VIU Matrix Registers */
 #define VIU_OSD1_MATRIX_CTRL 0x1a90
 #define VIU_OSD1_MATRIX_COEF00_01 0x1a91
@@ -447,6 +463,7 @@
 #define		VPP_OSD2_ALPHA_PREMULT          BIT(8)
 #define		VPP_OSD1_ALPHA_PREMULT          BIT(9)
 #define		VPP_VD1_POSTBLEND               BIT(10)
+#define		VPP_WATER_MARK_10BIT            BIT(10)
 #define		VPP_VD2_POSTBLEND               BIT(11)
 #define		VPP_OSD1_POSTBLEND              BIT(12)
 #define		VPP_OSD2_POSTBLEND              BIT(13)
