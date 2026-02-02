@@ -19,6 +19,10 @@
 
 #define TOHDMITX_CTRL0			0x0
 #define  CTRL0_ENABLE_SHIFT		31
+#define  CTRL0_SPDIF_DATA_SHIFT		31
+#define  CTRL0_SPDIF_CLK_SHIFT		30
+#define  CTRL0_I2S_DATA_SHIFT		29
+#define  CTRL0_I2S_CLK_SHIFT		28
 #define  CTRL0_I2S_DAT_SEL		GENMASK(13, 12)
 #define  CTRL0_I2S_LRCLK_SEL		GENMASK(9, 8)
 #define  CTRL0_I2S_BLK_CAP_INV		BIT(7)
@@ -28,6 +32,10 @@
 #define  CTRL0_SPDIF_CLK_O_INV		BIT(2)
 #define  CTRL0_SPDIF_SEL		BIT(1)
 #define  CTRL0_SPDIF_CLK_SEL		BIT(0)
+
+struct g12a_tohdmitx_match_data {
+	const struct snd_soc_component_driver *component_drv;
+};
 
 static int g12a_tohdmitx_select_i2s(struct snd_soc_component *component,
 				    unsigned int mux)
@@ -82,6 +90,14 @@ static const struct snd_kcontrol_new g12a_tohdmitx_out_enable =
 	SOC_DAPM_SINGLE_AUTODISABLE("Switch", TOHDMITX_CTRL0,
 				    CTRL0_ENABLE_SHIFT, 1, 0);
 
+static const struct snd_kcontrol_new s4_tohdmitx_i2s_out_enable =
+	SOC_DAPM_SINGLE_AUTODISABLE("Switch", TOHDMITX_CTRL0,
+				    CTRL0_I2S_DATA_SHIFT, 1, 0);
+
+static const struct snd_kcontrol_new s4_tohdmitx_spdif_out_enable =
+	SOC_DAPM_SINGLE_AUTODISABLE("Switch", TOHDMITX_CTRL0,
+				    CTRL0_SPDIF_DATA_SHIFT, 1, 0);
+
 static const struct snd_soc_dapm_widget g12a_tohdmitx_widgets[] = {
 	SND_SOC_DAPM_MIXER("I2S SRC", SND_SOC_NOPM, 0, 0, NULL, 0),
 	SND_SOC_DAPM_SWITCH("I2S OUT EN", SND_SOC_NOPM, 0, 0,
@@ -89,6 +105,19 @@ static const struct snd_soc_dapm_widget g12a_tohdmitx_widgets[] = {
 	SND_SOC_DAPM_MIXER("SPDIF SRC", SND_SOC_NOPM, 0, 0, NULL, 0),
 	SND_SOC_DAPM_SWITCH("SPDIF OUT EN", SND_SOC_NOPM, 0, 0,
 			    &g12a_tohdmitx_out_enable),
+};
+
+static const struct snd_soc_dapm_widget s4_tohdmitx_widgets[] = {
+	SND_SOC_DAPM_MIXER("I2S SRC", SND_SOC_NOPM, 0, 0, NULL, 0),
+	SND_SOC_DAPM_SWITCH("I2S OUT EN", SND_SOC_NOPM, 0, 0,
+			    &s4_tohdmitx_i2s_out_enable),
+	SND_SOC_DAPM_SUPPLY("I2S CLK EN", TOHDMITX_CTRL0,
+			    CTRL0_I2S_CLK_SHIFT, 0, NULL, 0),
+	SND_SOC_DAPM_MIXER("SPDIF SRC", SND_SOC_NOPM, 0, 0, NULL, 0),
+	SND_SOC_DAPM_SWITCH("SPDIF OUT EN", SND_SOC_NOPM, 0, 0,
+			    &s4_tohdmitx_spdif_out_enable),
+	SND_SOC_DAPM_SUPPLY("SPDIF CLK EN", TOHDMITX_CTRL0,
+			    CTRL0_SPDIF_CLK_SHIFT, 0, NULL, 0),
 };
 
 static const struct snd_soc_dai_ops g12a_tohdmitx_input_ops = {
@@ -173,6 +202,20 @@ static const struct snd_soc_dapm_route g12a_tohdmitx_routes[] = {
 	{ "SPDIF OUT Capture", NULL, "SPDIF OUT EN" },
 };
 
+static const struct snd_soc_dapm_route s4_tohdmitx_routes[] = {
+	{ "I2S SRC", NULL, "I2S IN A Playback" },
+	{ "I2S SRC", NULL, "I2S IN B Playback" },
+	{ "I2S SRC", NULL, "I2S IN C Playback" },
+	{ "I2S OUT EN", "Switch", "I2S SRC" },
+	{ "I2S OUT EN", NULL, "I2S CLK EN" },
+	{ "I2S OUT Capture", NULL, "I2S OUT EN" },
+	{ "SPDIF SRC", NULL, "SPDIF IN A Playback" },
+	{ "SPDIF SRC", NULL, "SPDIF IN B Playback" },
+	{ "SPDIF OUT EN", "Switch", "SPDIF SRC" },
+	{ "SPDIF OUT EN", NULL, "SPDIF CLK EN" },
+	{ "SPDIF OUT Capture", NULL, "SPDIF OUT EN" },
+};
+
 static const struct snd_soc_component_driver g12a_tohdmitx_component_drv = {
 	.probe			= g12a_tohdmi_component_probe,
 	.dapm_widgets		= g12a_tohdmitx_widgets,
@@ -182,24 +225,52 @@ static const struct snd_soc_component_driver g12a_tohdmitx_component_drv = {
 	.endianness		= 1,
 };
 
+static const struct snd_soc_component_driver s4_tohdmitx_component_drv = {
+	.probe			= g12a_tohdmi_component_probe,
+	.dapm_widgets		= s4_tohdmitx_widgets,
+	.num_dapm_widgets	= ARRAY_SIZE(s4_tohdmitx_widgets),
+	.dapm_routes		= s4_tohdmitx_routes,
+	.num_dapm_routes	= ARRAY_SIZE(s4_tohdmitx_routes),
+	.endianness		= 1,
+};
+
 static const struct regmap_config g12a_tohdmitx_regmap_cfg = {
 	.reg_bits	= 32,
 	.val_bits	= 32,
 	.reg_stride	= 4,
 };
 
+static const struct g12a_tohdmitx_match_data g12a_tohdmitx_match_data = {
+	.component_drv	= &g12a_tohdmitx_component_drv,
+};
+
+static const struct g12a_tohdmitx_match_data s4_tohdmitx_match_data = {
+	.component_drv	= &s4_tohdmitx_component_drv,
+};
+
 static const struct of_device_id g12a_tohdmitx_of_match[] = {
-	{ .compatible = "amlogic,g12a-tohdmitx", },
+	{
+		.compatible = "amlogic,g12a-tohdmitx",
+		.data = &g12a_tohdmitx_match_data,
+	}, {
+		.compatible = "amlogic,s4-tohdmitx",
+		.data = &s4_tohdmitx_match_data,
+	},
 	{}
 };
 MODULE_DEVICE_TABLE(of, g12a_tohdmitx_of_match);
 
 static int g12a_tohdmitx_probe(struct platform_device *pdev)
 {
+	const struct g12a_tohdmitx_match_data *data;
 	struct device *dev = &pdev->dev;
 	void __iomem *regs;
 	struct regmap *map;
 	int ret;
+
+	data = device_get_match_data(dev);
+	if (!data)
+		return -ENODEV;
 
 	ret = device_reset(dev);
 	if (ret)
@@ -217,7 +288,7 @@ static int g12a_tohdmitx_probe(struct platform_device *pdev)
 	}
 
 	return devm_snd_soc_register_component(dev,
-			&g12a_tohdmitx_component_drv, g12a_tohdmitx_dai_drv,
+			data->component_drv, g12a_tohdmitx_dai_drv,
 			ARRAY_SIZE(g12a_tohdmitx_dai_drv));
 }
 
