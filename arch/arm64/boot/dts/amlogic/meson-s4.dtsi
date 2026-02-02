@@ -919,7 +919,7 @@
 		compatible = "amlogic,axg-tdm-iface";
 		#sound-dai-cells = <0>;
 		sound-name-prefix = "TDM_B";
-		clocks = <&clkc_audio AUD_CLKID_MST_A_SCLK>,
+		clocks = <&clkc_audio AUD_CLKID_MST_B_SCLK>,
 			 <&clkc_audio AUD_CLKID_MST_B_LRCLK>,
 			 <&clkc_audio AUD_CLKID_MST_B_MCLK>;
 		clock-names = "sclk", "lrclk","mclk";
@@ -1212,7 +1212,7 @@
 	};
 
 	tohdmitx: audio-controller@330744 {
-		compatible = "amlogic,sm1-tohdmitx",
+		compatible = "amlogic,s4-tohdmitx",
 				 "amlogic,g12a-tohdmitx";
 		reg = <0x0 0x330744 0x0 0x4>;
 		#sound-dai-cells = <1>;
