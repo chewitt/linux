@@ -147,6 +147,16 @@
 		regulator-always-on;
 	};
 
+	usb_pwr: regulator-usb-pwr {
+		compatible = "regulator-fixed";
+		regulator-name = "USB_PWR";
+		regulator-min-microvolt = <5000000>;
+		regulator-max-microvolt = <5000000>;
+		vin-supply = <&main_5v>;
+		gpio = <&gpio GPIOH_6 GPIO_ACTIVE_HIGH>;
+		enable-active-high;
+	};
+
 	vddio_ao1v8: regulator-vddio-ao1v8 {
 		compatible = "regulator-fixed";
 		regulator-name = "VDDIO_AO1V8";
@@ -389,4 +399,17 @@
 
 &uart_b {
 	status = "okay";
+};
+
+&usb {
+	status = "okay";
+};
+
+&usb2_phy0 {
+	status = "okay";
+};
+
+&usb2_phy1 {
+	status = "okay";
+	phy-supply = <&usb_pwr>;
 };
