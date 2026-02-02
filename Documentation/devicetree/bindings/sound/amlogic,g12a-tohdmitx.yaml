@@ -22,6 +22,7 @@ properties:
           - const: amlogic,g12a-tohdmitx
       - items:
           - enum:
+              - amlogic,s4-tohdmitx
               - amlogic,sm1-tohdmitx
           - const: amlogic,g12a-tohdmitx
 
