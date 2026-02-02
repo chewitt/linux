@@ -29,6 +29,9 @@
 #include "meson_osd_afbcd.h"
 
 #define MESON_G12A_VIU_OFFSET	0x5ec0
+#define MESON_S4_VIU_OFFSET	0xb6c0
+#define MESON_S4_VD2_OFFSET	0xb840
+#define MESON_S4_AFBC_OFFSET	0xb580
 
 /* CRTC definition */
 
@@ -41,6 +44,8 @@ struct meson_crtc {
 	void (*enable_osd1_afbc)(struct meson_drm *priv);
 	void (*disable_osd1_afbc)(struct meson_drm *priv);
 	unsigned int viu_offset;
+	unsigned int vd2_offset;
+	unsigned int afbc_offset;
 	bool vsync_forced;
 	bool vsync_disabled;
 };
@@ -302,15 +307,21 @@ static void meson_crtc_enable_vd1(struct meson_drm *priv)
 
 static void meson_g12a_crtc_enable_vd1(struct meson_drm *priv)
 {
+	u32 misc = 0;
+
 	writel_relaxed(VD_BLEND_PREBLD_SRC_VD1 |
 		       VD_BLEND_PREBLD_PREMULT_EN |
 		       VD_BLEND_POSTBLD_SRC_VD1 |
 		       VD_BLEND_POSTBLD_PREMULT_EN,
 		       priv->io_base + _REG(VD1_BLEND_SRC_CTRL));
 
-	writel_relaxed(priv->viu.vd1_afbc ?
-		       (VD1_AXI_SEL_AFBC | AFBC_VD1_SEL) : 0,
-		       priv->io_base + _REG(VD1_AFBCD0_MISC_CTRL));
+	if (priv->viu.vd1_afbc) {
+		misc = VD1_AXI_SEL_AFBC | AFBC_VD1_SEL;
+		if (meson_vpu_is_compatible(priv, VPU_COMPATIBLE_S4))
+			misc |= VD1_AFBC0_MEM_SEL;
+	}
+
+	writel_relaxed(misc, priv->io_base + _REG(VD1_AFBCD0_MISC_CTRL));
 }
 
 void meson_crtc_irq(struct meson_drm *priv)
@@ -396,50 +407,55 @@ void meson_crtc_irq(struct meson_drm *priv)
 
 		if (priv->viu.vd1_afbc) {
 			writel_relaxed(priv->viu.vd1_afbc_head_addr,
-				       priv->io_base +
+				       priv->io_base + meson_crtc->afbc_offset +
 				       _REG(AFBC_HEAD_BADDR));
 			writel_relaxed(priv->viu.vd1_afbc_body_addr,
-				       priv->io_base +
+				       priv->io_base + meson_crtc->afbc_offset +
 				       _REG(AFBC_BODY_BADDR));
 			writel_relaxed(priv->viu.vd1_afbc_en,
-				       priv->io_base +
+				       priv->io_base + meson_crtc->afbc_offset +
 				       _REG(AFBC_ENABLE));
 			writel_relaxed(priv->viu.vd1_afbc_mode,
-				       priv->io_base +
+				       priv->io_base + meson_crtc->afbc_offset +
 				       _REG(AFBC_MODE));
 			writel_relaxed(priv->viu.vd1_afbc_size_in,
-				       priv->io_base +
+				       priv->io_base + meson_crtc->afbc_offset +
 				       _REG(AFBC_SIZE_IN));
 			writel_relaxed(priv->viu.vd1_afbc_dec_def_color,
-				       priv->io_base +
+				       priv->io_base + meson_crtc->afbc_offset +
 				       _REG(AFBC_DEC_DEF_COLOR));
 			writel_relaxed(priv->viu.vd1_afbc_conv_ctrl,
-				       priv->io_base +
+				       priv->io_base + meson_crtc->afbc_offset +
 				       _REG(AFBC_CONV_CTRL));
 			writel_relaxed(priv->viu.vd1_afbc_size_out,
-				       priv->io_base +
+				       priv->io_base + meson_crtc->afbc_offset +
 				       _REG(AFBC_SIZE_OUT));
 			writel_relaxed(priv->viu.vd1_afbc_vd_cfmt_ctrl,
-				       priv->io_base +
+				       priv->io_base + meson_crtc->afbc_offset +
 				       _REG(AFBC_VD_CFMT_CTRL));
 			writel_relaxed(priv->viu.vd1_afbc_vd_cfmt_w,
-				       priv->io_base +
+				       priv->io_base + meson_crtc->afbc_offset +
 				       _REG(AFBC_VD_CFMT_W));
 			writel_relaxed(priv->viu.vd1_afbc_mif_hor_scope,
-				       priv->io_base +
+				       priv->io_base + meson_crtc->afbc_offset +
 				       _REG(AFBC_MIF_HOR_SCOPE));
 			writel_relaxed(priv->viu.vd1_afbc_mif_ver_scope,
-				       priv->io_base +
+				       priv->io_base + meson_crtc->afbc_offset +
 				       _REG(AFBC_MIF_VER_SCOPE));
 			writel_relaxed(priv->viu.vd1_afbc_pixel_hor_scope,
-				       priv->io_base+
+				       priv->io_base + meson_crtc->afbc_offset +
 				       _REG(AFBC_PIXEL_HOR_SCOPE));
 			writel_relaxed(priv->viu.vd1_afbc_pixel_ver_scope,
-				       priv->io_base +
+				       priv->io_base + meson_crtc->afbc_offset +
 				       _REG(AFBC_PIXEL_VER_SCOPE));
 			writel_relaxed(priv->viu.vd1_afbc_vd_cfmt_h,
-				       priv->io_base +
+				       priv->io_base + meson_crtc->afbc_offset +
 				       _REG(AFBC_VD_CFMT_H));
+			/* Decoder output is lossless: no inverse quantisation */
+			if (meson_vpu_is_compatible(priv, VPU_COMPATIBLE_S4))
+				writel_relaxed(0, priv->io_base +
+					       meson_crtc->afbc_offset +
+					       _REG(AFBCDEC_IQUANT_ENABLE));
 		} else {
 			switch (priv->viu.vd1_planes) {
 			case 3:
@@ -473,30 +489,96 @@ void meson_crtc_irq(struct meson_drm *priv)
 						    MESON_CANVAS_ENDIAN_SWAP64);
 			}
 
-			writel_relaxed(0, priv->io_base + _REG(AFBC_ENABLE));
+			writel_relaxed(0, priv->io_base + meson_crtc->afbc_offset + _REG(AFBC_ENABLE));
+		}
+
+		/* S4 VD1 must be told the bit depth of the AFBC decoder output */
+		if (meson_vpu_is_compatible(priv, VPU_COMPATIBLE_S4))
+			writel_bits_relaxed(VD1_IF0_BIT_MODE_MASK,
+					    priv->viu.vd1_afbc && priv->viu.vd1_10bit ?
+					    VD1_IF0_BIT_MODE_10BIT : 0,
+					    priv->io_base + _REG(VD1_IF0_GEN_REG3_S4));
+
+		if (meson_vpu_is_compatible(priv, VPU_COMPATIBLE_S4) &&
+		    !priv->viu.vd1_afbc) {
+			u32 pitches = priv->viu.vd1_stride0;
+			u32 burst = 2;
+
+			if (priv->viu.vd1_planes > 1)
+				pitches |= priv->viu.vd1_stride1;
+			if (priv->viu.vd1_planes > 2)
+				pitches |= priv->viu.vd1_stride2;
+
+			if (pitches % 32)
+				burst = 0;
+			else if (pitches % 64)
+				burst = 1;
+
+			writel_bits_relaxed(VD1_IF0_BURST_LEN_MASK,
+					    VD1_IF0_BURST_LEN(burst),
+					    priv->io_base + _REG(VD1_IF0_GEN_REG3_S4));
 		}
 
 		writel_relaxed(priv->viu.vd1_if0_gen_reg,
 				priv->io_base + meson_crtc->viu_offset +
 				_REG(VD1_IF0_GEN_REG));
 		writel_relaxed(priv->viu.vd1_if0_gen_reg,
-				priv->io_base + meson_crtc->viu_offset +
+				priv->io_base + meson_crtc->vd2_offset +
 				_REG(VD2_IF0_GEN_REG));
-		writel_relaxed(priv->viu.vd1_if0_gen_reg2,
-				priv->io_base + meson_crtc->viu_offset +
-				_REG(VD1_IF0_GEN_REG2));
-		writel_relaxed(priv->viu.viu_vd1_fmt_ctrl,
-				priv->io_base + meson_crtc->viu_offset +
-				_REG(VIU_VD1_FMT_CTRL));
-		writel_relaxed(priv->viu.viu_vd1_fmt_ctrl,
-				priv->io_base + meson_crtc->viu_offset +
-				_REG(VIU_VD2_FMT_CTRL));
-		writel_relaxed(priv->viu.viu_vd1_fmt_w,
-				priv->io_base + meson_crtc->viu_offset +
-				_REG(VIU_VD1_FMT_W));
-		writel_relaxed(priv->viu.viu_vd1_fmt_w,
-				priv->io_base + meson_crtc->viu_offset +
-				_REG(VIU_VD2_FMT_W));
+
+		if (meson_vpu_is_compatible(priv, VPU_COMPATIBLE_S4)) {
+			writel_relaxed(priv->viu.vd1_if0_gen_reg2,
+					priv->io_base +
+					_REG(VD1_IF0_GEN_REG2_S4));
+			writel_relaxed(priv->viu.viu_vd1_fmt_ctrl,
+					priv->io_base +
+					_REG(VIU_VD1_FMT_CTRL_S4));
+			writel_relaxed(priv->viu.viu_vd1_fmt_ctrl,
+					priv->io_base +
+					_REG(VIU_VD2_FMT_CTRL_S4));
+			writel_relaxed(priv->viu.viu_vd1_fmt_w,
+					priv->io_base +
+					_REG(VIU_VD1_FMT_W_S4));
+			writel_relaxed(priv->viu.viu_vd1_fmt_w,
+					priv->io_base +
+					_REG(VIU_VD2_FMT_W_S4));
+
+			writel_relaxed(priv->viu.vd1_range_map_y,
+					priv->io_base +
+					_REG(VD1_IF0_RANGE_MAP_Y_S4));
+			writel_relaxed(priv->viu.vd1_range_map_cb,
+					priv->io_base +
+					_REG(VD1_IF0_RANGE_MAP_CB_S4));
+			writel_relaxed(priv->viu.vd1_range_map_cr,
+					priv->io_base +
+					_REG(VD1_IF0_RANGE_MAP_CR_S4));
+		} else {
+			writel_relaxed(priv->viu.vd1_if0_gen_reg2,
+					priv->io_base + meson_crtc->viu_offset +
+					_REG(VD1_IF0_GEN_REG2));
+			writel_relaxed(priv->viu.viu_vd1_fmt_ctrl,
+					priv->io_base + meson_crtc->viu_offset +
+					_REG(VIU_VD1_FMT_CTRL));
+			writel_relaxed(priv->viu.viu_vd1_fmt_ctrl,
+					priv->io_base + meson_crtc->viu_offset +
+					_REG(VIU_VD2_FMT_CTRL));
+			writel_relaxed(priv->viu.viu_vd1_fmt_w,
+					priv->io_base + meson_crtc->viu_offset +
+					_REG(VIU_VD1_FMT_W));
+			writel_relaxed(priv->viu.viu_vd1_fmt_w,
+					priv->io_base + meson_crtc->viu_offset +
+					_REG(VIU_VD2_FMT_W));
+
+			writel_relaxed(priv->viu.vd1_range_map_y,
+					priv->io_base + meson_crtc->viu_offset +
+					_REG(VD1_IF0_RANGE_MAP_Y));
+			writel_relaxed(priv->viu.vd1_range_map_cb,
+					priv->io_base + meson_crtc->viu_offset +
+					_REG(VD1_IF0_RANGE_MAP_CB));
+			writel_relaxed(priv->viu.vd1_range_map_cr,
+					priv->io_base + meson_crtc->viu_offset +
+					_REG(VD1_IF0_RANGE_MAP_CR));
+		}
 		writel_relaxed(priv->viu.vd1_if0_canvas0,
 				priv->io_base + meson_crtc->viu_offset +
 				_REG(VD1_IF0_CANVAS0));
@@ -504,10 +586,10 @@ void meson_crtc_irq(struct meson_drm *priv)
 				priv->io_base + meson_crtc->viu_offset +
 				_REG(VD1_IF0_CANVAS1));
 		writel_relaxed(priv->viu.vd1_if0_canvas0,
-				priv->io_base + meson_crtc->viu_offset +
+				priv->io_base + meson_crtc->vd2_offset +
 				_REG(VD2_IF0_CANVAS0));
 		writel_relaxed(priv->viu.vd1_if0_canvas0,
-				priv->io_base + meson_crtc->viu_offset +
+				priv->io_base + meson_crtc->vd2_offset +
 				_REG(VD2_IF0_CANVAS1));
 		writel_relaxed(priv->viu.vd1_if0_luma_x0,
 				priv->io_base + meson_crtc->viu_offset +
@@ -516,10 +598,10 @@ void meson_crtc_irq(struct meson_drm *priv)
 				priv->io_base + meson_crtc->viu_offset +
 				_REG(VD1_IF0_LUMA_X1));
 		writel_relaxed(priv->viu.vd1_if0_luma_x0,
-				priv->io_base + meson_crtc->viu_offset +
+				priv->io_base + meson_crtc->vd2_offset +
 				_REG(VD2_IF0_LUMA_X0));
 		writel_relaxed(priv->viu.vd1_if0_luma_x0,
-				priv->io_base + meson_crtc->viu_offset +
+				priv->io_base + meson_crtc->vd2_offset +
 				_REG(VD2_IF0_LUMA_X1));
 		writel_relaxed(priv->viu.vd1_if0_luma_y0,
 				priv->io_base + meson_crtc->viu_offset +
@@ -528,10 +610,10 @@ void meson_crtc_irq(struct meson_drm *priv)
 				priv->io_base + meson_crtc->viu_offset +
 				_REG(VD1_IF0_LUMA_Y1));
 		writel_relaxed(priv->viu.vd1_if0_luma_y0,
-				priv->io_base + meson_crtc->viu_offset +
+				priv->io_base + meson_crtc->vd2_offset +
 				_REG(VD2_IF0_LUMA_Y0));
 		writel_relaxed(priv->viu.vd1_if0_luma_y0,
-				priv->io_base + meson_crtc->viu_offset +
+				priv->io_base + meson_crtc->vd2_offset +
 				_REG(VD2_IF0_LUMA_Y1));
 		writel_relaxed(priv->viu.vd1_if0_chroma_x0,
 				priv->io_base + meson_crtc->viu_offset +
@@ -540,10 +622,10 @@ void meson_crtc_irq(struct meson_drm *priv)
 				priv->io_base + meson_crtc->viu_offset +
 				_REG(VD1_IF0_CHROMA_X1));
 		writel_relaxed(priv->viu.vd1_if0_chroma_x0,
-				priv->io_base + meson_crtc->viu_offset +
+				priv->io_base + meson_crtc->vd2_offset +
 				_REG(VD2_IF0_CHROMA_X0));
 		writel_relaxed(priv->viu.vd1_if0_chroma_x0,
-				priv->io_base + meson_crtc->viu_offset +
+				priv->io_base + meson_crtc->vd2_offset +
 				_REG(VD2_IF0_CHROMA_X1));
 		writel_relaxed(priv->viu.vd1_if0_chroma_y0,
 				priv->io_base + meson_crtc->viu_offset +
@@ -552,58 +634,50 @@ void meson_crtc_irq(struct meson_drm *priv)
 				priv->io_base + meson_crtc->viu_offset +
 				_REG(VD1_IF0_CHROMA_Y1));
 		writel_relaxed(priv->viu.vd1_if0_chroma_y0,
-				priv->io_base + meson_crtc->viu_offset +
+				priv->io_base + meson_crtc->vd2_offset +
 				_REG(VD2_IF0_CHROMA_Y0));
 		writel_relaxed(priv->viu.vd1_if0_chroma_y0,
-				priv->io_base + meson_crtc->viu_offset +
+				priv->io_base + meson_crtc->vd2_offset +
 				_REG(VD2_IF0_CHROMA_Y1));
 		writel_relaxed(priv->viu.vd1_if0_repeat_loop,
 				priv->io_base + meson_crtc->viu_offset +
 				_REG(VD1_IF0_RPT_LOOP));
 		writel_relaxed(priv->viu.vd1_if0_repeat_loop,
-				priv->io_base + meson_crtc->viu_offset +
+				priv->io_base + meson_crtc->vd2_offset +
 				_REG(VD2_IF0_RPT_LOOP));
 		writel_relaxed(priv->viu.vd1_if0_luma0_rpt_pat,
 				priv->io_base + meson_crtc->viu_offset +
 				_REG(VD1_IF0_LUMA0_RPT_PAT));
 		writel_relaxed(priv->viu.vd1_if0_luma0_rpt_pat,
-				priv->io_base + meson_crtc->viu_offset +
+				priv->io_base + meson_crtc->vd2_offset +
 				_REG(VD2_IF0_LUMA0_RPT_PAT));
 		writel_relaxed(priv->viu.vd1_if0_luma0_rpt_pat,
 				priv->io_base + meson_crtc->viu_offset +
 				_REG(VD1_IF0_LUMA1_RPT_PAT));
 		writel_relaxed(priv->viu.vd1_if0_luma0_rpt_pat,
-				priv->io_base + meson_crtc->viu_offset +
+				priv->io_base + meson_crtc->vd2_offset +
 				_REG(VD2_IF0_LUMA1_RPT_PAT));
 		writel_relaxed(priv->viu.vd1_if0_chroma0_rpt_pat,
 				priv->io_base + meson_crtc->viu_offset +
 				_REG(VD1_IF0_CHROMA0_RPT_PAT));
 		writel_relaxed(priv->viu.vd1_if0_chroma0_rpt_pat,
-				priv->io_base + meson_crtc->viu_offset +
+				priv->io_base + meson_crtc->vd2_offset +
 				_REG(VD2_IF0_CHROMA0_RPT_PAT));
 		writel_relaxed(priv->viu.vd1_if0_chroma0_rpt_pat,
 				priv->io_base + meson_crtc->viu_offset +
 				_REG(VD1_IF0_CHROMA1_RPT_PAT));
 		writel_relaxed(priv->viu.vd1_if0_chroma0_rpt_pat,
-				priv->io_base + meson_crtc->viu_offset +
+				priv->io_base + meson_crtc->vd2_offset +
 				_REG(VD2_IF0_CHROMA1_RPT_PAT));
 		writel_relaxed(0, priv->io_base + meson_crtc->viu_offset +
 				_REG(VD1_IF0_LUMA_PSEL));
 		writel_relaxed(0, priv->io_base + meson_crtc->viu_offset +
 				_REG(VD1_IF0_CHROMA_PSEL));
-		writel_relaxed(0, priv->io_base + meson_crtc->viu_offset +
+		writel_relaxed(0, priv->io_base + meson_crtc->vd2_offset +
 				_REG(VD2_IF0_LUMA_PSEL));
-		writel_relaxed(0, priv->io_base + meson_crtc->viu_offset +
+		writel_relaxed(0, priv->io_base + meson_crtc->vd2_offset +
 				_REG(VD2_IF0_CHROMA_PSEL));
-		writel_relaxed(priv->viu.vd1_range_map_y,
-				priv->io_base + meson_crtc->viu_offset +
-				_REG(VD1_IF0_RANGE_MAP_Y));
-		writel_relaxed(priv->viu.vd1_range_map_cb,
-				priv->io_base + meson_crtc->viu_offset +
-				_REG(VD1_IF0_RANGE_MAP_CB));
-		writel_relaxed(priv->viu.vd1_range_map_cr,
-				priv->io_base + meson_crtc->viu_offset +
-				_REG(VD1_IF0_RANGE_MAP_CR));
+
 		writel_relaxed(VPP_VSC_BANK_LENGTH(4) |
 			       VPP_HSC_BANK_LENGTH(4) |
 			       VPP_SC_VD_EN_ENABLE |
@@ -695,10 +769,20 @@ int meson_crtc_create(struct meson_drm *priv)
 		return ret;
 	}
 
-	if (meson_vpu_is_compatible(priv, VPU_COMPATIBLE_G12A)) {
+	if (meson_vpu_is_compatible(priv, VPU_COMPATIBLE_G12A) ||
+	    meson_vpu_is_compatible(priv, VPU_COMPATIBLE_S4)) {
 		meson_crtc->enable_osd1 = meson_g12a_crtc_enable_osd1;
 		meson_crtc->enable_vd1 = meson_g12a_crtc_enable_vd1;
-		meson_crtc->viu_offset = MESON_G12A_VIU_OFFSET;
+
+		if (meson_vpu_is_compatible(priv, VPU_COMPATIBLE_S4)) {
+			meson_crtc->viu_offset = MESON_S4_VIU_OFFSET;
+			meson_crtc->vd2_offset = MESON_S4_VD2_OFFSET;
+			meson_crtc->afbc_offset = MESON_S4_AFBC_OFFSET;
+		} else {
+			meson_crtc->viu_offset = MESON_G12A_VIU_OFFSET;
+			meson_crtc->vd2_offset = MESON_G12A_VIU_OFFSET;
+		}
+
 		meson_crtc->enable_osd1_afbc =
 					meson_crtc_g12a_enable_osd1_afbc;
 		meson_crtc->disable_osd1_afbc =
