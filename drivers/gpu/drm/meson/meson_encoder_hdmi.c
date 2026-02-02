@@ -99,7 +99,7 @@ static void meson_encoder_hdmi_set_vclk(struct meson_encoder_hdmi *encoder_hdmi,
 	hdmi_freq = vclk_freq;
 
 	/* VENC double pixels for 1080i, 720p and YUV420 modes */
-	if (meson_venc_hdmi_venc_repeat(vic) ||
+	if (meson_venc_hdmi_venc_repeat(priv, vic) ||
 	    encoder_hdmi->output_bus_fmt == MEDIA_BUS_FMT_UYYVYY8_0_5X24)
 		venc_freq *= 2;
 
@@ -107,6 +107,11 @@ static void meson_encoder_hdmi_set_vclk(struct meson_encoder_hdmi *encoder_hdmi,
 
 	if (mode->flags & DRM_MODE_FLAG_DBLCLK)
 		venc_freq /= 2;
+
+	/* VCLK double pixels for 480p and 576p on S4 */
+	if (meson_vpu_is_compatible(priv, VPU_COMPATIBLE_S4))
+		if (vic == 2 || vic == 3 || vic == 17 || vic == 18)
+			vclk_freq *= 2;
 
 	dev_dbg(priv->dev,
 		"phy:%lluHz vclk=%lluHz venc=%lluHz hdmi=%lluHz enci=%d\n",
@@ -149,7 +154,7 @@ static enum drm_mode_status meson_encoder_hdmi_mode_valid(struct drm_bridge *bri
 
 		return meson_vclk_dmt_supported_freq(priv, clock);
 	/* Check against supported VIC modes */
-	} else if (!meson_venc_hdmi_supported_vic(vic))
+	} else if (!meson_venc_hdmi_supported_vic(priv, vic))
 		return MODE_BAD;
 
 	vclk_freq = clock;
@@ -171,7 +176,7 @@ static enum drm_mode_status meson_encoder_hdmi_mode_valid(struct drm_bridge *bri
 	hdmi_freq = vclk_freq;
 
 	/* VENC double pixels for 1080i, 720p and YUV420 modes */
-	if (meson_venc_hdmi_venc_repeat(vic) ||
+	if (meson_venc_hdmi_venc_repeat(priv, vic) ||
 	    drm_mode_is_420_only(display_info, mode) ||
 	    (!is_hdmi2_sink &&
 	     drm_mode_is_420_also(display_info, mode)))
@@ -181,6 +186,11 @@ static enum drm_mode_status meson_encoder_hdmi_mode_valid(struct drm_bridge *bri
 
 	if (mode->flags & DRM_MODE_FLAG_DBLCLK)
 		venc_freq /= 2;
+
+	/* VCLK double pixels for 480p and 576p on S4 */
+	if (meson_vpu_is_compatible(priv, VPU_COMPATIBLE_S4))
+		if (vic == 2 || vic == 3 || vic == 17 || vic == 18)
+			vclk_freq *= 2;
 
 	dev_dbg(priv->dev,
 		"%s: vclk:%lluHz phy=%lluHz venc=%lluHz hdmi=%lluHz\n",
@@ -449,7 +459,8 @@ int meson_encoder_hdmi_probe(struct meson_drm *priv)
 
 	if (meson_vpu_is_compatible(priv, VPU_COMPATIBLE_GXL) ||
 	    meson_vpu_is_compatible(priv, VPU_COMPATIBLE_GXM) ||
-	    meson_vpu_is_compatible(priv, VPU_COMPATIBLE_G12A))
+	    meson_vpu_is_compatible(priv, VPU_COMPATIBLE_G12A) ||
+	    meson_vpu_is_compatible(priv, VPU_COMPATIBLE_S4))
 		drm_connector_attach_hdr_output_metadata_property(meson_encoder_hdmi->connector);
 
 	drm_connector_attach_max_bpc_property(meson_encoder_hdmi->connector, 8, 8);

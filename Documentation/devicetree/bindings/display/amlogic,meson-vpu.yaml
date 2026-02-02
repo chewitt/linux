@@ -65,14 +65,13 @@ properties:
           - const: amlogic,meson-gx-vpu
       - enum:
           - amlogic,meson-g12a-vpu # G12A (S905X2, S905Y2, S905D2)
+          - amlogic,meson-s4-vpu # S4 (S905Y4)
 
   reg:
-    maxItems: 2
+    minItems: 2
 
   reg-names:
-    items:
-      - const: vpu
-      - const: hhi
+    minItems: 2
 
   interrupts:
     maxItems: 1
@@ -115,6 +114,47 @@ required:
   - "#address-cells"
   - "#size-cells"
   - amlogic,canvas
+
+allOf:
+  - if:
+      properties:
+        compatible:
+          contains:
+            const: amlogic,meson-s4-vpu
+    then:
+      properties:
+        reg:
+          items:
+            - description: vcbus registers
+            - description: hhi registers
+            - description: clkctrl registers
+            - description: power control registers
+            - description: sysctrl registers
+        reg-names:
+          items:
+            - const: vpu
+            - const: hhi
+            - const: clkctrl
+            - const: pwctrl
+            - const: sysctrl
+        clocks:
+          items:
+            - description: vpu clock
+            - description: vapb clock
+        clock-names:
+          items:
+            - const: vpu
+            - const: vapb
+    else:
+      properties:
+        reg:
+          items:
+            - description: vcbus registers
+            - description: hhi registers
+        reg-names:
+          items:
+            - const: vpu
+            - const: hhi
 
 additionalProperties: false
 

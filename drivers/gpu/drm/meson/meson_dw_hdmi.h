@@ -8,6 +8,16 @@
 #ifndef __MESON_DW_HDMI_H
 #define __MESON_DW_HDMI_H
 
+/* TOP-level wrapper registers addresses
+ * bit24: 1 means secure access
+ * bit28: 1 means DWC, 0 means TOP
+ */
+#define TOP_SEC_OFFSET_MASK                     BIT(24)
+#define DWC_SEC_OFFSET_MASK                     (BIT(24) | BIT(28))
+
+#define HDMI_SEC_READ_REG                       (0x82000018)
+#define HDMI_SEC_WRITE_REG                      (0x82000019)
+
 /*
  * Bit 15-10: RW Reserved. Default 1 starting from G12A
  * Bit 9 RW sw_reset_i2c starting from G12A
@@ -156,5 +166,121 @@
  * Bit     0 R  filtered HPD status.
  */
 #define HDMITX_TOP_STAT0                        (0x00E)
+
+#define HDMITX_TOP_SKP_CNTL_STAT                (0x010)
+#define HDMITX_TOP_NONCE_0                      (0x011)
+#define HDMITX_TOP_NONCE_1                      (0x012)
+#define HDMITX_TOP_NONCE_2                      (0x013)
+#define HDMITX_TOP_NONCE_3                      (0x014)
+#define HDMITX_TOP_PKF_0                        (0x015)
+#define HDMITX_TOP_PKF_1                        (0x016)
+#define HDMITX_TOP_PKF_2                        (0x017)
+#define HDMITX_TOP_PKF_3                        (0x018)
+#define HDMITX_TOP_DUK_0                        (0x019)
+#define HDMITX_TOP_DUK_1                        (0x01A)
+#define HDMITX_TOP_DUK_2                        (0x01B)
+#define HDMITX_TOP_DUK_3                        (0x01C)
+
+/* [26:24] infilter_ddc_intern_clk_divide */
+/* [23:16] infilter_ddc_sample_clk_divide */
+/* [10: 8] infilter_cec_intern_clk_divide */
+/* [ 7: 0] infilter_cec_sample_clk_divide */
+#define HDMITX_TOP_INFILTER                     (0x01D)
+#define HDMITX_TOP_NSEC_SCRATCH                 (0x01E)
+#define HDMITX_TOP_SEC_SCRATCH                  (0x01F)
+#define HDMITX_TOP_EMP_CNTL0                    (0x020)
+#define HDMITX_TOP_EMP_CNTL1                    (0x021)
+#define HDMITX_TOP_EMP_MEMADDR_START            (0x022)
+#define HDMITX_TOP_EMP_STAT0                    (0x023)
+#define HDMITX_TOP_EMP_STAT1                    (0x024)
+#define HDMITX_TOP_AXI_ASYNC_CNTL0              (0x025)
+#define HDMITX_TOP_AXI_ASYNC_CNTL1              (0x026)
+#define HDMITX_TOP_AXI_ASYNC_STAT0              (0x027)
+#define HDMITX_TOP_I2C_BUSY_CNT_MAX             (0x028)
+#define HDMITX_TOP_I2C_BUSY_CNT_STAT            (0x029)
+#define HDMITX_TOP_HDCP22_BSOD                  (0x02A)
+#define HDMITX_TOP_DDC_CNTL                     (0x02B)
+#define HDMITX_TOP_DISABLE_NULL                 (0x030)
+#define HDMITX_TOP_HDCP14_UNENCRYPT             (0x031)
+#define HDMITX_TOP_MISC_CNTL                    (0x032)
+#define HDMITX_TOP_HDCP22_MIN_SIZE              (0x035)
+
+#define HDMITX_TOP_DONT_TOUCH0                  (0x0FE)
+#define HDMITX_TOP_DONT_TOUCH1                  (0x0FF)
+
+/* DWC_HDMI_TX Controller SEC registers addresses */
+/* Main Controller Registers */
+/* [  6] hdcpclk_disable */
+/* [  5] cecclk_disable */
+/* [  4] cscclk_disable */
+/* [  3] audclk_disable */
+/* [  2] prepclk_disable */
+/* [  1] tmdsclk_disable */
+/* [  0] pixelclk_disable */
+#define HDMITX_DWC_MC_CLKDIS                    (0x4001)
+
+/* HDCP Encryption Engine Registers */
+#define HDMITX_DWC_A_HDCPCFG0                   (0x5000)
+
+/* [  4] hdcp_lock */
+/* [  3] dissha1check */
+/* [  2] ph2upshiftenc */
+/* [  1] encryptiondisable */
+/* [  0] swresetn. Write 0 to activate, self-clear to 1. */
+#define HDMITX_DWC_A_HDCPCFG1                   (0x5001)
+
+/* Encrypted DPK Embedded Storage Registers */
+#define HDMITX_DWC_HDCPREG_SEED0                (0x7810)
+#define HDMITX_DWC_HDCPREG_SEED1                (0x7811)
+#define HDMITX_DWC_HDCPREG_DPK0                 (0x7812)
+#define HDMITX_DWC_HDCPREG_DPK1                 (0x7813)
+#define HDMITX_DWC_HDCPREG_DPK2                 (0x7814)
+#define HDMITX_DWC_HDCPREG_DPK3                 (0x7815)
+#define HDMITX_DWC_HDCPREG_DPK4                 (0x7816)
+#define HDMITX_DWC_HDCPREG_DPK5                 (0x7817)
+#define HDMITX_DWC_HDCPREG_DPK6                 (0x7818)
+
+/* HDCP22 Registers */
+#define HDMITX_DWC_HDCP22REG_CTRL               (0x7904)
+
+/* TOP Block Communication Channel */
+#define HDMITX_TOP_ADDR_REG                     0x0
+#define HDMITX_TOP_DATA_REG                     0x4
+#define HDMITX_TOP_CTRL_REG                     0x8
+#define HDMITX_TOP_G12A_OFFSET                  0x8000
+#define HDMITX_TOP_S4_OFFSET                    0x8000
+
+/* Controller Communication Channel */
+#define HDMITX_DWC_ADDR_REG                     0x10
+#define HDMITX_DWC_DATA_REG                     0x14
+#define HDMITX_DWC_CTRL_REG                     0x18
+
+/* HHI Registers */
+#define HHI_MEM_PD_REG0                         0x100 /* 0x40 */
+#define HHI_HDMI_CLK_CNTL                       0x1cc /* 0x73 */
+#define HHI_HDMI_PHY_CNTL0                      0x3a0 /* 0xe8 */
+#define HHI_HDMI_PHY_CNTL1                      0x3a4 /* 0xe9 */
+#define HHI_HDMI_PHY_CNTL2                      0x3a8 /* 0xea */
+#define HHI_HDMI_PHY_CNTL3                      0x3ac /* 0xeb */
+#define HHI_HDMI_PHY_CNTL4                      0x3b0 /* 0xec */
+#define HHI_HDMI_PHY_CNTL5                      0x3b4 /* 0xed */
+
+/*ANA Registers */
+/* REG_BASE:  REGISTER_BASE_ADDR = 0xfe00c000 */
+#define PWRCTRL_MEM_PD11                        0x06c  /* 0x1b */
+
+/* REG_BASE:  REGISTER_BASE_ADDR = 0xfe000000 */
+#define CLKCTRL_HDMI_CLK_CTRL                   0x0e0  /* 0x38 */
+
+/* REG_BASE:  REGISTER_BASE_ADDR = 0xfe008000 */
+#define ANACTRL_HDMIPHY_CTRL0                   0x200  /* 0x80 */
+#define ANACTRL_HDMIPHY_CTRL1                   0x204  /* 0x81 */
+#define PHY_CNTL1_INIT                          0x03900000
+#define PHY_INVERT                              BIT(17)
+#define ANACTRL_HDMIPHY_CTRL2                   0x208  /* 0x82 */
+#define ANACTRL_HDMIPHY_CTRL3                   0x20c  /* 0x83 */
+#define ANACTRL_HDMIPHY_CTRL4                   0x210  /* 0x84 */
+#define ANACTRL_HDMIPHY_CTRL5                   0x214  /* 0x85 */
+#define ANACTRL_HDMIPHY_STS                     0x218  /* 0x86 */
 
 #endif /* __MESON_DW_HDMI_H */
