@@ -208,6 +208,14 @@ static const struct amlogic_thermal_soc_calib_data amlogic_thermal_g12a = {
 	.n = 324,
 };
 
+// todo: provide correct values as these are probably wrong for s4....
+static const struct amlogic_thermal_soc_calib_data amlogic_thermal_s4 = {
+	.A = 9411,
+	.B = 1159, 
+	.m = 424,
+	.n = 324,
+};
+
 static const struct amlogic_thermal_data amlogic_thermal_g12a_cpu_param = {
 	.u_efuse_off = 0x128,
 	.calibration_parameters = &amlogic_thermal_g12a,
@@ -226,6 +234,12 @@ static const struct amlogic_thermal_data amlogic_thermal_a1_cpu_param = {
 	.regmap_config = &amlogic_thermal_regmap_config_g12a,
 };
 
+static const struct amlogic_thermal_data amlogic_thermal_s4_cpu_param = {
+	.u_efuse_off = 0x128,
+	.calibration_parameters = &amlogic_thermal_s4,
+	.regmap_config = &amlogic_thermal_regmap_config_g12a,
+};
+
 static const struct of_device_id of_amlogic_thermal_match[] = {
 	{
 		.compatible = "amlogic,g12a-ddr-thermal",
@@ -238,6 +252,10 @@ static const struct of_device_id of_amlogic_thermal_match[] = {
 	{
 		.compatible = "amlogic,a1-cpu-thermal",
 		.data = &amlogic_thermal_a1_cpu_param,
+	},
+	{
+		.compatible = "amlogic,s4-cpu-thermal",
+		.data = &amlogic_thermal_s4_cpu_param,
 	},
 	{ /* sentinel */ }
 };
