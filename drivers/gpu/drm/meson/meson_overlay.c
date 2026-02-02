@@ -81,6 +81,7 @@
 
 /* AFBC_ENABLE */
 #define AFBC_DEC_ENABLE			BIT(8)
+#define AFBC_DOS_UNCOMP			BIT(19)
 #define AFBC_FRM_START			BIT(0)
 
 /* AFBC_MODE */
@@ -110,6 +111,8 @@
 
 /* AFBC_CONV_CTRL */
 #define AFBC_CONV_LBUF_LEN(value)	FIELD_PREP(GENMASK(11, 0), value)
+#define AFBC_CONV_FMT(value)		FIELD_PREP(GENMASK(13, 12), value)
+#define AFBC_CONV_FMT_420		AFBC_CONV_FMT(2)
 
 /* AFBC_LBUF_DEPTH */
 #define AFBC_DEC_LBUF_DEPTH(value)	FIELD_PREP(GENMASK(27, 16), value)
@@ -490,6 +493,7 @@ static void meson_overlay_atomic_update(struct drm_plane *plane,
 	if ((fb->modifier & DRM_FORMAT_MOD_AMLOGIC_FBC(0, 0)) ==
 			    DRM_FORMAT_MOD_AMLOGIC_FBC(0, 0)) {
 		priv->viu.vd1_afbc = true;
+		priv->viu.vd1_10bit = false;
 
 		priv->viu.vd1_afbc_mode = AFBC_MIF_URGENT(3) |
 					  AFBC_HOLD_LINE_NUM(8) |
@@ -507,6 +511,15 @@ static void meson_overlay_atomic_update(struct drm_plane *plane,
 
 		priv->viu.vd1_afbc_conv_ctrl = AFBC_CONV_LBUF_LEN(256);
 
+		/*
+		 * The newer S4 AFBC decoder needs the source and chroma
+		 * format of decoder output spelled out.
+		 */
+		if (meson_vpu_is_compatible(priv, VPU_COMPATIBLE_S4)) {
+			priv->viu.vd1_afbc_en |= AFBC_DOS_UNCOMP;
+			priv->viu.vd1_afbc_conv_ctrl |= AFBC_CONV_FMT_420;
+		}
+
 		priv->viu.vd1_afbc_dec_def_color = AFBC_DEF_COLOR_Y(1023);
 
 		/* 420: horizontal / 2, vertical / 4 */
@@ -521,6 +534,7 @@ static void meson_overlay_atomic_update(struct drm_plane *plane,
 		switch (fb->format->format) {
 		/* AFBC Only formats */
 		case DRM_FORMAT_YUV420_10BIT:
+			priv->viu.vd1_10bit = true;
 			priv->viu.vd1_afbc_mode |=
 				AFBC_COMPBITS_YUV(AFBC_COMPBITS_10BIT);
 			priv->viu.vd1_afbc_dec_def_color |=
@@ -734,7 +748,12 @@ static void meson_overlay_atomic_disable(struct drm_plane *plane,
 	priv->viu.vd1_enabled = false;
 
 	/* Disable VD1 */
-	if (meson_vpu_is_compatible(priv, VPU_COMPATIBLE_G12A)) {
+	if (meson_vpu_is_compatible(priv, VPU_COMPATIBLE_S4)) {
+		writel_relaxed(0, priv->io_base + _REG(VD1_BLEND_SRC_CTRL));
+		writel_relaxed(0, priv->io_base + _REG(VD2_BLEND_SRC_CTRL));
+		writel_relaxed(0, priv->io_base + _REG(VD1_IF0_GEN_REG_S4));
+		writel_relaxed(0, priv->io_base + _REG(VD2_IF0_GEN_REG_S4));
+	} else if (meson_vpu_is_compatible(priv, VPU_COMPATIBLE_G12A)) {
 		writel_relaxed(0, priv->io_base + _REG(VD1_BLEND_SRC_CTRL));
 		writel_relaxed(0, priv->io_base + _REG(VD2_BLEND_SRC_CTRL));
 		writel_relaxed(0, priv->io_base + _REG(VD1_IF0_GEN_REG + 0x17b0));

@@ -25,5 +25,6 @@ struct meson_afbcd_ops {
 
 extern struct meson_afbcd_ops meson_afbcd_gxm_ops;
 extern struct meson_afbcd_ops meson_afbcd_g12a_ops;
+extern struct meson_afbcd_ops meson_afbcd_s4_ops;
 
 #endif /* __MESON_OSD_AFBCD_H */
