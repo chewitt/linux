@@ -55,6 +55,7 @@ properties:
           - const: amlogic,meson-gx-dw-hdmi
       - enum:
           - amlogic,meson-g12a-dw-hdmi # G12A (S905X2, S905Y2, S905D2)
+          - amlogic,meson-s4-dw-hdmi # S4 (S905Y4)
 
   reg:
     maxItems: 1
