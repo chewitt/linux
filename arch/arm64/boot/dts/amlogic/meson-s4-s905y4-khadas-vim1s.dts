@@ -42,6 +42,14 @@
 		};
 	};
 
+	linux,cma {
+		compatible = "shared-dma-pool";
+		reusable;
+		size = <0x0 0x10000000>;
+		alignment = <0x0 0x400000>;
+		linux,cma-default;
+	};
+
 	adc-keys {
 		compatible = "adc-keys";
 		io-channels = <&saradc 0>;
@@ -142,6 +150,13 @@
 		regulator-max-microvolt = <1800000>;
 		vin-supply = <&vddao_3v3>;
 		regulator-always-on;
+	};
+
+	vdd_gpu: regulator-vdd-gpu {
+		compatible = "regulator-fixed";
+		regulator-name = "vdd-gpu";
+		regulator-min-microvolt = <800000>;
+		regulator-max-microvolt = <800000>;
 	};
 
 	/* SY8120B1ABC DC/DC Regulator. */
@@ -263,6 +278,11 @@
 	status = "okay";
 	phy-handle = <&internal_ephy>;
 	phy-mode = "rmii";
+};
+
+&gpu {
+	mali-supply = <&vdd_gpu>;
+	status = "okay";
 };
 
 &i2c1 {
