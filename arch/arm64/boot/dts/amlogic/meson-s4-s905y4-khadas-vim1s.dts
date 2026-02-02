@@ -376,3 +376,19 @@
 &uart_b {
 	status = "okay";
 };
+
+&usb {
+	status = "okay";
+};
+
+&usb2_phy0 {
+	status = "okay";
+	portnum = <2>;
+};
+
+&usb2_phy1 {
+	status = "okay";
+	portnum = <2>;
+	gpio-vbus-power = "GPIOH_6";
+	gpios = <&gpio GPIOH_6 GPIO_ACTIVE_HIGH>;
+};
