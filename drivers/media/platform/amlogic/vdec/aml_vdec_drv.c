@@ -20,7 +20,7 @@ static int fops_vcodec_open(struct file *file)
 	struct aml_vdec_ctx *ctx = NULL;
 	int ret = 0;
 
-	ctx = kzalloc_obj(*ctx, GFP_KERNEL);
+	ctx = kzalloc(sizeof(*ctx), GFP_KERNEL);
 	if (!ctx)
 		return -ENOMEM;
 

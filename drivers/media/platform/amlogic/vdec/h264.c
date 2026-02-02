@@ -1952,7 +1952,7 @@ int aml_h264_init(void *priv)
 	struct aml_h264_ctx *h264_ctx;
 	int ret = 0;
 
-	h264_ctx = kzalloc_obj(*h264_ctx, GFP_KERNEL);
+	h264_ctx = kzalloc(sizeof(*h264_ctx), GFP_KERNEL);
 	if (!h264_ctx)
 		return -ENOMEM;
 
