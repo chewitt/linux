@@ -126,6 +126,7 @@ int panfrost_devfreq_init(struct panfrost_device *pfdev)
 	struct thermal_cooling_device *cooling;
 	struct panfrost_devfreq *pfdevfreq = &pfdev->pfdevfreq;
 	unsigned long freq = ULONG_MAX;
+	const char *governor_name;
 
 	if (pfdev->comp->num_supplies > 1) {
 		/*
@@ -198,16 +199,25 @@ int panfrost_devfreq_init(struct panfrost_device *pfdev)
 
 	dev_pm_opp_put(opp);
 
-	/*
-	 * Setup default thresholds for the simple_ondemand governor.
-	 * The values are chosen based on experiments.
-	 */
-	pfdevfreq->gov_data.upthreshold = 45;
-	pfdevfreq->gov_data.downdifferential = 5;
+	if (of_device_is_compatible(dev->of_node, "amlogic,meson-s4-mali")) {
+		/*
+		 * S4 does not currently support devfreq so force max freq
+		 */
+		governor_name = DEVFREQ_GOV_PERFORMANCE;
+		DRM_DEV_INFO(dev, "forcing DEVFREQ_GOV_PERFORMANCE\n");
+	} else {
+		governor_name = DEVFREQ_GOV_SIMPLE_ONDEMAND;
+		/*
+		 * Setup default thresholds for the simple_ondemand governor.
+		 * The values are chosen based on experiments.
+		 */
+		pfdevfreq->gov_data.upthreshold = 45;
+		pfdevfreq->gov_data.downdifferential = 5;
+	}
 
 	devfreq = devm_devfreq_add_device(dev, &panfrost_devfreq_profile,
-					  DEVFREQ_GOV_SIMPLE_ONDEMAND,
-					  &pfdevfreq->gov_data);
+					  governor_name,
+					  (governor_name == DEVFREQ_GOV_SIMPLE_ONDEMAND) ? &pfdevfreq->gov_data : NULL);
 	if (IS_ERR(devfreq)) {
 		DRM_DEV_ERROR(dev, "Couldn't initialize GPU devfreq\n");
 		return PTR_ERR(devfreq);
