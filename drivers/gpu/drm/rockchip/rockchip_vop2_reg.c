@@ -861,6 +861,13 @@ static const struct vop2_win_data rk3576_vop_win_data[] = {
 		.format_modifiers = format_modifiers_rk3576_afbc,
 		.layer_sel_id = { 0, 0, 0xf, 0xf },
 		.supported_rotations =  DRM_MODE_REFLECT_X | DRM_MODE_REFLECT_Y,
+		.supported_color_encodings = BIT(DRM_COLOR_YCBCR_BT601) |
+					     BIT(DRM_COLOR_YCBCR_BT709) |
+					     BIT(DRM_COLOR_YCBCR_BT2020),
+		.default_color_encoding = DRM_COLOR_YCBCR_BT709,
+		.supported_color_ranges = BIT(DRM_COLOR_YCBCR_LIMITED_RANGE) |
+					  BIT(DRM_COLOR_YCBCR_FULL_RANGE),
+		.default_color_range = DRM_COLOR_YCBCR_LIMITED_RANGE,
 		.type = DRM_PLANE_TYPE_PRIMARY,
 		.axi_bus_id = 0,
 		.axi_yrgb_r_id = 0xa,
@@ -878,6 +885,13 @@ static const struct vop2_win_data rk3576_vop_win_data[] = {
 		.format_modifiers = format_modifiers_rk3576_afbc,
 		.layer_sel_id = { 1, 1, 0xf, 0xf },
 		.supported_rotations =  DRM_MODE_REFLECT_X | DRM_MODE_REFLECT_Y,
+		.supported_color_encodings = BIT(DRM_COLOR_YCBCR_BT601) |
+					     BIT(DRM_COLOR_YCBCR_BT709) |
+					     BIT(DRM_COLOR_YCBCR_BT2020),
+		.default_color_encoding = DRM_COLOR_YCBCR_BT709,
+		.supported_color_ranges = BIT(DRM_COLOR_YCBCR_LIMITED_RANGE) |
+					  BIT(DRM_COLOR_YCBCR_FULL_RANGE),
+		.default_color_range = DRM_COLOR_YCBCR_LIMITED_RANGE,
 		.type = DRM_PLANE_TYPE_PRIMARY,
 		.axi_bus_id = 0,
 		.axi_yrgb_r_id = 6,
@@ -895,6 +909,13 @@ static const struct vop2_win_data rk3576_vop_win_data[] = {
 		.format_modifiers = format_modifiers,
 		.layer_sel_id = { 2, 0xf, 0, 0xf },
 		.supported_rotations = DRM_MODE_REFLECT_Y,
+		.supported_color_encodings = BIT(DRM_COLOR_YCBCR_BT601) |
+					     BIT(DRM_COLOR_YCBCR_BT709) |
+					     BIT(DRM_COLOR_YCBCR_BT2020),
+		.default_color_encoding = DRM_COLOR_YCBCR_BT709,
+		.supported_color_ranges = BIT(DRM_COLOR_YCBCR_LIMITED_RANGE) |
+					  BIT(DRM_COLOR_YCBCR_FULL_RANGE),
+		.default_color_range = DRM_COLOR_YCBCR_LIMITED_RANGE,
 		.type = DRM_PLANE_TYPE_OVERLAY,
 		.axi_bus_id = 0,
 		.axi_yrgb_r_id = 0x10,
@@ -911,6 +932,13 @@ static const struct vop2_win_data rk3576_vop_win_data[] = {
 		.format_modifiers = format_modifiers,
 		.layer_sel_id = { 0xf, 2, 1, 0xf },
 		.supported_rotations = DRM_MODE_REFLECT_Y,
+		.supported_color_encodings = BIT(DRM_COLOR_YCBCR_BT601) |
+					     BIT(DRM_COLOR_YCBCR_BT709) |
+					     BIT(DRM_COLOR_YCBCR_BT2020),
+		.default_color_encoding = DRM_COLOR_YCBCR_BT709,
+		.supported_color_ranges = BIT(DRM_COLOR_YCBCR_LIMITED_RANGE) |
+					  BIT(DRM_COLOR_YCBCR_FULL_RANGE),
+		.default_color_range = DRM_COLOR_YCBCR_LIMITED_RANGE,
 		.type = DRM_PLANE_TYPE_OVERLAY,
 		.axi_bus_id = 0,
 		.axi_yrgb_r_id = 0x12,
@@ -927,6 +955,13 @@ static const struct vop2_win_data rk3576_vop_win_data[] = {
 		.format_modifiers = format_modifiers,
 		.layer_sel_id = { 3, 0xf, 2, 0xf },
 		.supported_rotations = DRM_MODE_REFLECT_Y,
+		.supported_color_encodings = BIT(DRM_COLOR_YCBCR_BT601) |
+					     BIT(DRM_COLOR_YCBCR_BT709) |
+					     BIT(DRM_COLOR_YCBCR_BT2020),
+		.default_color_encoding = DRM_COLOR_YCBCR_BT709,
+		.supported_color_ranges = BIT(DRM_COLOR_YCBCR_LIMITED_RANGE) |
+					  BIT(DRM_COLOR_YCBCR_FULL_RANGE),
+		.default_color_range = DRM_COLOR_YCBCR_LIMITED_RANGE,
 		.type = DRM_PLANE_TYPE_OVERLAY,
 		.axi_bus_id = 1,
 		.axi_yrgb_r_id = 0x0a,
@@ -943,6 +978,13 @@ static const struct vop2_win_data rk3576_vop_win_data[] = {
 		.format_modifiers = format_modifiers,
 		.layer_sel_id = { 0xf, 3, 3, 0xf },
 		.supported_rotations = DRM_MODE_REFLECT_Y,
+		.supported_color_encodings = BIT(DRM_COLOR_YCBCR_BT601) |
+					     BIT(DRM_COLOR_YCBCR_BT709) |
+					     BIT(DRM_COLOR_YCBCR_BT2020),
+		.default_color_encoding = DRM_COLOR_YCBCR_BT709,
+		.supported_color_ranges = BIT(DRM_COLOR_YCBCR_LIMITED_RANGE) |
+					  BIT(DRM_COLOR_YCBCR_FULL_RANGE),
+		.default_color_range = DRM_COLOR_YCBCR_LIMITED_RANGE,
 		.type = DRM_PLANE_TYPE_OVERLAY,
 		.axi_bus_id = 1,
 		.axi_yrgb_r_id = 0x0c,
