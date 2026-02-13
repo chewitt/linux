@@ -309,9 +309,9 @@ struct typec_mux *fwnode_typec_mux_get(struct fwnode_handle *fwnode)
 {
 	struct typec_mux_dev *mux_devs[TYPEC_MUX_MAX_DEVS];
 	struct typec_mux *mux;
+	int i, j, k;
 	int count;
 	int err;
-	int i;
 
 	mux = kzalloc(sizeof(*mux), GFP_KERNEL);
 	if (!mux)
@@ -330,6 +330,18 @@ struct typec_mux *fwnode_typec_mux_get(struct fwnode_handle *fwnode)
 		if (IS_ERR(mux_devs[i])) {
 			err = PTR_ERR(mux_devs[i]);
 			goto put_mux_devs;
+		}
+	}
+
+	/* eliminate duplicates */
+	for (i = 0; i < count; i++) {
+		for (j = i + 1; j < count; j++) {
+			if (mux_devs[j] == mux_devs[i]) {
+				put_device(&mux_devs[j]->dev);
+				for (k = j; k < count; k++)
+					mux_devs[k] = mux_devs[k+1];
+				count--;
+			}
 		}
 	}
 
