@@ -481,7 +481,8 @@ void amvdec_src_change(struct amvdec_session *sess, u32 width,
 	    sess->width == width &&
 	    sess->height == height &&
 	    dpb_size <= sess->num_dst_bufs) {
-		sess->fmt_out->codec_ops->resume(sess);
+		if (sess->fmt_out->codec_ops->resume)
+			sess->fmt_out->codec_ops->resume(sess);
 	} else {
 		sess->status = STATUS_NEEDS_RESUME;
 		sess->changed_format = 0;

@@ -226,6 +226,17 @@ static irqreturn_t codec_mpeg12_isr(struct amvdec_session *sess)
 	return IRQ_WAKE_THREAD;
 }
 
+static void codec_mpeg12_resume(struct amvdec_session *sess)
+{
+	/*
+	 * Reconfigure canvas addresses with new capture buffer addresses
+	 * after a source change event triggered buffer reallocation.
+	 */
+	if (amvdec_set_canvases(sess, (u32[]){ AV_SCRATCH_0, 0 },
+				(u32[]){ 8, 0 }))
+		amvdec_abort(sess);
+}
+
 struct amvdec_codec_ops codec_mpeg12_ops = {
 	.start = codec_mpeg12_start,
 	.stop = codec_mpeg12_stop,
@@ -234,4 +245,5 @@ struct amvdec_codec_ops codec_mpeg12_ops = {
 	.can_recycle = codec_mpeg12_can_recycle,
 	.recycle = codec_mpeg12_recycle,
 	.eos_sequence = codec_mpeg12_eos_sequence,
+	.resume = codec_mpeg12_resume,
 };
