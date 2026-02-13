@@ -72,9 +72,9 @@ struct typec_switch *fwnode_typec_switch_get(struct fwnode_handle *fwnode)
 {
 	struct typec_switch_dev *sw_devs[TYPEC_MUX_MAX_DEVS];
 	struct typec_switch *sw;
+	int i, j, k;
 	int count;
 	int err;
-	int i;
 
 	sw = kzalloc(sizeof(*sw), GFP_KERNEL);
 	if (!sw)
@@ -93,6 +93,18 @@ struct typec_switch *fwnode_typec_switch_get(struct fwnode_handle *fwnode)
 		if (IS_ERR(sw_devs[i])) {
 			err = PTR_ERR(sw_devs[i]);
 			goto put_sw_devs;
+		}
+	}
+
+	/* eliminate duplicates */
+	for (i = 0; i < count; i++) {
+		for (j = i + 1; j < count; j++) {
+			if (sw_devs[j] == sw_devs[i]) {
+				put_device(&sw_devs[j]->dev);
+				for (k = j; k < count; k++)
+					sw_devs[k] = sw_devs[k+1];
+				count--;
+			}
 		}
 	}
 
