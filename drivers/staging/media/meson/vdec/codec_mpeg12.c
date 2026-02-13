@@ -40,6 +40,8 @@ struct codec_mpeg12 {
 	/* Buffer for the MPEG1/2 Workspace */
 	void	  *workspace_vaddr;
 	dma_addr_t workspace_paddr;
+	/* Track if we've already reported the resolution */
+	u32	  width, height;
 };
 
 static const u8 eos_sequence[SZ_1K] = { 0x00, 0x00, 0x01, 0xB7 };
@@ -127,6 +129,26 @@ static int codec_mpeg12_stop(struct amvdec_session *sess)
 	return 0;
 }
 
+static void codec_mpeg12_src_change(struct amvdec_session *sess)
+{
+	struct amvdec_core *core = sess->core;
+	struct codec_mpeg12 *mpeg12 = sess->priv;
+	u32 width, height;
+
+	width = amvdec_read_dos(core, MREG_PIC_WIDTH);
+	height = amvdec_read_dos(core, MREG_PIC_HEIGHT);
+
+	if (width == 0 || height == 0)
+		return;
+
+	/* Only report source change if dimensions changed */
+	if (mpeg12->width != width || mpeg12->height != height) {
+		mpeg12->width = width;
+		mpeg12->height = height;
+		amvdec_src_change(sess, width, height, 8, 8);
+	}
+}
+
 static void codec_mpeg12_update_dar(struct amvdec_session *sess)
 {
 	struct amvdec_core *core = sess->core;
@@ -153,6 +175,7 @@ static void codec_mpeg12_update_dar(struct amvdec_session *sess)
 static irqreturn_t codec_mpeg12_threaded_isr(struct amvdec_session *sess)
 {
 	struct amvdec_core *core = sess->core;
+	struct codec_mpeg12 *mpeg12 = sess->priv;
 	u32 reg;
 	u32 pic_info;
 	u32 is_progressive;
@@ -183,6 +206,10 @@ static irqreturn_t codec_mpeg12_threaded_isr(struct amvdec_session *sess)
 		field = (pic_info & PICINFO_TOP_FIRST) ?
 			V4L2_FIELD_INTERLACED_TB :
 			V4L2_FIELD_INTERLACED_BT;
+
+	/* Report detected resolution if not already done */
+	if (mpeg12->width == 0 || mpeg12->height == 0)
+		codec_mpeg12_src_change(sess);
 
 	codec_mpeg12_update_dar(sess);
 	buffer_index = ((reg & 0xf) - 1) & 7;
