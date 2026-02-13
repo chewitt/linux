@@ -689,8 +689,19 @@ static int vdec_enum_framesizes(struct file *file, void *fh,
 	const struct amvdec_format *formats = sess->core->platform->formats;
 	const struct amvdec_format *fmt;
 	u32 num_formats = sess->core->platform->num_formats;
+	unsigned int i;
 
 	fmt = find_format(formats, num_formats, fsize->pixel_format);
+	if (!fmt) {
+		/* Also match capture pixel formats (e.g. NV12M, YUV420M) */
+		for (i = 0; i < num_formats; i++) {
+			if (vdec_supports_pixfmt_cap(&formats[i],
+						     fsize->pixel_format)) {
+				fmt = &formats[i];
+				break;
+			}
+		}
+	}
 	if (!fmt || fsize->index)
 		return -EINVAL;
 
