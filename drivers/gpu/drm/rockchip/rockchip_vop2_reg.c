@@ -633,6 +633,13 @@ static const struct vop2_win_data rk3568_vop_win_data[] = {
 		.base = 0x1a00,
 		.layer_sel_id = { 6, 6, 6, 0xf },
 		.supported_rotations = DRM_MODE_REFLECT_Y,
+		.supported_color_encodings = BIT(DRM_COLOR_YCBCR_BT601) |
+					     BIT(DRM_COLOR_YCBCR_BT709) |
+					     BIT(DRM_COLOR_YCBCR_BT2020),
+		.default_color_encoding = DRM_COLOR_YCBCR_BT709,
+		.supported_color_ranges = BIT(DRM_COLOR_YCBCR_LIMITED_RANGE) |
+					  BIT(DRM_COLOR_YCBCR_FULL_RANGE),
+		.default_color_range = DRM_COLOR_YCBCR_LIMITED_RANGE,
 		.type = DRM_PLANE_TYPE_PRIMARY,
 		.max_upscale_factor = 8,
 		.max_downscale_factor = 8,
@@ -647,6 +654,13 @@ static const struct vop2_win_data rk3568_vop_win_data[] = {
 		.base = 0x1800,
 		.layer_sel_id = { 2, 2, 2, 0xf },
 		.supported_rotations = DRM_MODE_REFLECT_Y,
+		.supported_color_encodings = BIT(DRM_COLOR_YCBCR_BT601) |
+					     BIT(DRM_COLOR_YCBCR_BT709) |
+					     BIT(DRM_COLOR_YCBCR_BT2020),
+		.default_color_encoding = DRM_COLOR_YCBCR_BT709,
+		.supported_color_ranges = BIT(DRM_COLOR_YCBCR_LIMITED_RANGE) |
+					  BIT(DRM_COLOR_YCBCR_FULL_RANGE),
+		.default_color_range = DRM_COLOR_YCBCR_LIMITED_RANGE,
 		.type = DRM_PLANE_TYPE_PRIMARY,
 		.max_upscale_factor = 8,
 		.max_downscale_factor = 8,
@@ -662,6 +676,13 @@ static const struct vop2_win_data rk3568_vop_win_data[] = {
 		.layer_sel_id = { 0, 0, 0, 0xf },
 		.supported_rotations = DRM_MODE_ROTATE_90 | DRM_MODE_ROTATE_270 |
 					DRM_MODE_REFLECT_X | DRM_MODE_REFLECT_Y,
+		.supported_color_encodings = BIT(DRM_COLOR_YCBCR_BT601) |
+					     BIT(DRM_COLOR_YCBCR_BT709) |
+					     BIT(DRM_COLOR_YCBCR_BT2020),
+		.default_color_encoding = DRM_COLOR_YCBCR_BT709,
+		.supported_color_ranges = BIT(DRM_COLOR_YCBCR_LIMITED_RANGE) |
+					  BIT(DRM_COLOR_YCBCR_FULL_RANGE),
+		.default_color_range = DRM_COLOR_YCBCR_LIMITED_RANGE,
 		.max_upscale_factor = 4,
 		.max_downscale_factor = 4,
 		.dly = { 0, 27, 21 },
@@ -678,6 +699,13 @@ static const struct vop2_win_data rk3568_vop_win_data[] = {
 		.layer_sel_id = { 1, 1, 1, 0xf },
 		.supported_rotations = DRM_MODE_ROTATE_90 | DRM_MODE_ROTATE_270 |
 					DRM_MODE_REFLECT_X | DRM_MODE_REFLECT_Y,
+		.supported_color_encodings = BIT(DRM_COLOR_YCBCR_BT601) |
+					     BIT(DRM_COLOR_YCBCR_BT709) |
+					     BIT(DRM_COLOR_YCBCR_BT2020),
+		.default_color_encoding = DRM_COLOR_YCBCR_BT709,
+		.supported_color_ranges = BIT(DRM_COLOR_YCBCR_LIMITED_RANGE) |
+					  BIT(DRM_COLOR_YCBCR_FULL_RANGE),
+		.default_color_range = DRM_COLOR_YCBCR_LIMITED_RANGE,
 		.type = DRM_PLANE_TYPE_OVERLAY,
 		.max_upscale_factor = 4,
 		.max_downscale_factor = 4,
