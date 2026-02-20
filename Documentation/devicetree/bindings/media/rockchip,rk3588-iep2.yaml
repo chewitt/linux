@@ -16,7 +16,9 @@ maintainers:
 
 properties:
   compatible:
-    const: rockchip,rk3588-iep2
+    enum:
+      - rockchip,rk3576-iep2
+      - rockchip,rk3588-iep2
 
   reg:
     maxItems: 1
