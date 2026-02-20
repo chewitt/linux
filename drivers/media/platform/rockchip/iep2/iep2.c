@@ -112,11 +112,13 @@ static void iep2_m2m_dst_bufs_done(struct iep2_ctx *ctx,
 {
 	if (ctx->dst0_buf) {
 		v4l2_m2m_buf_done(ctx->dst0_buf, state);
+		ctx->dst_buffs_done++;
 		ctx->dst0_buf = NULL;
 	}
 
 	if (ctx->dst1_buf) {
 		v4l2_m2m_buf_done(ctx->dst1_buf, state);
+		ctx->dst_buffs_done++;
 		ctx->dst1_buf = NULL;
 	}
 }
@@ -911,19 +913,32 @@ static irqreturn_t iep2_isr(int irq, void *prv)
 	}
 
 	/* Check for errors */
-	if (irq_status & (IEP2_INT_STS_BUS_ERROR | IEP2_INT_STS_TIMEOUT))
+	if (irq_status & (IEP2_INT_STS_BUS_ERROR | IEP2_INT_STS_TIMEOUT)) {
 		state = VB2_BUF_STATE_ERROR;
+		ctx->job_abort = true;
+	}
 
 	/* Return completed destination buffers */
 	iep2_m2m_dst_bufs_done(ctx, state);
 
-	/* Promote current src to prev, return old prev */
-	if (ctx->prev_src_buf)
-		v4l2_m2m_buf_done(ctx->prev_src_buf, state);
+	/* Toggle field for next pass */
+	ctx->field_bff = (ctx->dst_buffs_done % 2 == 0)
+		     ? ctx->field_order_bff : !ctx->field_order_bff;
 
-	ctx->prev_src_buf = v4l2_m2m_src_buf_remove(ctx->fh.m2m_ctx);
+	if (ctx->dst_buffs_done == 2 || ctx->job_abort) {
+		/* Both fields done: promote src buf and finish job */
+		if (ctx->prev_src_buf)
+			v4l2_m2m_buf_done(ctx->prev_src_buf, state);
 
-	v4l2_m2m_job_finish(iep2->m2m_dev, ctx->fh.m2m_ctx);
+		ctx->prev_src_buf =
+			v4l2_m2m_src_buf_remove(ctx->fh.m2m_ctx);
+
+		v4l2_m2m_job_finish(iep2->m2m_dev, ctx->fh.m2m_ctx);
+		ctx->dst_buffs_done = 0;
+	} else {
+		/* First field done, re-run for second field */
+		iep2_device_run(ctx);
+	}
 
 	return IRQ_HANDLED;
 }
