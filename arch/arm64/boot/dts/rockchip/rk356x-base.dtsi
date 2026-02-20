@@ -632,6 +632,30 @@
 		#iommu-cells = <0>;
 	};
 
+	iep2: iep@fdef0000 {
+		compatible = "rockchip,rk3568-iep2";
+		reg = <0x0 0xfdef0000 0x0 0x500>;
+		interrupts = <GIC_SPI 56 IRQ_TYPE_LEVEL_HIGH>;
+		clocks = <&cru ACLK_IEP>, <&cru HCLK_IEP>,
+			 <&cru CLK_IEP_CORE>;
+		clock-names = "aclk", "hclk", "sclk";
+		iommus = <&iep2_mmu>;
+		power-domains = <&power RK3568_PD_RGA>;
+		resets = <&cru SRST_A_IEP>, <&cru SRST_H_IEP>,
+			 <&cru SRST_IEP_CORE>;
+		reset-names = "axi", "ahb", "core";
+	};
+
+	iep2_mmu: iommu@fdef0800 {
+		compatible = "rockchip,rk3568-iommu";
+		reg = <0x0 0xfdef0800 0x0 0x40>;
+		interrupts = <GIC_SPI 56 IRQ_TYPE_LEVEL_HIGH>;
+		clocks = <&cru ACLK_IEP>, <&cru HCLK_IEP>;
+		clock-names = "aclk", "iface";
+		power-domains = <&power RK3568_PD_RGA>;
+		#iommu-cells = <0>;
+	};
+
 	vdec: video-codec@fdf80100 {
 		compatible = "rockchip,rk3568-vdec";
 		reg = <0x0 0xfdf80200 0x0 0x500>,
