@@ -280,6 +280,27 @@ static inline void rockchip_disable_rde(struct regmap *regmap)
 			   I2S_DMACR_RDE_DISABLE);
 }
 
+/*
+ * Pre-fill the TX FIFO with one frame of zero data before enabling DMA.
+ * This works around a hardware timing issue where the first LRCK edge
+ * may appear on an unpredictable BCLK cycle.  For L-PCM, a single
+ * silent frame is inaudible; for bitstream pass-through (NLPCM/HBR)
+ * the correct framing from the very first sample is essential,
+ * otherwise the receiver (AVR/TV) cannot lock onto the audio stream.
+ */
+static void rockchip_i2s_tdm_tx_fifo_padding(struct rk_i2s_tdm_dev *i2s_tdm)
+{
+	unsigned int val, vdw, channels, words, i;
+
+	regmap_read(i2s_tdm->regmap, I2S_TXCR, &val);
+	vdw = ((val & I2S_TXCR_VDW_MASK) >> I2S_TXCR_VDW_SHIFT) + 1;
+	channels = ((val & I2S_TXCR_CSR_MASK) >> I2S_CSR_SHIFT) * 2 + 2;
+	words = channels * vdw / 32;
+
+	for (i = 0; i < words; i++)
+		regmap_write(i2s_tdm->regmap, I2S_TXDR, 0x0);
+}
+
 /* only used when clk_trcm > 0 */
 static void rockchip_snd_txrxctrl(struct snd_pcm_substream *substream,
 				  struct snd_soc_dai *dai, int on)
@@ -288,10 +309,13 @@ static void rockchip_snd_txrxctrl(struct snd_pcm_substream *substream,
 
 	guard(spinlock_irqsave)(&i2s_tdm->lock);
 	if (on) {
-		if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
+		if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
+			rockchip_i2s_tdm_tx_fifo_padding(i2s_tdm);
 			rockchip_enable_tde(i2s_tdm->regmap);
-		else
+			udelay(1);
+		} else {
 			rockchip_enable_rde(i2s_tdm->regmap);
+		}
 
 		if (++i2s_tdm->refcount == 1) {
 			rockchip_snd_xfer_sync_reset(i2s_tdm);
@@ -317,7 +341,9 @@ static void rockchip_snd_txrxctrl(struct snd_pcm_substream *substream,
 static void rockchip_snd_txctrl(struct rk_i2s_tdm_dev *i2s_tdm, int on)
 {
 	if (on) {
+		rockchip_i2s_tdm_tx_fifo_padding(i2s_tdm);
 		rockchip_enable_tde(i2s_tdm->regmap);
+		udelay(1);
 
 		regmap_update_bits(i2s_tdm->regmap, I2S_XFER,
 				   I2S_XFER_TXS_START,
@@ -641,9 +667,13 @@ static int rockchip_i2s_tdm_hw_params(struct snd_pcm_substream *substream,
 				      struct snd_soc_dai *dai)
 {
 	struct rk_i2s_tdm_dev *i2s_tdm = to_info(dai);
+	struct snd_dmaengine_dai_dma_data *dma_data;
 	unsigned int val = 0;
 	unsigned int mclk_rate, bclk_rate, div_bclk = 4, div_lrck = 64;
 	int err;
+
+	dma_data = snd_soc_dai_get_dma_data(dai, substream);
+	dma_data->maxburst = 8 * params_channels(params) / 2;
 
 	if (i2s_tdm->is_master_mode) {
 		struct clk *mclk;
