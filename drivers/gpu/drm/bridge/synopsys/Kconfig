@@ -61,6 +61,7 @@ config DRM_DW_HDMI_QP
 	select DRM_DISPLAY_HELPER
 	select DRM_KMS_HELPER
 	select REGMAP_MMIO
+	select SND_SOC_HDMI_CODEC if SND_SOC
 
 config DRM_DW_HDMI_QP_CEC
 	bool "Synopsis Designware QP CEC interface"
