@@ -1279,6 +1279,30 @@
 			status = "disabled";
 		};
 
+		iep2: iep@27960000 {
+			compatible = "rockchip,rk3576-iep2";
+			reg = <0x0 0x27960000 0x0 0x500>;
+			interrupts = <GIC_SPI 333 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&cru ACLK_VDPP>, <&cru HCLK_VDPP>,
+				 <&cru CLK_CORE_VDPP>;
+			clock-names = "aclk", "hclk", "sclk";
+			iommus = <&iep2_mmu>;
+			power-domains = <&power RK3576_PD_VPU>;
+			resets = <&cru SRST_A_VDPP>, <&cru SRST_H_VDPP>,
+				 <&cru SRST_CORE_VDPP>;
+			reset-names = "axi", "ahb", "core";
+		};
+
+		iep2_mmu: iommu@27960800 {
+			compatible = "rockchip,rk3576-iommu", "rockchip,rk3568-iommu";
+			reg = <0x0 0x27960800 0x0 0x40>;
+			interrupts = <GIC_SPI 333 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&cru ACLK_VDPP>, <&cru HCLK_VDPP>;
+			clock-names = "aclk", "iface";
+			power-domains = <&power RK3576_PD_VPU>;
+			#iommu-cells = <0>;
+		};
+
 		vdec: video-codec@27b00000 {
 			compatible = "rockchip,rk3576-vdec";
 			reg = <0x0 0x27b00100 0x0 0x500>,
