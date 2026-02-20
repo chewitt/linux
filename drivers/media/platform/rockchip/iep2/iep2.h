@@ -39,6 +39,7 @@ struct iep2_frm_fmt {
 	struct v4l2_pix_format pix;
 	unsigned int y_stride;
 	unsigned int uv_stride;
+	unsigned int uv_hw_stride;
 };
 
 struct iep2_ctx {

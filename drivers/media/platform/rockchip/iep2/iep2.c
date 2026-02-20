@@ -5,7 +5,7 @@
  * Copyright (C) 2025 Christian Hewitt <christianshewitt@gmail.com>
  *
  * Based on the Rockchip IEP driver by Alex Bee and the Rockchip vendor
- * userspace IEP2 library.
+ * kernel IEP2 driver.
  */
 
 #include <linux/clk.h>
@@ -126,95 +126,98 @@ static void iep2_setup_formats(struct iep2_ctx *ctx)
 	struct rockchip_iep2 *iep2 = ctx->iep2;
 	struct iep2_frm_fmt *src = &ctx->src_fmt;
 	struct iep2_frm_fmt *dst = &ctx->dst_fmt;
+	unsigned int width = src->pix.width;
+	unsigned int height = src->pix.height;
 
-	iep2_write(iep2, IEP2_SRC_FMT, src->hw_fmt->hw_format);
-	iep2_write(iep2, IEP2_SRC_YUV_SWAP, src->hw_fmt->color_swap);
-	iep2_write(iep2, IEP2_DST_FMT, dst->hw_fmt->hw_format);
-	iep2_write(iep2, IEP2_DST_YUV_SWAP, dst->hw_fmt->color_swap);
+	/* IEP_CONFIG0: packed format fields */
+	iep2_write(iep2, IEP2_CONFIG0,
+		   IEP2_CONFIG0_DEBUG_DATA_EN |
+		   IEP2_CONFIG0_DST_YUV_SWAP(dst->hw_fmt->color_swap) |
+		   IEP2_CONFIG0_DST_FMT(dst->hw_fmt->hw_format) |
+		   IEP2_CONFIG0_SRC_YUV_SWAP(src->hw_fmt->color_swap) |
+		   IEP2_CONFIG0_SRC_FMT(src->hw_fmt->hw_format));
 
-	iep2_write(iep2, IEP2_TILE_COLS,
-		   (src->pix.width + IEP2_TILE_W - 1) / IEP2_TILE_W);
-	iep2_write(iep2, IEP2_TILE_ROWS,
-		   (src->pix.height + IEP2_TILE_H - 1) / IEP2_TILE_H);
+	/* Work mode: must be set to IEP2 mode */
+	iep2_write(iep2, IEP2_WORK_MODE, IEP2_WORK_MODE_IEP2);
 
-	iep2_write(iep2, IEP2_SRC_Y_STRIDE, src->pix.bytesperline / 4);
-	if (src->hw_fmt->color_swap == IEP2_YUV_SWP_P)
-		iep2_write(iep2, IEP2_SRC_UV_STRIDE,
-			   ((src->pix.bytesperline / 2 + 15) / 16 * 16) / 4);
-	else
-		iep2_write(iep2, IEP2_SRC_UV_STRIDE,
-			   src->pix.bytesperline / 4);
-	iep2_write(iep2, IEP2_DST_Y_STRIDE, dst->pix.bytesperline / 4);
+	/* Image size: width-1 and height-1 */
+	iep2_write(iep2, IEP2_SRC_IMG_SIZE,
+		   IEP2_SRC_PIC_WIDTH(width - 1) |
+		   IEP2_SRC_PIC_HEIGHT(height - 1));
+
+	/* Strides: packed Y and UV stride in one register */
+	iep2_write(iep2, IEP2_VIR_SRC_IMG_WIDTH,
+		   IEP2_SRC_VIR_Y_STRIDE(src->pix.bytesperline / 4) |
+		   IEP2_SRC_VIR_UV_STRIDE(src->uv_hw_stride));
+	iep2_write(iep2, IEP2_VIR_DST_IMG_WIDTH,
+		   IEP2_DST_VIR_STRIDE(dst->pix.bytesperline / 4));
 
 	ctx->fmt_changed = false;
 }
 
-static void iep2_setup_defaults(struct rockchip_iep2 *iep2)
+static void iep2_setup_defaults(struct rockchip_iep2 *iep2, u32 md_lambda)
 {
 	unsigned int i;
+	u32 reg;
 
-	/* Motion detection defaults */
-	iep2_write(iep2, IEP2_MD_THETA, 1);
-	iep2_write(iep2, IEP2_MD_R, 6);
-	iep2_write(iep2, IEP2_MD_LAMBDA, 4);
+	/* Timeout config */
+	iep2_write(iep2, IEP2_TIMEOUT_CFG, IEP2_TIMEOUT_CFG_EN | 0x3ffffff);
 
-	/* Detection */
-	iep2_write(iep2, IEP2_DECT_RESI_THR, 30);
+	/* Motion detection: theta, r, lambda packed */
+	iep2_write(iep2, IEP2_MD_CONFIG0,
+		   IEP2_MD_THETA(1) | IEP2_MD_R(6) | IEP2_MD_LAMBDA(md_lambda));
 
-	/* OSD - disabled */
-	iep2_write(iep2, IEP2_OSD_AREA_NUM, 0);
-	iep2_write(iep2, IEP2_OSD_GRADH_THR, 60);
-	iep2_write(iep2, IEP2_OSD_GRADV_THR, 60);
-	iep2_write(iep2, IEP2_OSD_POS_LIMIT_EN, 0);
-	iep2_write(iep2, IEP2_OSD_POS_LIMIT_NUM, 0);
+	/* Detection + OSD params packed */
+	iep2_write(iep2, IEP2_DECT_CONFIG0,
+		   IEP2_DECT_RESI_THR(30) |
+		   IEP2_OSD_AREA_NUM(0) |
+		   IEP2_OSD_GRADH_THR(60) |
+		   IEP2_OSD_GRADV_THR(60));
+
+	/* OSD limit config */
+	iep2_write(iep2, IEP2_OSD_LIMIT_CONFIG, 0);
 	iep2_write(iep2, IEP2_OSD_LIMIT_AREA(0), 0);
 	iep2_write(iep2, IEP2_OSD_LIMIT_AREA(1), 0);
-	iep2_write(iep2, IEP2_OSD_LINE_NUM, 2);
-	iep2_write(iep2, IEP2_OSD_PEC_THR, 20);
-	for (i = 0; i < 8; i++) {
-		iep2_write(iep2, IEP2_OSD_X_STA(i), 0);
-		iep2_write(iep2, IEP2_OSD_X_END(i), 0);
-		iep2_write(iep2, IEP2_OSD_Y_STA(i), 0);
-		iep2_write(iep2, IEP2_OSD_Y_END(i), 0);
-	}
 
-	/* Motion estimation */
-	iep2_write(iep2, IEP2_ME_PENA, 5);
-	iep2_write(iep2, IEP2_MV_BONUS, 10);
-	iep2_write(iep2, IEP2_MV_SIMILAR_THR, 4);
-	iep2_write(iep2, IEP2_MV_SIMILAR_NUM_THR0, 4);
-	iep2_write(iep2, IEP2_ME_THR_OFFSET, 20);
-	iep2_write(iep2, IEP2_MV_LEFT_LIMIT, 28);
-	iep2_write(iep2, IEP2_MV_RIGHT_LIMIT, 27);
+	/* OSD config: line_num + pec_thr packed */
+	iep2_write(iep2, IEP2_OSD_CONFIG0,
+		   IEP2_OSD_LINE_NUM(2) | IEP2_OSD_PEC_THR(20));
+
+	/* OSD area config: all zero (disabled) */
+	for (i = 0; i < 8; i++)
+		iep2_write(iep2, IEP2_OSD_AREA_CONF(i), 0);
+
+	/* Motion estimation: all packed into one register */
+	iep2_write(iep2, IEP2_ME_CONFIG0,
+		   IEP2_ME_PENA(5) | IEP2_MV_BONUS(10) |
+		   IEP2_MV_SIMILAR_THR(4) | IEP2_MV_SIMILAR_NUM_THR0(4) |
+		   IEP2_ME_THR_OFFSET(20));
+
+	/* MV limits: negate left limit per vendor kernel */
+	iep2_write(iep2, IEP2_ME_LIMIT_CONFIG,
+		   IEP2_MV_LEFT_LIMIT((~28U + 1) & 0x3f) |
+		   IEP2_MV_RIGHT_LIMIT(27));
+
+	/* MV trust list: zero (disabled) */
 	iep2_write(iep2, IEP2_MV_TRU_LIST(0), 0);
 	iep2_write(iep2, IEP2_MV_TRU_LIST(1), 0);
+
+	/* EEDI threshold */
+	iep2_write(iep2, IEP2_EEDI_CONFIG0, IEP2_EEDI_THR0(12));
+
+	/* Blend config */
+	iep2_write(iep2, IEP2_BLE_CONFIG0, IEP2_BLE_BACKTOMA_NUM(1));
+
+	/* Comb filter: packed into one register with OSD valid bits */
+	reg = IEP2_COMB_CNT_THR(0) | IEP2_COMB_FEATURE_THR(16) |
+	      IEP2_COMB_T_THR(4);
 	for (i = 0; i < 8; i++)
-		iep2_write(iep2, IEP2_MV_TRU_VLD(i), 0);
-
-	/* EEDI */
-	iep2_write(iep2, IEP2_EEDI_THR0, 12);
-
-	/* Blend */
-	iep2_write(iep2, IEP2_BLE_BACKTOMA_NUM, 1);
-
-	/* Comb filter */
-	iep2_write(iep2, IEP2_COMB_CNT_THR, 0);
-	iep2_write(iep2, IEP2_COMB_FEATURE_THR, 16);
-	iep2_write(iep2, IEP2_COMB_T_THR, 4);
-	for (i = 0; i < 8; i++)
-		iep2_write(iep2, IEP2_COMB_OSD_VLD(i), 1);
+		reg |= IEP2_COMB_OSD_VLD(i);
+	iep2_write(iep2, IEP2_COMB_CONFIG0, reg);
 
 	/* Motion noise table */
-	iep2_write(iep2, IEP2_MTN_EN, 1);
 	for (i = 0; i < ARRAY_SIZE(iep2_default_mtn_tab); i++)
-		iep2_write(iep2, IEP2_MTN_TAB(i), iep2_default_mtn_tab[i]);
-
-	/* Pulldown - disabled */
-	iep2_write(iep2, IEP2_PD_MODE, 0);
-
-	/* ROI - disabled */
-	iep2_write(iep2, IEP2_ROI_EN, 0);
-	iep2_write(iep2, IEP2_ROI_LAYER_NUM, 0);
+		iep2_write(iep2, IEP2_DIL_MTN_TAB(i), iep2_default_mtn_tab[i]);
 }
 
 static void iep2_device_run(void *priv)
@@ -224,6 +227,8 @@ static void iep2_device_run(void *priv)
 	struct vb2_v4l2_buffer *src, *dst;
 	unsigned int dil_mode;
 	dma_addr_t addr;
+	u32 dil_reg;
+	u32 md_lambda = 4;
 
 	if (ctx->fmt_changed)
 		iep2_setup_formats(ctx);
@@ -235,123 +240,137 @@ static void iep2_device_run(void *priv)
 		dil_mode = ctx->field_bff ? IEP2_DIL_MODE_I1O1B
 					  : IEP2_DIL_MODE_I1O1T;
 
-	iep2_write(iep2, IEP2_DIL_MODE, dil_mode);
-	iep2_write(iep2, IEP2_DIL_OUT_MODE, IEP2_OUT_MODE_LINE);
-	iep2_write(iep2, IEP2_DIL_FIELD_ORDER,
-		   ctx->field_bff ? IEP2_FIELD_ORDER_BFF : IEP2_FIELD_ORDER_TFF);
+	/* DIL_CONFIG0: mode, field order, output mode, and feature enables */
+	dil_reg = IEP2_DIL_MV_HIST_EN |
+		  IEP2_DIL_COMB_EN |
+		  IEP2_DIL_BLE_EN |
+		  IEP2_DIL_EEDI_EN |
+		  IEP2_DIL_MEMC_EN |
+		  IEP2_DIL_OSD_EN |
+		  IEP2_DIL_PD_EN |
+		  IEP2_DIL_FF_EN |
+		  IEP2_DIL_FIELD_ORDER(ctx->field_bff ?
+			IEP2_FIELD_ORDER_BFF : IEP2_FIELD_ORDER_TFF) |
+		  IEP2_DIL_OUT_MODE(IEP2_OUT_MODE_LINE) |
+		  IEP2_DIL_MODE(dil_mode);
+	if (md_lambda < 8)
+		dil_reg |= IEP2_DIL_MD_PRE_EN;
+	iep2_write(iep2, IEP2_DIL_CONFIG0, dil_reg);
 
-	/* Write working buffer addresses */
-	iep2_write(iep2, IEP2_MV_ADDR, iep2->mv_dma);
-	iep2_write(iep2, IEP2_MD_ADDR, iep2->md_dma);
-
-	/* Setup source buffer addresses */
+	/* Setup source buffer DMA addresses */
 	src = v4l2_m2m_next_src_buf(ctx->fh.m2m_ctx);
 	addr = vb2_dma_contig_plane_dma_addr(&src->vb2_buf, 0);
 
-	/* src[0] = current frame (or prev in I5O2 mode) */
 	if (dil_mode == IEP2_DIL_MODE_I5O2) {
 		dma_addr_t prev_addr;
 
-		/* src[0] = previous frame, src[1] = current, src[2] = previous */
 		prev_addr = vb2_dma_contig_plane_dma_addr(
 				&ctx->prev_src_buf->vb2_buf, 0);
 
-		iep2_write(iep2, IEP2_SRC0_Y, prev_addr);
-		iep2_write(iep2, IEP2_SRC0_CBCR,
+		/* cur = previous frame */
+		iep2_write(iep2, IEP2_SRC_ADDR_CURY, prev_addr);
+		iep2_write(iep2, IEP2_SRC_ADDR_CURUV,
 			   prev_addr + ctx->src_fmt.y_stride);
-		iep2_write(iep2, IEP2_SRC0_CR,
+		iep2_write(iep2, IEP2_SRC_ADDR_CURV,
 			   prev_addr + ctx->src_fmt.uv_stride);
 
-		iep2_write(iep2, IEP2_SRC1_Y, addr);
-		iep2_write(iep2, IEP2_SRC1_CBCR,
+		/* nxt = current frame */
+		iep2_write(iep2, IEP2_SRC_ADDR_NXTY, addr);
+		iep2_write(iep2, IEP2_SRC_ADDR_NXTUV,
 			   addr + ctx->src_fmt.y_stride);
-		iep2_write(iep2, IEP2_SRC1_CR,
+		iep2_write(iep2, IEP2_SRC_ADDR_NXTV,
 			   addr + ctx->src_fmt.uv_stride);
 
-		iep2_write(iep2, IEP2_SRC2_Y, prev_addr);
-		iep2_write(iep2, IEP2_SRC2_CBCR,
+		/* pre = previous frame */
+		iep2_write(iep2, IEP2_SRC_ADDR_PREY, prev_addr);
+		iep2_write(iep2, IEP2_SRC_ADDR_PREUV,
 			   prev_addr + ctx->src_fmt.y_stride);
-		iep2_write(iep2, IEP2_SRC2_CR,
+		iep2_write(iep2, IEP2_SRC_ADDR_PREV,
 			   prev_addr + ctx->src_fmt.uv_stride);
 	} else {
-		/* I1O1T/I1O1B: only current frame needed */
-		iep2_write(iep2, IEP2_SRC0_Y, addr);
-		iep2_write(iep2, IEP2_SRC0_CBCR,
+		/* I1O1T/I1O1B: current frame for both cur and nxt */
+		iep2_write(iep2, IEP2_SRC_ADDR_CURY, addr);
+		iep2_write(iep2, IEP2_SRC_ADDR_CURUV,
 			   addr + ctx->src_fmt.y_stride);
-		iep2_write(iep2, IEP2_SRC0_CR,
+		iep2_write(iep2, IEP2_SRC_ADDR_CURV,
 			   addr + ctx->src_fmt.uv_stride);
 
-		iep2_write(iep2, IEP2_SRC1_Y, addr);
-		iep2_write(iep2, IEP2_SRC1_CBCR,
+		iep2_write(iep2, IEP2_SRC_ADDR_NXTY, addr);
+		iep2_write(iep2, IEP2_SRC_ADDR_NXTUV,
 			   addr + ctx->src_fmt.y_stride);
-		iep2_write(iep2, IEP2_SRC1_CR,
+		iep2_write(iep2, IEP2_SRC_ADDR_NXTV,
 			   addr + ctx->src_fmt.uv_stride);
 
-		iep2_write(iep2, IEP2_SRC2_Y, addr);
-		iep2_write(iep2, IEP2_SRC2_CBCR,
+		iep2_write(iep2, IEP2_SRC_ADDR_PREY, addr);
+		iep2_write(iep2, IEP2_SRC_ADDR_PREUV,
 			   addr + ctx->src_fmt.y_stride);
-		iep2_write(iep2, IEP2_SRC2_CR,
+		iep2_write(iep2, IEP2_SRC_ADDR_PREV,
 			   addr + ctx->src_fmt.uv_stride);
 	}
 
-	/* Setup destination buffer addresses */
+	/* Working buffer DMA addresses (both src and dst sides) */
+	iep2_write(iep2, IEP2_SRC_ADDR_MD, iep2->md_dma);
+	iep2_write(iep2, IEP2_SRC_ADDR_MV, iep2->mv_dma);
+	iep2_write(iep2, IEP2_DST_ADDR_MD, iep2->md_dma);
+	iep2_write(iep2, IEP2_DST_ADDR_MV, iep2->mv_dma);
+
+	/* Setup destination buffer DMA addresses */
 	if (dil_mode == IEP2_DIL_MODE_I5O2) {
-		/* dst0 = frame from prev source's metadata */
+		/* dst0 = top field (from prev source) */
 		dst = iep2_m2m_next_dst_buf(ctx);
 		v4l2_m2m_buf_copy_metadata(ctx->prev_src_buf, dst);
 		addr = vb2_dma_contig_plane_dma_addr(&dst->vb2_buf, 0);
 
-		iep2_write(iep2, IEP2_DST0_Y, addr);
-		iep2_write(iep2, IEP2_DST0_CBCR,
+		iep2_write(iep2, IEP2_DST_ADDR_TOPY, addr);
+		iep2_write(iep2, IEP2_DST_ADDR_TOPC,
 			   addr + ctx->dst_fmt.y_stride);
-		iep2_write(iep2, IEP2_DST0_CR,
-			   addr + ctx->dst_fmt.uv_stride);
 
 		ctx->dst0_buf = v4l2_m2m_dst_buf_remove(ctx->fh.m2m_ctx);
 
-		/* dst1 = frame from current source's metadata */
+		/* dst1 = bottom field (from current source) */
 		dst = iep2_m2m_next_dst_buf(ctx);
 		v4l2_m2m_buf_copy_metadata(src, dst);
 		addr = vb2_dma_contig_plane_dma_addr(&dst->vb2_buf, 0);
 
-		iep2_write(iep2, IEP2_DST1_Y, addr);
-		iep2_write(iep2, IEP2_DST1_CBCR,
+		iep2_write(iep2, IEP2_DST_ADDR_BOTY, addr);
+		iep2_write(iep2, IEP2_DST_ADDR_BOTC,
 			   addr + ctx->dst_fmt.y_stride);
-		iep2_write(iep2, IEP2_DST1_CR,
-			   addr + ctx->dst_fmt.uv_stride);
 
 		ctx->dst1_buf = v4l2_m2m_dst_buf_remove(ctx->fh.m2m_ctx);
 	} else {
-		/* I1O1: single output */
+		/* I1O1: single output to top destination */
 		dst = iep2_m2m_next_dst_buf(ctx);
 		v4l2_m2m_buf_copy_metadata(src, dst);
 		addr = vb2_dma_contig_plane_dma_addr(&dst->vb2_buf, 0);
 
-		iep2_write(iep2, IEP2_DST0_Y, addr);
-		iep2_write(iep2, IEP2_DST0_CBCR,
+		iep2_write(iep2, IEP2_DST_ADDR_TOPY, addr);
+		iep2_write(iep2, IEP2_DST_ADDR_TOPC,
 			   addr + ctx->dst_fmt.y_stride);
-		iep2_write(iep2, IEP2_DST0_CR,
-			   addr + ctx->dst_fmt.uv_stride);
 
-		/* dst1 unused but write same address */
-		iep2_write(iep2, IEP2_DST1_Y, addr);
-		iep2_write(iep2, IEP2_DST1_CBCR,
+		/* Write same addr to bot to avoid IOMMU faults */
+		iep2_write(iep2, IEP2_DST_ADDR_BOTY, addr);
+		iep2_write(iep2, IEP2_DST_ADDR_BOTC,
 			   addr + ctx->dst_fmt.y_stride);
-		iep2_write(iep2, IEP2_DST1_CR,
-			   addr + ctx->dst_fmt.uv_stride);
 
 		ctx->dst0_buf = NULL;
 		ctx->dst1_buf = v4l2_m2m_dst_buf_remove(ctx->fh.m2m_ctx);
 	}
 
 	/* Write default processing parameters */
-	iep2_setup_defaults(iep2);
+	iep2_setup_defaults(iep2, md_lambda);
 
-	/*
-	 * All registers have been written. The hardware should start
-	 * processing automatically after the last register write.
-	 * The ISR will handle completion.
-	 */
+	/* Enable interrupts */
+	iep2_write(iep2, IEP2_INT_EN,
+		   IEP2_INT_FRM_DONE_EN |
+		   IEP2_INT_OSD_MAX_EN |
+		   IEP2_INT_BUS_ERROR_EN |
+		   IEP2_INT_TIMEOUT_EN);
+
+	/* Ensure all register writes are flushed */
+	wmb();
+
+	/* Start hardware processing */
+	iep2_write(iep2, IEP2_FRM_START, 1);
 }
 
 static int iep2_job_ready(void *priv)
@@ -594,6 +613,10 @@ static int iep2_open(struct file *file)
 	ctx->src_fmt.uv_stride = IEP2_UV_STRIDE(ctx->src_fmt.pix.width,
 						 ctx->src_fmt.pix.height,
 						 ctx->src_fmt.hw_fmt->uv_factor);
+	ctx->src_fmt.uv_hw_stride =
+		(ctx->src_fmt.hw_fmt->color_swap == IEP2_YUV_SWP_P) ?
+		((ctx->src_fmt.pix.bytesperline / 2 + 15) / 16 * 16) / 4 :
+		ctx->src_fmt.pix.bytesperline / 4;
 
 	/* default capture format */
 	ctx->dst_fmt.pix.pixelformat = formats[0].fourcc;
@@ -607,6 +630,7 @@ static int iep2_open(struct file *file)
 	ctx->dst_fmt.uv_stride = IEP2_UV_STRIDE(ctx->dst_fmt.pix.width,
 						 ctx->dst_fmt.pix.height,
 						 ctx->dst_fmt.hw_fmt->uv_factor);
+	ctx->dst_fmt.uv_hw_stride = ctx->dst_fmt.pix.bytesperline / 4;
 
 	ctx->fmt_changed = true;
 
@@ -769,6 +793,10 @@ static int iep2_s_fmt_vid_out(struct file *file, void *priv,
 	ctx->src_fmt.uv_stride = IEP2_UV_STRIDE(f->fmt.pix.width,
 						 f->fmt.pix.height,
 						 ctx->src_fmt.hw_fmt->uv_factor);
+	ctx->src_fmt.uv_hw_stride =
+		(ctx->src_fmt.hw_fmt->color_swap == IEP2_YUV_SWP_P) ?
+		((f->fmt.pix.bytesperline / 2 + 15) / 16 * 16) / 4 :
+		f->fmt.pix.bytesperline / 4;
 
 	/* Propagate colorspace information to capture */
 	ctx->dst_fmt.pix.colorspace = f->fmt.pix.colorspace;
@@ -784,6 +812,7 @@ static int iep2_s_fmt_vid_out(struct file *file, void *priv,
 	ctx->dst_fmt.uv_stride = IEP2_UV_STRIDE(f->fmt.pix.width,
 						 f->fmt.pix.height,
 						 ctx->dst_fmt.hw_fmt->uv_factor);
+	ctx->dst_fmt.uv_hw_stride = f->fmt.pix.bytesperline / 4;
 	ctx->fmt_changed = true;
 
 	return 0;
@@ -816,6 +845,7 @@ static int iep2_s_fmt_vid_cap(struct file *file, void *priv,
 	ctx->dst_fmt.uv_stride = IEP2_UV_STRIDE(f->fmt.pix.width,
 						 f->fmt.pix.height,
 						 ctx->dst_fmt.hw_fmt->uv_factor);
+	ctx->dst_fmt.uv_hw_stride = f->fmt.pix.bytesperline / 4;
 	ctx->fmt_changed = true;
 
 	return 0;
@@ -863,16 +893,26 @@ static irqreturn_t iep2_isr(int irq, void *prv)
 	struct rockchip_iep2 *iep2 = prv;
 	struct iep2_ctx *ctx;
 	enum vb2_buffer_state state = VB2_BUF_STATE_DONE;
+	u32 irq_status;
+
+	/* Read and clear interrupt status */
+	irq_status = iep2_read(iep2, IEP2_INT_STS);
+	if (!(irq_status & IEP2_INT_STS_VALID))
+		return IRQ_NONE;
+
+	/* Clear all interrupts */
+	iep2_write(iep2, IEP2_INT_CLR, 0xffffffff);
 
 	ctx = v4l2_m2m_get_curr_priv(iep2->m2m_dev);
 	if (!ctx) {
 		v4l2_err(&iep2->v4l2_dev,
 			 "Instance released before the end of transaction\n");
-		return IRQ_NONE;
+		return IRQ_HANDLED;
 	}
 
-	if (!pm_runtime_active(iep2->dev))
-		return IRQ_NONE;
+	/* Check for errors */
+	if (irq_status & (IEP2_INT_STS_BUS_ERROR | IEP2_INT_STS_TIMEOUT))
+		state = VB2_BUF_STATE_ERROR;
 
 	/* Return completed destination buffers */
 	iep2_m2m_dst_bufs_done(ctx, state);
