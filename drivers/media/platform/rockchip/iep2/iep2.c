@@ -433,8 +433,7 @@ static int iep2_buf_prepare(struct vb2_buffer *vb)
 	if (vb2_plane_size(vb, 0) < pix_fmt->sizeimage)
 		return -EINVAL;
 
-	if (!V4L2_TYPE_IS_OUTPUT(vq->type))
-		vb2_set_plane_payload(vb, 0, pix_fmt->sizeimage);
+	vb2_set_plane_payload(vb, 0, pix_fmt->sizeimage);
 
 	return 0;
 }
