@@ -17,6 +17,7 @@ maintainers:
 properties:
   compatible:
     enum:
+      - rockchip,rk3568-iep2
       - rockchip,rk3576-iep2
       - rockchip,rk3588-iep2
 
