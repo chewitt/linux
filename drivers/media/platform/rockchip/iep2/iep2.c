@@ -1143,6 +1143,9 @@ static const struct dev_pm_ops iep2_pm_ops = {
 
 static const struct of_device_id rockchip_iep2_match[] = {
 	{
+		.compatible = "rockchip,rk3568-iep2",
+	},
+	{
 		.compatible = "rockchip,rk3576-iep2",
 	},
 	{
