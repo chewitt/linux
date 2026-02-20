@@ -178,26 +178,7 @@ static void iep_dein_init(struct rockchip_iep *iep)
 
 static void iep_init(struct rockchip_iep *iep)
 {
-	iep_write(iep, IEP_CONFIG0,
-		  IEP_DEIN_MODE(IEP_DEIN_MODE_BYPASS) // |
-		  //IEP_YUV_ENHNC_EN
-	);
-
-	/* TODO: B/S/C/H works
-	 *  only in 1-frame-out modes
-	iep_write(iep, IEP_ENH_YUV_CNFG_0,
-		  YUV_BRIGHTNESS(0) |
-		  YUV_CONTRAST(128) |
-		  YUV_SATURATION(128));
-
-	iep_write(iep, IEP_ENH_YUV_CNFG_1,
-		  YUV_COS_HUE(255) |
-		  YUV_SIN_HUE(255));
-
-	iep_write(iep, IEP_ENH_YUV_CNFG_2,
-		  YUV_VIDEO_MODE(VIDEO_MODE_NORMAL_VIDEO));
-
-	*/
+	iep_write(iep, IEP_CONFIG0, IEP_DEIN_MODE(IEP_DEIN_MODE_BYPASS));
 
 	/* reset frame counter */
 	iep_write(iep, IEP_FRM_CNT, 0);
@@ -347,9 +328,7 @@ static int iep_buf_prepare(struct vb2_buffer *vb)
 	if (vb2_plane_size(vb, 0) < pix_fmt->sizeimage)
 		return -EINVAL;
 
-	/* set bytesused for capture buffers */
-	if (!V4L2_TYPE_IS_OUTPUT(vq->type))
-		vb2_set_plane_payload(vb, 0, pix_fmt->sizeimage);
+	vb2_set_plane_payload(vb, 0, pix_fmt->sizeimage);
 
 	return 0;
 }
@@ -412,7 +391,6 @@ static int iep_start_streaming(struct vb2_queue *vq, unsigned int count)
 		ctx->job_abort = false;
 
 		iep_init(ctx->iep);
-		//if (ctx->src_fmt.pix.field != ctx->dst_fmt.pix.field)
 		iep_dein_init(ctx->iep);
 	}
 
@@ -541,9 +519,11 @@ static int iep_open(struct file *file)
 	ctx->src_fmt.pix.height = IEP_DEFAULT_HEIGHT;
 	iep_prepare_format(&ctx->src_fmt.pix);
 	ctx->src_fmt.hw_fmt = &formats[0];
-	ctx->dst_fmt.y_stride = IEP_Y_STRIDE(ctx->src_fmt.pix.width, ctx->src_fmt.pix.height);
-	ctx->dst_fmt.uv_stride = IEP_UV_STRIDE(ctx->src_fmt.pix.width, ctx->src_fmt.pix.height,
-					       ctx->src_fmt.hw_fmt->uv_factor);
+	ctx->src_fmt.y_stride = IEP_Y_STRIDE(ctx->src_fmt.pix.width,
+					      ctx->src_fmt.pix.height);
+	ctx->src_fmt.uv_stride = IEP_UV_STRIDE(ctx->src_fmt.pix.width,
+						ctx->src_fmt.pix.height,
+						ctx->src_fmt.hw_fmt->uv_factor);
 
 	/* default capture format */
 	ctx->dst_fmt.pix.pixelformat = formats[0].fourcc;
@@ -904,7 +884,6 @@ static int iep_probe(struct platform_device *pdev)
 {
 	struct rockchip_iep *iep;
 	struct video_device *vfd;
-	struct resource *res;
 	int ret = 0;
 	int irq;
 
@@ -923,9 +902,7 @@ static int iep_probe(struct platform_device *pdev)
 	if (ret)
 		dev_err(&pdev->dev, "Unable to parse OF data\n");
 
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-
-	iep->regs = devm_ioremap_resource(iep->dev, res);
+	iep->regs = devm_platform_ioremap_resource(pdev, 0);
 	if (IS_ERR(iep->regs)) {
 		ret = PTR_ERR(iep->regs);
 		goto err_put_clk;
@@ -958,8 +935,7 @@ static int iep_probe(struct platform_device *pdev)
 	ret = v4l2_device_register(&pdev->dev, &iep->v4l2_dev);
 	if (ret) {
 		dev_err(iep->dev, "Failed to register V4L2 device\n");
-
-		return ret;
+		goto err_put_clk;
 	}
 
 	vfd = &iep->vfd;
@@ -994,7 +970,7 @@ static int iep_probe(struct platform_device *pdev)
 	pm_runtime_use_autosuspend(iep->dev);
 	pm_runtime_enable(iep->dev);
 
-	return ret;
+	return 0;
 
 err_video:
 	video_unregister_device(&iep->vfd);
@@ -1004,7 +980,7 @@ err_put_clk:
 	pm_runtime_dont_use_autosuspend(iep->dev);
 	pm_runtime_disable(iep->dev);
 
-return ret;
+	return ret;
 }
 
 static void iep_remove(struct platform_device *pdev)
