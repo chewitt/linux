@@ -380,6 +380,14 @@ static void dw_hdmi_qp_set_audio_interface(struct dw_hdmi_qp *hdmi,
 	/*
 	 * Enable bpcuv generated internally for L-PCM, or received
 	 * from stream for NLPCM/HBR.
+	 *
+	 * When IEC958 subframe format is used, the I2S data carries embedded
+	 * channel status (bpcuv) which must be received from the stream.
+	 *
+	 * Some applications use S16LE format with 8 channels for HBR pass-
+	 * through. In this case channel status is set via registers, but we
+	 * still need to select HBR mode so the HDMI controller uses the
+	 * correct packet format.
 	 */
 	switch (fmt->bit_fmt) {
 	case SNDRV_PCM_FORMAT_IEC958_SUBFRAME_LE:
@@ -387,7 +395,11 @@ static void dw_hdmi_qp_set_audio_interface(struct dw_hdmi_qp *hdmi,
 		conf0 |= I2S_BPCUV_RCV_EN;
 		break;
 	default:
-		conf0 = AUD_ASP | I2S_BPCUV_RCV_DIS;
+		if (hparms->channels == 8 &&
+		    (hparms->iec.status[0] & IEC958_AES0_NONAUDIO))
+			conf0 = AUD_HBR | I2S_BPCUV_RCV_DIS;
+		else
+			conf0 = AUD_ASP | I2S_BPCUV_RCV_DIS;
 		break;
 	}
 
