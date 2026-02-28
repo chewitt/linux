@@ -1294,6 +1294,7 @@
 		reset-names = "core", "axi", "ahb";
 		power-domains = <&power RK3588_PD_RGA31>;
 		iommus = <&rga3_1_mmu>;
+		status = "disabled";
 	};
 
 	rga3_1_mmu: iommu@fdb70f00 {
@@ -1345,6 +1346,7 @@
 		clock-names = "aclk", "hclk";
 		iommus = <&vepu121_1_mmu>;
 		power-domains = <&power RK3588_PD_VDPU>;
+		status = "disabled";
 	};
 
 	vepu121_1_mmu: iommu@fdba4800 {
@@ -1365,6 +1367,7 @@
 		clock-names = "aclk", "hclk";
 		iommus = <&vepu121_2_mmu>;
 		power-domains = <&power RK3588_PD_VDPU>;
+		status = "disabled";
 	};
 
 	vepu121_2_mmu: iommu@fdba8800 {
@@ -1385,6 +1388,7 @@
 		clock-names = "aclk", "hclk";
 		iommus = <&vepu121_3_mmu>;
 		power-domains = <&power RK3588_PD_VDPU>;
+		status = "disabled";
 	};
 
 	vepu121_3_mmu: iommu@fdbac800 {
@@ -1449,6 +1453,7 @@
 			 <&cru SRST_RKVDEC1_CORE>, <&cru SRST_RKVDEC1_HEVC_CA>;
 		reset-names = "axi", "ahb", "cabac", "core", "hevc_cabac";
 		sram = <&vdec1_sram>;
+		status = "disabled";
 	};
 
 	vdec1_mmu: iommu@fdc40700 {
