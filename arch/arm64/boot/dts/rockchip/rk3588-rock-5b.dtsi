@@ -45,7 +45,6 @@
 
 &hdmi_receiver {
 	hpd-gpios = <&gpio1 RK_PC6 GPIO_ACTIVE_LOW>;
-	status = "okay";
 };
 
 &pinctrl {
