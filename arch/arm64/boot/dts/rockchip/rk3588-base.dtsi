@@ -1472,7 +1472,7 @@
 		interrupts = <GIC_SPI 108 IRQ_TYPE_LEVEL_HIGH 0>;
 		interrupt-names = "vdpu";
 		assigned-clocks = <&cru ACLK_AV1>, <&cru PCLK_AV1>;
-		assigned-clock-rates = <400000000>, <400000000>;
+		assigned-clock-rates = <500000000>, <400000000>;
 		clocks = <&cru ACLK_AV1>, <&cru PCLK_AV1>;
 		clock-names = "aclk", "hclk";
 		power-domains = <&power RK3588_PD_AV1>;
