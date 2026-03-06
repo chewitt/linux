@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: GPL-2.0-only
+
+config VIDEO_ROCKCHIP_IEP_COMMON
+	tristate
+
+config VIDEO_ROCKCHIP_IEP
+	tristate "Rockchip Image Enhancement Processor"
+	depends on V4L_MEM2MEM_DRIVERS
+	depends on VIDEO_DEV
+	depends on ARCH_ROCKCHIP || COMPILE_TEST
+	select VIDEOBUF2_DMA_CONTIG
+	select V4L2_MEM2MEM_DEV
+	select VIDEO_ROCKCHIP_IEP_COMMON
+	help
+	  Support for the Rockchip IEP, a hardware video deinterlacer
+	  with spatial and temporal sampling noise reduction. Found
+	  on RK3288, RK3328, RK3399 and similar SoCs.
+
+	  To compile this driver as a module, choose M here: the module
+	  will be called rockchip-iep.
