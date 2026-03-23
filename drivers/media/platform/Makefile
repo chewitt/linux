@@ -8,6 +8,7 @@
 obj-y += allegro-dvt/
 obj-y += amd/
 obj-y += amlogic/
+obj-y += amlogic/meson-demux/
 obj-y += amphion/
 obj-y += arm/
 obj-y += aspeed/
