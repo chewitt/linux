@@ -5085,15 +5085,14 @@ int aml_dmx_hw_init(struct aml_dmx *dmx)
 
 int aml_dmx_hw_deinit(struct aml_dmx *dmx)
 {
-	struct aml_dvb *dvb = (struct aml_dvb *)dmx->demux.priv;
-	unsigned long flags;
-	int ret;
-
-	spin_lock_irqsave(&dvb->slock, flags);
-	ret = dmx_deinit(dmx);
-	spin_unlock_irqrestore(&dvb->slock, flags);
-
-	return ret;
+	/*
+	 * dmx_deinit() calls free_irq() and tasklet_kill() which can sleep,
+	 * so it must not be called under a spinlock. The register writes
+	 * within dmx_deinit() are safe without the lock here as deinit is
+	 * only called from probe error paths and driver remove, both of
+	 * which are single-threaded.
+	 */
+	return dmx_deinit(dmx);
 }
 
 int aml_asyncfifo_hw_init(struct aml_asyncfifo *afifo)
