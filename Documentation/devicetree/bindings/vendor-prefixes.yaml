@@ -700,6 +700,8 @@ patternProperties:
     description: Grinn
   "^grmn,.*":
     description: Garmin Limited
+  "^gtmedia,.*":
+    description: Shenzhen GTMEDIA Technology Co., Ltd,
   "^gumstix,.*":
     description: Gumstix, Inc.
   "^gw,.*":
