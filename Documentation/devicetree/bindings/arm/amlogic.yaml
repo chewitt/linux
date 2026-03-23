@@ -108,6 +108,7 @@ properties:
           - enum:
               - amlogic,p230
               - amlogic,p231
+              - gtmedia,gtt2
               - libretech,aml-s905d-pc
               - osmc,vero4k-plus
               - phicomm,n1
