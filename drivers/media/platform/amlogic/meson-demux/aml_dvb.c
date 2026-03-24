@@ -38,8 +38,10 @@
 #include <dvb-frontends/cxd2878.h>
 #include <dvb-frontends/mn88436.h>
 #include <dvb-frontends/avl6211.h>
+#include <dvb-frontends/avl6862.h>
 #include <dvb-frontends/ascot3.h>
 #include <tuners/mxl603.h>
+#include <tuners/mxl608.h>
 #include "c_stb_define.h"
 #include "c_stb_regs_define.h"
 #include "aml_dvb.h"
@@ -2391,6 +2393,30 @@ static struct mxl603_config mxl603cfg_cxd2878 = {
 	.single_supply_3_3V = 1,
 };
 
+static struct avl6862_config avl6862cfg = {
+	.demod_address = 0x14,
+	.ts_serial = 1,
+};
+
+static struct mxl608_config mxl608cfg = {
+	.xtal_freq_hz = MXL608_XTAL_16MHz,
+	.if_freq_hz = MXL608_IF_5MHz,
+	.agc_type = MXL608_AGC_SELF,
+	.i2c_address = 0x60,
+	.xtal_cap = 12,
+	.gain_level = 11,
+	.if_out_gain_level = 11,
+	.agc_set_point = 66,
+	.agc_invert_pol = 0,
+	.invert_if = 0,
+	.loop_thru_enable = 0,
+	.clk_out_enable = 0,
+	.clk_out_div = 0,
+	.clk_out_ext = 0,
+	.xtal_sharing_mode = 0,
+	.single_supply_3_3V = 1,
+};
+
 static struct avl6211_config avl6211cfg = {
 	.tuner_address = 0xC4,
 	.tuner_i2c_clock = 200,
@@ -2520,6 +2546,16 @@ static void aml_dvb_attach_frontends(struct aml_dvb *advb,
 				if (!mxl603_attach(fe, i2c, 0x60,
 						   &mxl603cfg_atsc)) {
 					dev_err(dev, "ATSC tuner attach failed\n");
+					dvb_frontend_detach(fe);
+					fe = NULL;
+				}
+			}
+		} else if (!strcmp(compat, "smartlabs,avl6762")) {
+			dev_info(dev, "attaching DVB-T/T2/C frontend (avl6762 + mxl608)\n");
+			fe = avl6862_attach(&avl6862cfg, i2c);
+			if (fe) {
+				if (!mxl608_attach(fe, &mxl608cfg, i2c)) {
+					dev_err(dev, "avl6762 tuner attach failed\n");
 					dvb_frontend_detach(fe);
 					fe = NULL;
 				}
