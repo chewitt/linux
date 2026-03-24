@@ -35,6 +35,7 @@
 #include <linux/of_irq.h>
 #include <linux/compat.h>
 #include <dvb-frontends/cxd2841er.h>
+#include <dvb-frontends/cxd2878.h>
 #include <dvb-frontends/mn88436.h>
 #include <dvb-frontends/avl6211.h>
 #include <dvb-frontends/ascot3.h>
@@ -2358,6 +2359,38 @@ static struct mxl603_config mxl603cfg_atsc = {
 	.single_supply_3_3V = 1,
 };
 
+static struct cxd2878_config cxd2878cfg = {
+	.addr_slvt = 0x6c,
+	.xtal = SONY_DEMOD_XTAL_24000KHz,
+	.tuner_addr = 0x60,
+	.tuner_xtal = SONY_ASCOT3_XTAL_24000KHz,
+	.ts_mode = 1,
+	.ts_ser_data = 0,
+	.ts_clk = 1,
+	.ts_clk_mask = 1,
+	.ts_valid = 0,
+	.atscCoreDisable = 0,
+	.lock_flag = 1,
+};
+
+static struct mxl603_config mxl603cfg_cxd2878 = {
+	.xtal_freq_hz = MXL603_XTAL_16MHz,
+	.if_freq_hz = MXL603_IF_5MHz,
+	.agc_type = MXL603_AGC_SELF,
+	.xtal_cap = 16,
+	.gain_level = 11,
+	.if_out_gain_level = 11,
+	.agc_set_point = 66,
+	.agc_invert_pol = 0,
+	.invert_if = 1,
+	.loop_thru_enable = 0,
+	.clk_out_enable = 1,
+	.clk_out_div = 0,
+	.clk_out_ext = 0,
+	.xtal_sharing_mode = 0,
+	.single_supply_3_3V = 1,
+};
+
 static struct avl6211_config avl6211cfg = {
 	.tuner_address = 0xC4,
 	.tuner_i2c_clock = 200,
@@ -2464,6 +2497,17 @@ static void aml_dvb_attach_frontends(struct aml_dvb *advb,
 							dvb_frontend_detach(fe);
 						fe = NULL;
 					}
+				}
+			}
+		} else if (!strcmp(compat, "gtmedia,cxd2878")) {
+			dev_info(dev, "attaching DVB-T/T2/C frontend (cxd2878 + mxl603)\n");
+			fe = cxd2878_attach(&cxd2878cfg, i2c);
+			if (fe) {
+				if (!mxl603_attach(fe, i2c, 0x63,
+						   &mxl603cfg_cxd2878)) {
+					dev_err(dev, "cxd2878 tuner attach failed\n");
+					dvb_frontend_detach(fe);
+					fe = NULL;
 				}
 			}
 		} else if (!strcmp(compat, "wetek,dvb-s")) {
