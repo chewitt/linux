@@ -89,6 +89,15 @@ config DVB_DRXK
 
 	  Say Y when you want to support this frontend.
 
+config DVB_AVL6862
+	tristate "Availink AVL6862/AVL6762 DVB-T/T2/C Demod Frontend"
+	depends on DVB_CORE && I2C
+	default m if !MEDIA_SUBDRV_AUTOSELECT
+	help
+	  An Availink AVL6862/AVL6762 DVB-T/T2/C demodulator driver.
+
+	  Say Y when you want to support this frontend.
+
 config DVB_MN88436
 	tristate "Panasonic MN88436"
 	depends on DVB_CORE && I2C
