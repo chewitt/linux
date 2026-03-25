@@ -293,6 +293,10 @@ struct aml_dvb {
 	struct aml_swfilter swfilter;
 	int ts_out_invert;
 
+	/* frontend tracking */
+	struct i2c_adapter *fe_i2c[FE_DEV_COUNT];
+	int fe_count;
+
 	/* bufs for dmx shared */
 	unsigned long pes_pages;
 	unsigned long pes_pages_map;
