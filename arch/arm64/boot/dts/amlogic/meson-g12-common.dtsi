@@ -1542,6 +1542,57 @@
 							bias-disable;
 						};
 					};
+
+					dvb_s_ts0_pins: dvb-s-ts0 {
+						mux {
+							groups = "tsin_a_din0",
+								 "tsin_a_clk",
+								 "tsin_a_sop",
+								 "tsin_a_valid";
+							function = "tsin_a";
+							bias-disable;
+						};
+					};
+
+					dvb_s_ts1_x_pins: dvb-s-ts1-x {
+						mux {
+							groups = "tsin_b_din0_x",
+								 "tsin_b_clk_x",
+								 "tsin_b_sop_x",
+								 "tsin_b_valid_x";
+							function = "tsin_b";
+							bias-disable;
+						};
+					};
+
+					dvb_s_ts1_z_pins: dvb-s-ts1-z {
+						mux {
+							groups = "tsin_b_din0_z",
+								 "tsin_b_clk_z",
+								 "tsin_b_sop_z",
+								 "tsin_b_valid_z";
+							function = "tsin_b";
+							bias-disable;
+						};
+					};
+
+					dvb_p_ts1_z_pins: dvb-p-ts1-z {
+						mux {
+							groups = "tsin_b_din0_z",
+								 "tsin_b_din1",
+								 "tsin_b_din2",
+								 "tsin_b_din3",
+								 "tsin_b_din4",
+								 "tsin_b_din5",
+								 "tsin_b_din6",
+								 "tsin_b_din7",
+								 "tsin_b_clk_z",
+								 "tsin_b_sop_z",
+								 "tsin_b_valid_z";
+							function = "tsin_b";
+							bias-disable;
+						};
+					};
 				};
 			};
 
@@ -2025,6 +2076,17 @@
 					mux {
 						groups = "remote_ao_input";
 						function = "remote_ao_input";
+						bias-disable;
+					};
+				};
+
+				dvb_s_ts0_ao_pins: dvb-s-ts0-ao {
+					mux {
+						groups = "tsin_ao_asop",
+							 "tsin_ao_adin0",
+							 "tsin_ao_aclk",
+							 "tsin_ao_a_valid";
+						function = "tsin_ao_a";
 						bias-disable;
 					};
 				};
