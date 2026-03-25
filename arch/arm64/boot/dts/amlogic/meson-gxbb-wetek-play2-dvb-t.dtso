@@ -1,0 +1,20 @@
+// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
+/*
+ * WeTek Play 2 DVB-T/T2/C frontend overlay
+ * Demod: Sony CXD2841ER + Tuner: MxL603 or Sony Ascot3
+ */
+
+/dts-v1/;
+/plugin/;
+
+#include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/gpio/meson-gxbb-gpio.h>
+
+&dvb_demux {
+	dvb_t: frontend@0 {
+		compatible = "wetek,dvb-t";
+		i2c-bus = <&i2c_A>;
+		fec-reset-gpios = <&gpio GPIOY_13 GPIO_ACTIVE_HIGH>;
+		power-ctrl-gpios = <&gpio GPIOY_15 GPIO_ACTIVE_HIGH>;
+	};
+};
