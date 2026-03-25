@@ -777,6 +777,51 @@
 				bias-disable;
 			};
 		};
+
+		dvb_p_ts0_pins: dvb-p-ts0 {
+			mux {
+				groups = "tsin_a_d0",
+					 "tsin_a_dp",
+					 "tsin_a_clk",
+					 "tsin_a_sop",
+					 "tsin_a_d_valid";
+				function = "tsin_a";
+				bias-disable;
+			};
+		};
+
+		dvb_s_ts0_pins: dvb-s-ts0 {
+			mux {
+				groups = "tsin_a_d0",
+					 "tsin_a_clk",
+					 "tsin_a_sop",
+					 "tsin_a_d_valid";
+				function = "tsin_a";
+				bias-disable;
+			};
+		};
+
+		dvb_s_ts1_pins: dvb-s-ts1 {
+			mux {
+				groups = "tsin_b_d0",
+					 "tsin_b_clk",
+					 "tsin_b_sop",
+					 "tsin_b_d_valid";
+				function = "tsin_b";
+				bias-disable;
+			};
+		};
+
+		dvb_s_ts1_z_pins: dvb-s-ts1-z {
+			mux {
+				groups = "tsin_b_d0_z2",
+					 "tsin_b_clk_z3",
+					 "tsin_b_sop_z1",
+					 "tsin_b_d_valid_z0";
+				function = "tsin_b";
+				bias-disable;
+			};
+		};
 	};
 
 	eth_phy_mux: mdio@558 {
