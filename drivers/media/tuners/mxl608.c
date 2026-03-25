@@ -30,6 +30,7 @@ struct dvb_frontend *mxl608_attach(struct dvb_frontend *fe,
 		.clk_out_ext       = cfg->clk_out_ext,
 		.xtal_sharing_mode = cfg->xtal_sharing_mode,
 		.single_supply_3_3V = cfg->single_supply_3_3V,
+		.no_xtal_cfg       = cfg->no_xtal_cfg,
 	};
 
 	return mxl60x_attach(fe, i2c, cfg->i2c_address, &common, MXL60X_608);

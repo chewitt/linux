@@ -63,6 +63,7 @@ struct mxl60x_config {
 	u8 clk_out_ext;
 	u8 xtal_sharing_mode;
 	u8 single_supply_3_3V;
+	u8 no_xtal_cfg;
 };
 
 struct dvb_frontend *mxl60x_attach(struct dvb_frontend *fe,

@@ -2396,6 +2396,7 @@ static struct mxl608_config mxl608cfg = {
 	.clk_out_ext = 0,
 	.xtal_sharing_mode = 0,
 	.single_supply_3_3V = 1,
+	.no_xtal_cfg = 1,
 };
 
 static struct avl6211_config avl6211cfg = {

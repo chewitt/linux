@@ -641,13 +641,24 @@ static int mxl60x_set_xtal(struct mxl60x_state *state)
 	u8 d = 0;
 	int ret;
 
-	d = (u8)((state->config.xtal_freq_hz << 5) |
-		 (state->config.xtal_cap & 0x1F));
-	d |= (state->config.clk_out_enable << 7);
+	if (state->config.no_xtal_cfg) {
+		/*
+		 * Skip writing reg 0x01 (XTAL/PLL configuration). On boards
+		 * where the tuner is behind a demod I2C repeater (e.g.
+		 * AVL6862), any write to this register triggers an oscillator
+		 * recalibration that makes the chip unresponsive to I2C for
+		 * an extended period. The chip's power-on/soft-reset defaults
+		 * are sufficient for the crystal configuration.
+		 */
+	} else {
+		d = (u8)((state->config.xtal_freq_hz << 5) |
+			 (state->config.xtal_cap & 0x1F));
+		d |= (state->config.clk_out_enable << 7);
 
-	ret = mxl60x_write_reg(state, 0x01, d);
-	if (ret)
-		goto err;
+		ret = mxl60x_write_reg(state, 0x01, d);
+		if (ret)
+			goto err;
+	}
 
 	d = (0x01 & (u8)state->config.clk_out_div);
 
@@ -928,6 +939,9 @@ static int mxl60x_init(struct dvb_frontend *fe)
 	ret = mxl60x_write_reg(state, 0x00, 0x00);
 	if (ret)
 		goto err;
+
+	if (fe->ops.i2c_gate_ctrl)
+		fe->ops.i2c_gate_ctrl(fe, 0);
 
 	return 0;
 
