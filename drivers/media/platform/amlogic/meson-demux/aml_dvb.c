@@ -2325,24 +2325,6 @@ static struct ascot3_config ascot3cfg = {
 	.i2c_address = 0x60,
 };
 
-static struct mxl603_config mxl603cfg = {
-	.xtal_freq_hz = MXL603_XTAL_24MHz,
-	.if_freq_hz = MXL603_IF_5MHz,
-	.agc_type = MXL603_AGC_SELF,
-	.xtal_cap = 16,
-	.gain_level = 11,
-	.if_out_gain_level = 11,
-	.agc_set_point = 66,
-	.agc_invert_pol = 0,
-	.invert_if = 1,
-	.loop_thru_enable = 0,
-	.clk_out_enable = 1,
-	.clk_out_div = 0,
-	.clk_out_ext = 0,
-	.xtal_sharing_mode = 0,
-	.single_supply_3_3V = 1,
-};
-
 static struct mxl603_config mxl603cfg_atsc = {
 	.xtal_freq_hz = MXL603_XTAL_24MHz,
 	.if_freq_hz = MXL603_IF_5MHz,
@@ -2503,27 +2485,13 @@ static void aml_dvb_attach_frontends(struct aml_dvb *advb,
 			 i2c->name, i2c->nr);
 
 		if (!strcmp(compat, "wetek,dvb-t")) {
-			dev_info(dev, "attaching DVB-T frontend (cxd2841er + mxl603/ascot3)\n");
-			cxd2841cfg.flags = CXD2841ER_USE_GATECTRL;
+			dev_info(dev, "attaching DVB-T frontend (cxd2841er + ascot3)\n");
+			cxd2841cfg.flags = CXD2841ER_USE_GATECTRL | CXD2841ER_ASCOT;
 			fe = cxd2841er_attach_t_c(&cxd2841cfg, i2c);
-			if (fe) {
-				if (!mxl603_attach(fe, i2c, 0x60, &mxl603cfg)) {
-					/*
-					 * MxL603 not found; try Ascot3 tuner.
-					 * Re-attach demod with ASCOT flag for
-					 * correct ITB group delay coefficients.
-					 */
-					dvb_frontend_detach(fe);
-					cxd2841cfg.flags = CXD2841ER_USE_GATECTRL
-							 | CXD2841ER_ASCOT;
-					fe = cxd2841er_attach_t_c(&cxd2841cfg, i2c);
-					if (!fe || !ascot3_attach(fe, &ascot3cfg, i2c)) {
-						dev_err(dev, "DVB-T tuner attach failed\n");
-						if (fe)
-							dvb_frontend_detach(fe);
-						fe = NULL;
-					}
-				}
+			if (fe && !ascot3_attach(fe, &ascot3cfg, i2c)) {
+				dev_err(dev, "DVB-T tuner attach failed\n");
+				dvb_frontend_detach(fe);
+				fe = NULL;
 			}
 		} else if (!strcmp(compat, "gtmedia,cxd2878")) {
 			dev_info(dev, "attaching DVB-T/T2/C frontend (cxd2878 + mxl603)\n");
