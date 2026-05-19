@@ -370,30 +370,24 @@ int meson_encoder_hdmi_probe(struct meson_drm *priv)
 	/* Encoder */
 	ret = drm_simple_encoder_init(priv->drm, &meson_encoder_hdmi->encoder,
 				      DRM_MODE_ENCODER_TMDS);
-	if (ret) {
-		dev_err_probe(priv->dev, ret, "Failed to init HDMI encoder\n");
-		goto err_put_node;
-	}
+	if (ret)
+		return dev_err_probe(priv->dev, ret, "Failed to init HDMI encoder\n");
 
 	meson_encoder_hdmi->encoder.possible_crtcs = BIT(0);
 
 	/* Attach HDMI Encoder Bridge to Encoder */
 	ret = drm_bridge_attach(&meson_encoder_hdmi->encoder, &meson_encoder_hdmi->bridge, NULL,
 				DRM_BRIDGE_ATTACH_NO_CONNECTOR);
-	if (ret) {
-		dev_err_probe(priv->dev, ret, "Failed to attach bridge\n");
-		goto err_put_node;
-	}
+	if (ret)
+		return dev_err_probe(priv->dev, ret, "Failed to attach bridge\n");
 
 	/* Initialize & attach Bridge Connector */
 	meson_encoder_hdmi->connector = drm_bridge_connector_init(priv->drm,
 							&meson_encoder_hdmi->encoder);
-	if (IS_ERR(meson_encoder_hdmi->connector)) {
+	if (IS_ERR(meson_encoder_hdmi->connector))
 		ret = dev_err_probe(priv->dev,
 				    PTR_ERR(meson_encoder_hdmi->connector),
 				    "Unable to create HDMI bridge connector\n");
-		goto err_put_node;
-	}
 
 	/*
 	 * We should have now in place:
