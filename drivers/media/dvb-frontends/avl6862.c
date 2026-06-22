@@ -2031,12 +2031,16 @@ struct dvb_frontend *avl6862_attach(struct avl6862_config *config,
 	switch (id) {
 	case 0xb:
 		id = 6882;
+		break;
 	case 0xd:
 		id = 6812;
+		break;
 	case 0xe:
 		id = 6762;
+		break;
 	case 0xf:
 		id = 6862;
+		break;
 	}
 	dev_info(&priv->i2c->dev,
 		 "%s: found AVL%d "
