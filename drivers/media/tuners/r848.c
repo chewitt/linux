@@ -2199,21 +2199,6 @@ static R848_ErrCode R848_IMR(struct r848_priv *priv, u8 IMR_MEM, bool IM_Flag)
 	return RT_Success;
 }
 
-R848_ErrCode R848_GPO(struct r848_priv *priv, R848_GPO_Type R848_GPO_Conrl)
-{
-	I2C_TYPE R848_I2C;
-
-	if (R848_GPO_Conrl == HI_SIG) //  R23[0]
-		priv->cfg->R848_Array[15] |= 0x01; //high
-	else
-		priv->cfg->R848_Array[15] &= 0xFE; //low
-	R848_I2C.RegAddr = 0x17;
-	R848_I2C.Data = priv->cfg->R848_Array[15];
-	if (I2C_Write(priv, &R848_I2C) != RT_Success)
-		return RT_Fail;
-
-	return RT_Success;
-}
 static R848_ErrCode R848_InitReg(struct r848_priv *priv,
 			  R848_Standard_Type R848_Standard)
 {
@@ -3494,109 +3479,6 @@ static R848_SysFreq_Info_Type R848_SysFreq_Sel(struct r848_priv *priv,
 	} //end switch
 
 	return R848_SysFreq_Info;
-}
-
-R848_ErrCode R848_RfGainMode(struct r848_priv *priv,
-			     R848_RF_Gain_TYPE R848_RfGainType)
-{
-	int ret;
-	u8 buf[5];
-
-	u8 MixerGain = 0;
-	u8 RfGain = 0;
-	u8 LnaGain = 0;
-	I2C_TYPE R848_I2C;
-
-	if (R848_RfGainType == RF_MANUAL) {
-		//LNA auto off
-		R848_I2C.RegAddr = 0x0D;
-		priv->cfg->R848_Array[5] = priv->cfg->R848_Array[5] |
-					   0x80; // 848:13[7:0]
-		R848_I2C.Data = priv->cfg->R848_Array[5];
-		if (I2C_Write(priv, &R848_I2C) != RT_Success)
-			return RT_Fail;
-
-		//Mixer buffer off
-		R848_I2C.RegAddr = 0x22;
-		priv->cfg->R848_Array[26] = priv->cfg->R848_Array[26] |
-					    0x10; // 848:34[7:0]
-		R848_I2C.Data = priv->cfg->R848_Array[26];
-		if (I2C_Write(priv, &R848_I2C) != RT_Success)
-			return RT_Fail;
-
-		//Mixer auto off
-		R848_I2C.RegAddr = 0x0F;
-		priv->cfg->R848_Array[7] = priv->cfg->R848_Array[7] &
-					   0xEF; //848:15[6:0]
-		R848_I2C.Data = priv->cfg->R848_Array[7];
-		if (I2C_Write(priv, &R848_I2C) != RT_Success)
-			return RT_Fail;
-
-		//		R848_I2C_Len.RegAddr = 0x00;
-		//		R848_I2C_Len.Len     = 5;
-		//		if(I2C_Read_Len(priv,&R848_I2C_Len) != RT_Success)
-		//		{
-		//			I2C_Read_Len(priv,&R848_I2C_Len);
-		//		}
-		ret = r848_rdm(priv, 0x00, buf, 5);
-		if (ret)
-			return ret;
-
-		//MixerGain = (((buf[1] & 0x40) >> 6)<<3)+((buf[3] & 0xE0)>>5);   //?
-		MixerGain = (buf[3] & 0x0F); //mixer // 848:3[4:0]
-		RfGain = ((buf[3] & 0xF0) >> 4); //rf		 // 848:3[4:0]
-		LnaGain = buf[4] & 0x1F; //lna    // 848:4[4:0]
-
-		//set LNA gain
-		R848_I2C.RegAddr = 0x0D;
-		priv->cfg->R848_Array[5] = (priv->cfg->R848_Array[5] & 0xE0) |
-					   LnaGain; // 848:13[7:0]
-		R848_I2C.Data = priv->cfg->R848_Array[5];
-		if (I2C_Write(priv, &R848_I2C) != RT_Success)
-			return RT_Fail;
-
-		//set Mixer Buffer gain
-		R848_I2C.RegAddr = 0x22;
-		priv->cfg->R848_Array[26] = (priv->cfg->R848_Array[26] & 0xF0) |
-					    RfGain; //848:34[7:0]
-		R848_I2C.Data = priv->cfg->R848_Array[26];
-		if (I2C_Write(priv, &R848_I2C) != RT_Success)
-			return RT_Fail;
-
-		//set Mixer gain
-		R848_I2C.RegAddr = 0x0F;
-		priv->cfg->R848_Array[7] = (priv->cfg->R848_Array[7] & 0xF0) |
-					   MixerGain; // 848:15[6:0]
-		R848_I2C.Data = priv->cfg->R848_Array[7];
-		if (I2C_Write(priv, &R848_I2C) != RT_Success)
-			return RT_Fail;
-	} else {
-		//LNA auto on
-		R848_I2C.RegAddr = 0x0D;
-		priv->cfg->R848_Array[5] = priv->cfg->R848_Array[5] &
-					   0x7F; // 848:13[7:0]
-		R848_I2C.Data = priv->cfg->R848_Array[5];
-		if (I2C_Write(priv, &R848_I2C) != RT_Success)
-			return RT_Fail;
-
-		//Mixer buffer on
-		R848_I2C.RegAddr = 0x22;
-		priv->cfg->R848_Array[26] = priv->cfg->R848_Array[26] &
-					    0xEF; // 848:34[7:0]
-		R848_I2C.Data = priv->cfg->R848_Array[26];
-		if (I2C_Write(priv, &R848_I2C) != RT_Success)
-			return RT_Fail;
-
-		//Mixer auto on
-		R848_I2C.RegAddr = 0x0F;
-		priv->cfg->R848_Array[7] = priv->cfg->R848_Array[7] |
-					   0x10; // 848:15[6:0]
-		R848_I2C.Data = priv->cfg->R848_Array[7];
-		if (I2C_Write(priv, &R848_I2C) != RT_Success)
-			return RT_Fail;
-	}
-
-	return RT_Success;
 }
 
 static R848_ErrCode R848_TF_Check(struct r848_priv *priv)
