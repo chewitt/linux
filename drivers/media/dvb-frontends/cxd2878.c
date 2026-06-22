@@ -3786,8 +3786,8 @@ static int cxd2878_tune(struct dvb_frontend*fe,bool re_tune,
 	
 	ret = cxd2878_read_status(fe,status);
 	if(ret)
-		ret;
-	
+		return ret;
+
 	if (*status & FE_HAS_LOCK)
 			return 0;
 	
