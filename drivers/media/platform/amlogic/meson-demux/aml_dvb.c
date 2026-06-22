@@ -29,7 +29,6 @@
 #include <linux/string.h>
 #include <linux/pinctrl/consumer.h>
 #include <linux/reset.h>
-#include <linux/of_gpio.h>
 //#include <linux/amlogic/media/utils/amstream.h>
 #include <linux/clk.h>
 #include <linux/of_irq.h>
