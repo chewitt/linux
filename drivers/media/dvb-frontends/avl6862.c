@@ -149,8 +149,10 @@ static int avl6862_i2c_wr_reg(struct avl6862_priv *priv, u32 addr, u32 data,
 	case 4:
 		*(p++) = (u8)(data >> 24);
 		*(p++) = (u8)(data >> 16);
+		fallthrough;
 	case 2:
 		*(p++) = (u8)(data >> 8);
+		fallthrough;
 	case 1:
 	default:
 		*(p++) = (u8)(data);
@@ -187,8 +189,10 @@ static int avl6862_i2c_rd_reg(struct avl6862_priv *priv, u32 addr, u32 *data,
 	case 4:
 		*data |= (u32)(*(p++)) << 24;
 		*data |= (u32)(*(p++)) << 16;
+		fallthrough;
 	case 2:
 		*data |= (u32)(*(p++)) << 8;
+		fallthrough;
 	case 1:
 	default:
 		*data |= (u32) * (p);
