@@ -3465,6 +3465,8 @@ static R848_SysFreq_Info_Type R848_SysFreq_Sel(struct r848_priv *priv,
 				R848_SysFreq_Info.AGC_CLK =
 					0x1C; //250Hz   R26[4:2]
 				break;
+			default:
+				break;
 			}
 		}
 		break;
