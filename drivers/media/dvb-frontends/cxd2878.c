@@ -583,6 +583,8 @@ static int ascot3_tune(struct cxd2878_dev*dev,u32 frequency)
         case SONY_DTV_BW_8_MHZ:
             aSystem = SONY_ASCOT3_DTV_DVBC_8;
             break;
+        default:
+            return 1;
         }
         break;
 
@@ -600,6 +602,8 @@ static int ascot3_tune(struct cxd2878_dev*dev,u32 frequency)
         case SONY_DTV_BW_8_MHZ:
             aSystem = SONY_ASCOT3_DTV_DVBT_8;
             break;
+        default:
+            return 1;
         }
         break;
 
@@ -620,6 +624,8 @@ static int ascot3_tune(struct cxd2878_dev*dev,u32 frequency)
         case SONY_DTV_BW_8_MHZ:
             aSystem = SONY_ASCOT3_DTV_DVBT2_8;
             break;
+        default:
+            return 1;
         }
         break;
 
@@ -634,6 +640,8 @@ static int ascot3_tune(struct cxd2878_dev*dev,u32 frequency)
         case SONY_DTV_BW_8_MHZ:
             aSystem = SONY_ASCOT3_DTV_ISDBT_8;
             break;
+        default:
+            return 1;
         }
         break;
 
@@ -654,6 +662,8 @@ static int ascot3_tune(struct cxd2878_dev*dev,u32 frequency)
         case SONY_DTV_BW_J83B_5_60_MSPS:
             aSystem = SONY_ASCOT3_DTV_J83B_5_6; /* J.83B (5.6Msps used in Japan) uses special setting */
             break;
+        default:
+            return 1;
         }
         break;
 
@@ -1210,6 +1220,8 @@ static int freia_tune(struct cxd2878_dev *dev,u32 frequencykHz)
         case SONY_DTV_BW_8_MHZ:
             tvSystem = SONY_FREIA_DTV_CABLE_8;
             break;
+        default:
+            goto err;
         }
         break;
 
@@ -1227,6 +1239,8 @@ static int freia_tune(struct cxd2878_dev *dev,u32 frequencykHz)
         case SONY_DTV_BW_8_MHZ:
             tvSystem = SONY_FREIA_DTV_DVBT_8;
             break;
+        default:
+            goto err;
         }
         break;
 
@@ -1247,6 +1261,8 @@ static int freia_tune(struct cxd2878_dev *dev,u32 frequencykHz)
         case SONY_DTV_BW_8_MHZ:
             tvSystem = SONY_FREIA_DTV_DVBT2_8;
             break;
+        default:
+            goto err;
         }
         break;
 
@@ -1258,6 +1274,8 @@ static int freia_tune(struct cxd2878_dev *dev,u32 frequencykHz)
         case SONY_DTV_BW_8_MHZ:
             tvSystem = SONY_FREIA_DTV_DVBC2_8;
             break;
+        default:
+            goto err;
         }
         break;
 
@@ -1272,6 +1290,8 @@ static int freia_tune(struct cxd2878_dev *dev,u32 frequencykHz)
         case SONY_DTV_BW_8_MHZ:
             tvSystem = SONY_FREIA_DTV_ISDBT_8;
             break;
+        default:
+            goto err;
         }
         break;
 
@@ -1294,6 +1314,8 @@ static int freia_tune(struct cxd2878_dev *dev,u32 frequencykHz)
         case SONY_DTV_BW_8_MHZ:
             tvSystem = SONY_FREIA_DTV_ATSC3_8;
             break;
+        default:
+            goto err;
         }
         break;
 
@@ -1305,6 +1327,8 @@ static int freia_tune(struct cxd2878_dev *dev,u32 frequencykHz)
         case SONY_DTV_BW_J83B_5_60_MSPS:
             tvSystem = SONY_FREIA_DTV_SKP_OPT; /* J.83B (5.6Msps used in Japan) uses special setting */
             break;
+        default:
+            goto err;
         }
         break;
 
@@ -1935,6 +1959,8 @@ static int cxd2878_sleep(struct cxd2878_dev *dev)
 		   cxd2878_wr(dev,dev->slvr,0x48,0x01);		   
 		   cxd2878_wr(dev,dev->slvt,0x00,0x00);	   
 		   cxd2878_wr(dev,dev->slvt,0xD3,0x00);
+            break;
+        default:
             break;
         }
 	}
