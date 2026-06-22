@@ -352,7 +352,7 @@ static int cxd2878_atsc_SlaveRWriteRegister (struct cxd2878_dev*dev,
 			ret = -1;
 			goto err;}
 	  }
-   	if(rdata[0]&0x3F!=0x30){
+   	if((rdata[0]&0x3F)!=0x30){
 		ret = -1;
 		goto err;
    	}
@@ -425,7 +425,7 @@ static int cxd2878_atsc_softreset(struct cxd2878_dev *dev)
 			goto err;}
 	  }	
 
-	 if(rdata[0]&0x3F!=0x30){
+	 if((rdata[0]&0x3F)!=0x30){
 		ret = -1;
 		goto err;
    	 }
