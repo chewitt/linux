@@ -127,6 +127,21 @@
 		};
 	};
 
+	/*
+	 * The Mali OPP table specifies an operating voltage so the panfrost
+	 * driver asks the OPP core for a "mali" regulator. There is no
+	 * dedicated GPU regulator on GXM (the GPU shares the SoC supply) so
+	 * provide a dummy always-on regulator to silence the harmless
+	 * "no regulator (mali) found" error.
+	 */
+	vddgpu: regulator-vddgpu {
+		compatible = "regulator-fixed";
+		regulator-name = "mali";
+		regulator-min-microvolt = <950000>;
+		regulator-max-microvolt = <950000>;
+		regulator-always-on;
+	};
+
 	gpu_opp_table: opp-table {
 		compatible = "operating-points-v2";
 
@@ -180,6 +195,7 @@
 		clocks = <&clkc CLKID_MALI>;
 		resets = <&reset RESET_MALI_CAPB3>, <&reset RESET_MALI>;
 		operating-points-v2 = <&gpu_opp_table>;
+		mali-supply = <&vddgpu>;
 	};
 };
 
