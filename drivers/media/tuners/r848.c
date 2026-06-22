@@ -116,7 +116,6 @@ static int R848_Muti_Read(struct r848_priv *priv, u8 *IMR_Result_Data)
 	u8 ReadMax = 0;
 	u8 ReadMin = 255;
 	u8 ReadData = 0;
-	I2C_LEN_TYPE R848_I2C_Len;
 
 	u8 buf[2];
 	int ret;
@@ -277,7 +276,6 @@ static int I2C_Write(struct r848_priv *priv, I2C_TYPE *R848_I2C)
 static R848_ErrCode R848_Cal_Prepare(struct r848_priv *priv, u8 u1CalFlag)
 {
 	R848_Cal_Info_Type Cal_Info;
-	I2C_TYPE R848_I2C;
 	// I2C_LEN_TYPE R848_I2C_Len;
 	u8 R848_IMR_Cal_Type = R848_IMR_CAL;
 	int ret;
@@ -596,8 +594,6 @@ static R848_ErrCode R848_Cal_Prepare(struct r848_priv *priv, u8 u1CalFlag)
 static R848_ErrCode R848_Xtal_Check(struct r848_priv *priv)
 {
 	u8 i = 0;
-	I2C_TYPE R848_I2C;
-	I2C_LEN_TYPE R848_I2C_Len;
 
 	u8 buf[3];
 	int ret;
@@ -764,8 +760,6 @@ static R848_ErrCode R848_PLL(struct r848_priv *priv, u32 LO_Freq,
 
 	u8 R848_XtalDiv = XTAL_DIV2;
 
-	I2C_TYPE R848_I2C;
-	I2C_LEN_TYPE R848_I2C_Len;
 
 	/* TF NA fix */
 	u1RfFlag = (priv->cfg->R848_Array[14] & 0x01); //R22[0]
@@ -1147,7 +1141,6 @@ static R848_ErrCode R848_MUX(struct r848_priv *priv, u32 LO_KHz, u32 RF_KHz,
 	u8 Reg08_IMR_Gain = 0;
 	u8 Reg09_IMR_Phase = 0;
 	u8 Reg03_IMR_Iqcap = 0;
-	I2C_TYPE R848_I2C;
 	Freq_Info1 = R848_Freq_Sel(LO_KHz, RF_KHz, R848_Standard);
 
 	// LNA band (depend on RF_KHz)
@@ -1274,7 +1267,6 @@ static R848_ErrCode R848_IQ_Tree(struct r848_priv *priv, u8 FixPot, u8 FlucPot,
 	u8 TreeCunt = 0;
 	u8 TreeTimes = 3;
 	u8 PntReg = 0;
-	I2C_TYPE R848_I2C;
 
 	if (PotReg == 0x10)
 		/* Phase Control */
@@ -1406,7 +1398,6 @@ static R848_ErrCode R848_IMR_Cross(struct r848_priv *priv, R848_SectType *IQ_Pon
 	u8 CrossCount = 0;
 	u8 Reg16 = priv->cfg->R848_Array[8] & 0xC0;
 	u8 Reg17 = priv->cfg->R848_Array[9] & 0xC0;
-	I2C_TYPE R848_I2C;
 
 	memset(&Compare_Temp, 0, sizeof(R848_SectType));
 	Compare_Temp.Value = 255;
@@ -1556,7 +1547,6 @@ static R848_ErrCode R848_CompreStep(struct r848_priv *priv, R848_SectType *StepA
 {
 	int ret;
 	R848_SectType StepTemp;
-	I2C_TYPE R848_I2C;
 	//min value already saved in StepArry[0]
 	StepTemp.Phase_Y = StepArry[0].Phase_Y;
 	StepTemp.Gain_X = StepArry[0].Gain_X;
@@ -1606,7 +1596,6 @@ static R848_ErrCode R848_IMR_Iqcap(struct r848_priv *priv, R848_SectType *IQ_Poi
 {
 	R848_SectType Compare_Temp;
 	int i = 0, ret;
-	I2C_TYPE R848_I2C;
 
 	//Set Gain/Phase to right setting
 	//	R848_I2C.RegAddr = 0x10;	// R16[5:0]
@@ -1657,7 +1646,6 @@ static R848_ErrCode R848_IQ(struct r848_priv *priv, R848_SectType *IQ_Pont)
 	u8 VGA_Count = 0;
 	u8 VGA_Read = 0;
 	u8 X_Direction; // 1:X, 0:Y
-	I2C_TYPE R848_I2C;
 
 	// increase VGA power to let image significant
 	for (VGA_Count = 11; VGA_Count < 16; VGA_Count++) {
@@ -1812,7 +1800,6 @@ static R848_ErrCode R848_F_IMR(struct r848_priv *priv, R848_SectType *IQ_Pont)
 	R848_SectType Compare_Bet[3];
 	u8 VGA_Count = 0;
 	u8 VGA_Read = 0;
-	I2C_TYPE R848_I2C;
 
 	//VGA
 	for (VGA_Count = 11; VGA_Count < 16; VGA_Count++) {
@@ -1913,7 +1900,6 @@ static R848_ErrCode R848_SetTF(struct r848_priv *priv, u32 u4FreqKHz, u8 u1TfTyp
 	u8 u1TF_Set_Result2 = 0;
 	u8 u1TF_tmp1, u1TF_tmp2;
 	u8 u1TFCalNum = R848_TF_HIGH_NUM;
-	I2C_TYPE R848_I2C;
 	u8 R848_TF = 0;
 
 	if (u4FreqKHz < R848_LNA_LOW_LOWEST[R848_TF_BEAD]) //Ultra Low
@@ -3539,7 +3525,6 @@ R848_ErrCode R848_RfGainMode(struct r848_priv *priv,
 	u8 RfGain = 0;
 	u8 LnaGain = 0;
 	I2C_TYPE R848_I2C;
-	I2C_LEN_TYPE R848_I2C_Len;
 
 	if (R848_RfGainType == RF_MANUAL) {
 		//LNA auto off
