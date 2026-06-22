@@ -68,25 +68,6 @@ static int r848_wr(struct r848_priv *priv, u8 addr, u8 data)
 }
 
 /* read one register */
-static int r848_rd(struct r848_priv *priv, u8 addr, u8 *data)
-{
-	return r848_rdm(priv, addr, data, 1);
-}
-
-/* read register, apply masks, write back */
-static int r848_regmask(struct r848_priv *priv, u8 reg, u8 setmask, u8 clrmask)
-{
-	int ret;
-	u8 b = 0;
-	if (clrmask != 0xff) {
-		ret = r848_rd(priv, reg, &b);
-		if (ret)
-			return ret;
-		b &= ~clrmask;
-	}
-	return r848_wr(priv, reg, b | setmask);
-}
-
 static int r848_get_lock_status(struct r848_priv *priv, u8 *lock)
 {
 	int ret;
