@@ -5,6 +5,21 @@
  */
 
 / {
+	/*
+	 * The Mali OPP table specifies an operating voltage, so the lima
+	 * driver asks the OPP core for a "mali" regulator. There is no
+	 * dedicated GPU regulator on these SoCs (the GPU shares the SoC
+	 * supply), so provide a dummy always-on regulator to silence the
+	 * harmless "no regulator (mali) found" error.
+	 */
+	vddgpu: regulator-vddgpu {
+		compatible = "regulator-fixed";
+		regulator-name = "mali";
+		regulator-min-microvolt = <950000>;
+		regulator-max-microvolt = <950000>;
+		regulator-always-on;
+	};
+
 	gpu_opp_table: opp-table {
 		compatible = "operating-points-v2";
 
@@ -57,5 +72,6 @@
 			"pp0", "ppmmu0", "pp1", "ppmmu1",
 			"pp2", "ppmmu2";
 		operating-points-v2 = <&gpu_opp_table>;
+		mali-supply = <&vddgpu>;
 	};
 };
