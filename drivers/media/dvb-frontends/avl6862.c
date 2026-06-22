@@ -646,7 +646,7 @@ err:
 	return ret;
 }
 
-int ErrorStatMode_Demod(struct avl6862_priv *priv,
+static int ErrorStatMode_Demod(struct avl6862_priv *priv,
 			AVL_ErrorStatConfig stErrorStatConfig)
 {
 	int r = AVL_EC_OK;
@@ -678,7 +678,7 @@ int ErrorStatMode_Demod(struct avl6862_priv *priv,
 	return (r);
 }
 
-int ResetPER_Demod(struct avl6862_priv *priv)
+static int ResetPER_Demod(struct avl6862_priv *priv)
 {
 	int r = AVL_EC_OK;
 	u32 uiTemp = 0;
@@ -714,7 +714,7 @@ static int InitErrorStat_Demod(struct avl6862_priv *priv)
 	return r;
 }
 
-int DVBSx_Diseqc_Initialize_Demod(struct avl6862_priv *priv,
+static int DVBSx_Diseqc_Initialize_Demod(struct avl6862_priv *priv,
 				  AVL_Diseqc_Para *pDiseqcPara)
 {
 	int r = AVL_EC_OK;
@@ -1312,7 +1312,7 @@ static int AVL_Demod_DVBSx_Diseqc_SendModulationData(struct avl6862_priv *priv,
 	return (r);
 }
 
-int AVL_Demod_DVBSx_Diseqc_GetTxStatus(struct avl6862_priv *priv,
+static int AVL_Demod_DVBSx_Diseqc_GetTxStatus(struct avl6862_priv *priv,
 				       AVL_Diseqc_TxStatus *pTxStatus)
 {
 	int r = 0;
@@ -1331,7 +1331,7 @@ int AVL_Demod_DVBSx_Diseqc_GetTxStatus(struct avl6862_priv *priv,
 	return (r);
 }
 
-int AVL_SX_DiseqcSendCmd(struct avl6862_priv *priv, AVL_puchar pCmd, u8 CmdSize)
+static int AVL_SX_DiseqcSendCmd(struct avl6862_priv *priv, AVL_puchar pCmd, u8 CmdSize)
 {
 	int r = AVL_EC_OK;
 	struct AVL_Diseqc_TxStatus TxStatus;
@@ -1354,7 +1354,7 @@ int AVL_SX_DiseqcSendCmd(struct avl6862_priv *priv, AVL_puchar pCmd, u8 CmdSize)
 	return (r);
 }
 
-int AVL_Demod_DVBSx_Diseqc_SendTone(struct avl6862_priv *priv, u8 ucTone,
+static int AVL_Demod_DVBSx_Diseqc_SendTone(struct avl6862_priv *priv, u8 ucTone,
 				    u8 ucCount)
 {
 	int r = 0;
