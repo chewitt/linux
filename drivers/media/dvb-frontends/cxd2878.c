@@ -1034,7 +1034,9 @@ static int freia_read_rssi(struct cxd2878_dev*dev,u32 frequency,s32 *rssi)
 	} 
 	
 	
-   if (SONY_FREIA_IS_DVB_T_T2(dev->system)) {
+   if (dev->system == SONY_DTV_SYSTEM_DVBT ||
+       dev->system == SONY_DTV_SYSTEM_DVBT2 ||
+       dev->system == SONY_DTV_SYSTEM_ATSC3) {
   
         
             int32_t maxagcreg_x150 = 0;
