@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: GPL-2.0-only
+config VIDEO_MESON_DI
+	tristate "Amlogic GX Video Deinterlacer"
+	depends on V4L_MEM2MEM_DRIVERS
+	depends on VIDEO_DEV
+	depends on PM
+	depends on ARCH_MESON || COMPILE_TEST
+	depends on MESON_CANVAS
+	select VIDEOBUF2_DMA_CONTIG
+	select V4L2_MEM2MEM_DEV
+	help
+	  This is a V4L2 memory-to-memory driver for the motion-adaptive
+	  hardware deinterlacer found on the Amlogic GXBB, GXL and GXM SoCs.
+	  It converts interlaced video into progressive video for use with
+	  applications such as ffmpeg and Kodi.
+
+	  To compile this driver as a module choose m here.
