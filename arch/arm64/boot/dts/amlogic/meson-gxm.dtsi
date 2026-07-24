@@ -224,6 +224,10 @@
 	compatible = "amlogic,meson-gxm-vpu", "amlogic,meson-gx-vpu";
 };
 
+&di {
+	compatible = "amlogic,gxm-di", "amlogic,gx-di";
+};
+
 &hdmi_tx {
 	compatible = "amlogic,meson-gxm-dw-hdmi", "amlogic,meson-gx-dw-hdmi";
 };
