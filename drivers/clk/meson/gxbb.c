@@ -1722,6 +1722,92 @@ static struct clk_regmap gxbb_vpu = {
 	},
 };
 
+/*
+ * vpu_clkb is a two-stage tree inside HHI_VPU_CLKB_CNTL: a "tmp" stage
+ * (mux [21:20] / divider [19:16] / gate bit24) feeding a final stage
+ * (divider [7:0] / gate bit8). It clocks the video deinterlacer (DI).
+ */
+static struct clk_regmap gxbb_vpu_clkb_tmp_sel = {
+	.data = &(struct clk_regmap_mux_data){
+		.offset = HHI_VPU_CLKB_CNTL,
+		.mask = 0x3,
+		.shift = 20,
+	},
+	.hw.init = &(struct clk_init_data){
+		.name = "vpu_clkb_tmp_sel",
+		.ops = &clk_regmap_mux_ops,
+		.parent_hws = gxbb_vpu_parents,
+		.num_parents = ARRAY_SIZE(gxbb_vpu_parents),
+		.flags = CLK_SET_RATE_NO_REPARENT | CLK_SET_RATE_PARENT,
+	},
+};
+
+static struct clk_regmap gxbb_vpu_clkb_tmp_div = {
+	.data = &(struct clk_regmap_div_data){
+		.offset = HHI_VPU_CLKB_CNTL,
+		.shift = 16,
+		.width = 4,
+	},
+	.hw.init = &(struct clk_init_data){
+		.name = "vpu_clkb_tmp_div",
+		.ops = &clk_regmap_divider_ops,
+		.parent_hws = (const struct clk_hw *[]) {
+			&gxbb_vpu_clkb_tmp_sel.hw
+		},
+		.num_parents = 1,
+		.flags = CLK_SET_RATE_PARENT,
+	},
+};
+
+static struct clk_regmap gxbb_vpu_clkb_tmp = {
+	.data = &(struct clk_regmap_gate_data){
+		.offset = HHI_VPU_CLKB_CNTL,
+		.bit_idx = 24,
+	},
+	.hw.init = &(struct clk_init_data){
+		.name = "vpu_clkb_tmp",
+		.ops = &clk_regmap_gate_ops,
+		.parent_hws = (const struct clk_hw *[]) {
+			&gxbb_vpu_clkb_tmp_div.hw
+		},
+		.num_parents = 1,
+		.flags = CLK_SET_RATE_PARENT,
+	},
+};
+
+static struct clk_regmap gxbb_vpu_clkb_div = {
+	.data = &(struct clk_regmap_div_data){
+		.offset = HHI_VPU_CLKB_CNTL,
+		.shift = 0,
+		.width = 8,
+	},
+	.hw.init = &(struct clk_init_data){
+		.name = "vpu_clkb_div",
+		.ops = &clk_regmap_divider_ops,
+		.parent_hws = (const struct clk_hw *[]) {
+			&gxbb_vpu_clkb_tmp.hw
+		},
+		.num_parents = 1,
+		.flags = CLK_SET_RATE_PARENT,
+	},
+};
+
+static struct clk_regmap gxbb_vpu_clkb = {
+	.data = &(struct clk_regmap_gate_data){
+		.offset = HHI_VPU_CLKB_CNTL,
+		.bit_idx = 8,
+	},
+	.hw.init = &(struct clk_init_data){
+		.name = "vpu_clkb",
+		.ops = &clk_regmap_gate_ops,
+		.parent_hws = (const struct clk_hw *[]) {
+			&gxbb_vpu_clkb_div.hw
+		},
+		.num_parents = 1,
+		.flags = CLK_SET_RATE_PARENT,
+	},
+};
+
 /* VAPB Clock */
 
 static const struct clk_hw *gxbb_vapb_parents[] = {
@@ -3052,6 +3138,11 @@ static struct clk_hw *gxbb_hw_clks[] = {
 	[CLKID_HDMI_SEL]	    = &gxbb_hdmi_sel.hw,
 	[CLKID_HDMI_DIV]	    = &gxbb_hdmi_div.hw,
 	[CLKID_HDMI]		    = &gxbb_hdmi.hw,
+	[CLKID_VPU_CLKB_TMP_SEL]    = &gxbb_vpu_clkb_tmp_sel.hw,
+	[CLKID_VPU_CLKB_TMP_DIV]    = &gxbb_vpu_clkb_tmp_div.hw,
+	[CLKID_VPU_CLKB_TMP]	    = &gxbb_vpu_clkb_tmp.hw,
+	[CLKID_VPU_CLKB_DIV]	    = &gxbb_vpu_clkb_div.hw,
+	[CLKID_VPU_CLKB]	    = &gxbb_vpu_clkb.hw,
 };
 
 static struct clk_hw *gxl_hw_clks[] = {
@@ -3260,6 +3351,11 @@ static struct clk_hw *gxl_hw_clks[] = {
 	[CLKID_HDMI_DIV]	    = &gxbb_hdmi_div.hw,
 	[CLKID_HDMI]		    = &gxbb_hdmi.hw,
 	[CLKID_ACODEC]		    = &gxl_acodec.hw,
+	[CLKID_VPU_CLKB_TMP_SEL]    = &gxbb_vpu_clkb_tmp_sel.hw,
+	[CLKID_VPU_CLKB_TMP_DIV]    = &gxbb_vpu_clkb_tmp_div.hw,
+	[CLKID_VPU_CLKB_TMP]	    = &gxbb_vpu_clkb_tmp.hw,
+	[CLKID_VPU_CLKB_DIV]	    = &gxbb_vpu_clkb_div.hw,
+	[CLKID_VPU_CLKB]	    = &gxbb_vpu_clkb.hw,
 };
 
 static const struct meson_clkc_data gxbb_clkc_data = {
