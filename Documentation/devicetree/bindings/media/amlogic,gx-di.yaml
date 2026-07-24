@@ -1,0 +1,77 @@
+# SPDX-License-Identifier: (GPL-2.0 OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/media/amlogic,gx-di.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Amlogic GX Video Deinterlacer
+
+maintainers:
+  - Christian Hewitt <christianshewitt@gmail.com>
+
+description: |
+  The deinterlacer (DI) is a motion-adaptive hardware deinterlacing unit
+  found on the Amlogic GXBB, GXL and GXM SoCs. It converts interlaced video
+  fields into progressive frames using a two-stage pipeline: a "pre" stage
+  performs noise reduction and per-pixel motion detection, writing motion
+  information to memory, and a "post" stage blends the fields using that
+  motion information.
+
+  The DI registers are a sub-region of the shared VPU register space (VCBUS).
+  Clocking, power and the video reset lines are provided through the VPU power
+  domain; the DI block gates and resets itself using registers within its own
+  region.
+
+properties:
+  compatible:
+    items:
+      - enum:
+          - amlogic,gxbb-di # GXBB (S905)
+          - amlogic,gxl-di # GXL (S905D, S905W, S905X, S905Y)
+          - amlogic,gxm-di # GXM (S912)
+      - const: amlogic,gx-di
+
+  reg:
+    maxItems: 1
+
+  interrupts:
+    items:
+      - description: deinterlacer pre-stage completion interrupt
+      - description: deinterlacer post-stage completion interrupt
+
+  interrupt-names:
+    items:
+      - const: de
+      - const: timerc
+
+  power-domains:
+    maxItems: 1
+
+  amlogic,canvas:
+    description: should point to a canvas provider node
+    $ref: /schemas/types.yaml#/definitions/phandle
+
+required:
+  - compatible
+  - reg
+  - interrupts
+  - interrupt-names
+  - power-domains
+  - amlogic,canvas
+
+additionalProperties: false
+
+examples:
+  - |
+    #include <dt-bindings/interrupt-controller/arm-gic.h>
+    #include <dt-bindings/power/meson-gxbb-power.h>
+
+    deinterlace@d0105c00 {
+          compatible = "amlogic,gxl-di", "amlogic,gx-di";
+          reg = <0xd0105c00 0x8800>;
+          interrupts = <GIC_SPI 46 IRQ_TYPE_EDGE_RISING>,
+                       <GIC_SPI 6 IRQ_TYPE_EDGE_RISING>;
+          interrupt-names = "de", "timerc";
+          power-domains = <&pwrc PWRC_GXBB_VPU_ID>;
+          amlogic,canvas = <&canvas>;
+    };
