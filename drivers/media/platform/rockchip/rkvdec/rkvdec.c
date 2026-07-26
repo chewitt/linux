@@ -499,6 +499,45 @@ static const struct rkvdec_decoded_fmt_desc rkvdec_vp9_decoded_fmts[] = {
 	},
 };
 
+static const struct rkvdec_ctrl_desc vdpu381_vp9_ctrl_descs[] = {
+	{
+		.cfg.id = V4L2_CID_STATELESS_VP9_FRAME,
+		.cfg.ops = &rkvdec_ctrl_ops,
+	},
+	{
+		.cfg.id = V4L2_CID_STATELESS_VP9_COMPRESSED_HDR,
+	},
+	{
+		.cfg.id = V4L2_CID_MPEG_VIDEO_VP9_PROFILE,
+		.cfg.min = V4L2_MPEG_VIDEO_VP9_PROFILE_0,
+		.cfg.max = V4L2_MPEG_VIDEO_VP9_PROFILE_2,
+		.cfg.def = V4L2_MPEG_VIDEO_VP9_PROFILE_0,
+		/* profiles 1/3 are 4:2:2/4:4:4 which VDPU381 cannot decode */
+		.cfg.menu_skip_mask = BIT(V4L2_MPEG_VIDEO_VP9_PROFILE_1),
+	},
+	{
+		.cfg.id = V4L2_CID_MPEG_VIDEO_VP9_LEVEL,
+		.cfg.min = V4L2_MPEG_VIDEO_VP9_LEVEL_1_0,
+		.cfg.max = V4L2_MPEG_VIDEO_VP9_LEVEL_6_1,
+	},
+};
+
+static const struct rkvdec_ctrls vdpu381_vp9_ctrls = {
+	.ctrls = vdpu381_vp9_ctrl_descs,
+	.num_ctrls = ARRAY_SIZE(vdpu381_vp9_ctrl_descs),
+};
+
+static const struct rkvdec_decoded_fmt_desc rkvdec_vdpu381_vp9_decoded_fmts[] = {
+	{
+		.fourcc = V4L2_PIX_FMT_NV12,
+		.image_fmt = RKVDEC_IMG_FMT_420_8BIT,
+	},
+	{
+		.fourcc = V4L2_PIX_FMT_NV15,
+		.image_fmt =  RKVDEC_IMG_FMT_420_10BIT,
+	},
+};
+
 static const struct rkvdec_coded_fmt_desc rkvdec_coded_fmts[] = {
 	{
 		.fourcc = V4L2_PIX_FMT_HEVC_SLICE,
@@ -634,6 +673,21 @@ static const struct rkvdec_coded_fmt_desc vdpu381_coded_fmts[] = {
 		.decoded_fmts = rkvdec_h264_decoded_fmts,
 		.subsystem_flags = VB2_V4L2_FL_SUPPORTS_M2M_HOLD_CAPTURE_BUF,
 	},
+	{
+		.fourcc = V4L2_PIX_FMT_VP9_FRAME,
+		.frmsize = {
+			.min_width = 64,
+			.max_width = 65472,
+			.step_width = 64,
+			.min_height = 64,
+			.max_height = 65472,
+			.step_height = 64,
+		},
+		.ctrls = &vdpu381_vp9_ctrls,
+		.ops = &rkvdec_vdpu381_vp9_fmt_ops,
+		.num_decoded_fmts = ARRAY_SIZE(rkvdec_vdpu381_vp9_decoded_fmts),
+		.decoded_fmts = rkvdec_vdpu381_vp9_decoded_fmts,
+	}
 };
 
 static const struct rkvdec_coded_fmt_desc vdpu383_coded_fmts[] = {
@@ -890,6 +944,13 @@ static int rkvdec_s_output_fmt(struct file *file, void *priv,
 	 * Note that this will propagates any size changes to the decoded format.
 	 */
 	ctx->image_fmt = RKVDEC_IMG_FMT_ANY;
+
+	/* VP9 bit depth is per-frame, not up-front like HEVC's SPS;
+	 * default to 8-bit/NV12 until get_image_fmt() switches it.
+	 */
+	if (desc->fourcc == V4L2_PIX_FMT_VP9_FRAME)
+		ctx->image_fmt = RKVDEC_IMG_FMT_420_8BIT;
+
 	rkvdec_reset_decoded_fmt(ctx);
 
 	/* Propagate colorspace information to capture. */
