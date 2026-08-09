@@ -742,7 +742,6 @@ static int rkvdec_vp9_run(struct rkvdec_ctx *ctx)
 	struct rkvdec_vp9_ctx *vp9_ctx = ctx->priv;
 	struct rkvdec_vp9_run run = { };
 	int ret;
-	u32 watchdog_time;
 
 	ret = rkvdec_vp9_run_preamble(ctx, &run);
 
@@ -760,16 +759,7 @@ static int rkvdec_vp9_run(struct rkvdec_ctx *ctx)
 
 	rkvdec_run_postamble(ctx, &run.base);
 
-	u64 timeout_threshold = vp9_ctx->regs.common.reg032_timeout_threshold;
-	unsigned long axi_rate = clk_get_rate(rkvdec->axi_clk);
-
-	if (axi_rate)
-		watchdog_time = 2 * (1000 * timeout_threshold) / axi_rate;
-	else
-		watchdog_time = 2000;
-
-	schedule_delayed_work(&rkvdec->watchdog_work,
-			      msecs_to_jiffies(watchdog_time));
+	rkvdec_schedule_watchdog(rkvdec, vp9_ctx->regs.common.reg032_timeout_threshold);
 
 	writel(VDPU381_DEC_E_BIT, rkvdec->regs + VDPU381_REG_DEC_E);
 
