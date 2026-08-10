@@ -185,22 +185,22 @@ static void assemble_hw_pps(struct rkvdec_ctx *ctx,
 
 static void rkvdec_write_regs(struct rkvdec_ctx *ctx)
 {
-	struct rkvdec_dev *rkvdec = ctx->dev;
+	struct rkvdec_core *core = ctx->core;
 	struct rkvdec_h264_ctx *h264_ctx = ctx->priv;
 
-	rkvdec_memcpy_toio(rkvdec->regs + OFFSET_COMMON_REGS,
+	rkvdec_memcpy_toio(core->regs + OFFSET_COMMON_REGS,
 			   &h264_ctx->regs.common,
 			   sizeof(h264_ctx->regs.common));
-	rkvdec_memcpy_toio(rkvdec->regs + OFFSET_CODEC_PARAMS_REGS,
+	rkvdec_memcpy_toio(core->regs + OFFSET_CODEC_PARAMS_REGS,
 			   &h264_ctx->regs.h264_param,
 			   sizeof(h264_ctx->regs.h264_param));
-	rkvdec_memcpy_toio(rkvdec->regs + OFFSET_COMMON_ADDR_REGS,
+	rkvdec_memcpy_toio(core->regs + OFFSET_COMMON_ADDR_REGS,
 			   &h264_ctx->regs.common_addr,
 			   sizeof(h264_ctx->regs.common_addr));
-	rkvdec_memcpy_toio(rkvdec->regs + OFFSET_CODEC_ADDR_REGS,
+	rkvdec_memcpy_toio(core->regs + OFFSET_CODEC_ADDR_REGS,
 			   &h264_ctx->regs.h264_addr,
 			   sizeof(h264_ctx->regs.h264_addr));
-	rkvdec_memcpy_toio(rkvdec->regs + OFFSET_POC_HIGHBIT_REGS,
+	rkvdec_memcpy_toio(core->regs + OFFSET_POC_HIGHBIT_REGS,
 			   &h264_ctx->regs.h264_highpoc,
 			   sizeof(h264_ctx->regs.h264_highpoc));
 }
@@ -368,7 +368,6 @@ static void config_registers(struct rkvdec_ctx *ctx,
 
 static int rkvdec_h264_start(struct rkvdec_ctx *ctx)
 {
-	struct rkvdec_dev *rkvdec = ctx->dev;
 	struct rkvdec_h264_priv_tbl *priv_tbl;
 	struct rkvdec_h264_ctx *h264_ctx;
 	struct v4l2_ctrl *ctrl;
@@ -387,7 +386,7 @@ static int rkvdec_h264_start(struct rkvdec_ctx *ctx)
 	if (!h264_ctx)
 		return -ENOMEM;
 
-	priv_tbl = dma_alloc_coherent(rkvdec->dev, sizeof(*priv_tbl),
+	priv_tbl = dma_alloc_coherent(ctx->dev->main_core->dev, sizeof(*priv_tbl),
 				      &h264_ctx->priv_tbl.dma, GFP_KERNEL);
 	if (!priv_tbl) {
 		ret = -ENOMEM;
@@ -410,9 +409,8 @@ err_free_ctx:
 static void rkvdec_h264_stop(struct rkvdec_ctx *ctx)
 {
 	struct rkvdec_h264_ctx *h264_ctx = ctx->priv;
-	struct rkvdec_dev *rkvdec = ctx->dev;
 
-	dma_free_coherent(rkvdec->dev, h264_ctx->priv_tbl.size,
+	dma_free_coherent(ctx->dev->main_core->dev, h264_ctx->priv_tbl.size,
 			  h264_ctx->priv_tbl.cpu, h264_ctx->priv_tbl.dma);
 	kfree(h264_ctx);
 }
@@ -420,7 +418,7 @@ static void rkvdec_h264_stop(struct rkvdec_ctx *ctx)
 static int rkvdec_h264_run(struct rkvdec_ctx *ctx)
 {
 	struct v4l2_h264_reflist_builder reflist_builder;
-	struct rkvdec_dev *rkvdec = ctx->dev;
+	struct rkvdec_core *core = ctx->core;
 	struct rkvdec_h264_ctx *h264_ctx = ctx->priv;
 	struct rkvdec_h264_priv_tbl *tbl = h264_ctx->priv_tbl.cpu;
 	struct rkvdec_h264_run run;
@@ -443,10 +441,10 @@ static int rkvdec_h264_run(struct rkvdec_ctx *ctx)
 
 	rkvdec_run_postamble(ctx, &run.base);
 
-	rkvdec_schedule_watchdog(rkvdec, h264_ctx->regs.common.reg032_timeout_threshold);
+	rkvdec_schedule_watchdog(core, h264_ctx->regs.common.reg032_timeout_threshold);
 
 	/* Start decoding! */
-	writel(VDPU381_DEC_E_BIT, rkvdec->regs + VDPU381_REG_DEC_E);
+	writel(VDPU381_DEC_E_BIT, core->regs + VDPU381_REG_DEC_E);
 
 	return 0;
 }

@@ -384,6 +384,7 @@ static void assemble_sw_rps(struct rkvdec_ctx *ctx,
 static void config_registers(struct rkvdec_ctx *ctx,
 			     struct rkvdec_hevc_run *run)
 {
+	struct rkvdec_core *core = ctx->core;
 	struct rkvdec_dev *rkvdec = ctx->dev;
 	const struct v4l2_ctrl_hevc_decode_params *decode_params = run->decode_params;
 	const struct v4l2_ctrl_hevc_sps *sps = run->sps;
@@ -480,7 +481,7 @@ static void config_registers(struct rkvdec_ctx *ctx,
 	offset = offsetof(struct rkvdec_hevc_priv_tbl, rps);
 	regs->h26x.rps_base = priv_start_addr + offset;
 
-	rkvdec_memcpy_toio(rkvdec->regs, regs,
+	rkvdec_memcpy_toio(core->regs, regs,
 			   MIN(sizeof(*regs), sizeof(u32) * rkvdec->variant->num_regs));
 }
 
@@ -514,7 +515,7 @@ static int rkvdec_hevc_start(struct rkvdec_ctx *ctx)
 	if (!hevc_ctx)
 		return -ENOMEM;
 
-	priv_tbl = dma_alloc_coherent(rkvdec->dev, sizeof(*priv_tbl),
+	priv_tbl = dma_alloc_coherent(rkvdec->main_core->dev, sizeof(*priv_tbl),
 				      &hevc_ctx->priv_tbl.dma, GFP_KERNEL);
 	if (!priv_tbl) {
 		kfree(hevc_ctx);
@@ -535,13 +536,14 @@ static void rkvdec_hevc_stop(struct rkvdec_ctx *ctx)
 	struct rkvdec_hevc_ctx *hevc_ctx = ctx->priv;
 	struct rkvdec_dev *rkvdec = ctx->dev;
 
-	dma_free_coherent(rkvdec->dev, hevc_ctx->priv_tbl.size,
+	dma_free_coherent(rkvdec->main_core->dev, hevc_ctx->priv_tbl.size,
 			  hevc_ctx->priv_tbl.cpu, hevc_ctx->priv_tbl.dma);
 	kfree(hevc_ctx);
 }
 
 static int rkvdec_hevc_run(struct rkvdec_ctx *ctx)
 {
+	struct rkvdec_core *core = ctx->core;
 	struct rkvdec_dev *rkvdec = ctx->dev;
 	struct rkvdec_hevc_run run;
 	struct rkvdec_hevc_ctx *hevc_ctx = ctx->priv;
@@ -558,10 +560,10 @@ static int rkvdec_hevc_run(struct rkvdec_ctx *ctx)
 
 	rkvdec_run_postamble(ctx, &run.base);
 
-	schedule_delayed_work(&rkvdec->watchdog_work, msecs_to_jiffies(2000));
+	schedule_delayed_work(&core->watchdog_work, msecs_to_jiffies(2000));
 
-	writel(1, rkvdec->regs + RKVDEC_REG_PREF_LUMA_CACHE_COMMAND);
-	writel(1, rkvdec->regs + RKVDEC_REG_PREF_CHR_CACHE_COMMAND);
+	writel(1, core->regs + RKVDEC_REG_PREF_LUMA_CACHE_COMMAND);
+	writel(1, core->regs + RKVDEC_REG_PREF_CHR_CACHE_COMMAND);
 
 	if (rkvdec->variant->quirks & RKVDEC_QUIRK_DISABLE_QOS)
 		rkvdec_quirks_disable_qos(ctx);
@@ -571,7 +573,7 @@ static int rkvdec_hevc_run(struct rkvdec_ctx *ctx)
 		0 : RKVDEC_WR_DDR_ALIGN_EN;
 	writel(RKVDEC_INTERRUPT_DEC_E | RKVDEC_CONFIG_DEC_CLK_GATE_E |
 	       RKVDEC_TIMEOUT_E | RKVDEC_BUF_EMPTY_E | reg,
-	       rkvdec->regs + RKVDEC_REG_INTERRUPT);
+	       core->regs + RKVDEC_REG_INTERRUPT);
 
 	return 0;
 }

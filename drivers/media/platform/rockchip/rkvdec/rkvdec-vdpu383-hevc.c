@@ -323,19 +323,19 @@ static void assemble_hw_pps(struct rkvdec_ctx *ctx,
 
 static void rkvdec_write_regs(struct rkvdec_ctx *ctx)
 {
-	struct rkvdec_dev *rkvdec = ctx->dev;
+	struct rkvdec_core *core = ctx->core;
 	struct rkvdec_hevc_ctx *h265_ctx = ctx->priv;
 
-	rkvdec_memcpy_toio(rkvdec->regs + VDPU383_OFFSET_COMMON_REGS,
+	rkvdec_memcpy_toio(core->regs + VDPU383_OFFSET_COMMON_REGS,
 			   &h265_ctx->regs.common,
 			   sizeof(h265_ctx->regs.common));
-	rkvdec_memcpy_toio(rkvdec->regs + VDPU383_OFFSET_COMMON_ADDR_REGS,
+	rkvdec_memcpy_toio(core->regs + VDPU383_OFFSET_COMMON_ADDR_REGS,
 			   &h265_ctx->regs.common_addr,
 			   sizeof(h265_ctx->regs.common_addr));
-	rkvdec_memcpy_toio(rkvdec->regs + VDPU383_OFFSET_CODEC_PARAMS_REGS,
+	rkvdec_memcpy_toio(core->regs + VDPU383_OFFSET_CODEC_PARAMS_REGS,
 			   &h265_ctx->regs.h26x_params,
 			   sizeof(h265_ctx->regs.h26x_params));
-	rkvdec_memcpy_toio(rkvdec->regs + VDPU383_OFFSET_CODEC_ADDR_REGS,
+	rkvdec_memcpy_toio(core->regs + VDPU383_OFFSET_CODEC_ADDR_REGS,
 			   &h265_ctx->regs.h26x_addr,
 			   sizeof(h265_ctx->regs.h26x_addr));
 }
@@ -505,7 +505,7 @@ static int rkvdec_hevc_start(struct rkvdec_ctx *ctx)
 	if (!hevc_ctx)
 		return -ENOMEM;
 
-	priv_tbl = dma_alloc_coherent(rkvdec->dev, sizeof(*priv_tbl),
+	priv_tbl = dma_alloc_coherent(rkvdec->main_core->dev, sizeof(*priv_tbl),
 				      &hevc_ctx->priv_tbl.dma, GFP_KERNEL);
 	if (!priv_tbl) {
 		ret = -ENOMEM;
@@ -530,14 +530,14 @@ static void rkvdec_hevc_stop(struct rkvdec_ctx *ctx)
 	struct rkvdec_hevc_ctx *hevc_ctx = ctx->priv;
 	struct rkvdec_dev *rkvdec = ctx->dev;
 
-	dma_free_coherent(rkvdec->dev, hevc_ctx->priv_tbl.size,
+	dma_free_coherent(rkvdec->main_core->dev, hevc_ctx->priv_tbl.size,
 			  hevc_ctx->priv_tbl.cpu, hevc_ctx->priv_tbl.dma);
 	kfree(hevc_ctx);
 }
 
 static int rkvdec_hevc_run(struct rkvdec_ctx *ctx)
 {
-	struct rkvdec_dev *rkvdec = ctx->dev;
+	struct rkvdec_core *core = ctx->core;
 	struct rkvdec_hevc_run run;
 	struct rkvdec_hevc_ctx *hevc_ctx = ctx->priv;
 	struct rkvdec_hevc_priv_tbl *tbl = hevc_ctx->priv_tbl.cpu;
@@ -552,7 +552,7 @@ static int rkvdec_hevc_run(struct rkvdec_ctx *ctx)
 	 */
 	if ((!ctx->has_sps_lt_rps && run.sps->num_long_term_ref_pics_sps) ||
 	    (!ctx->has_sps_st_rps && run.sps->num_short_term_ref_pic_sets)) {
-		dev_err_ratelimited(rkvdec->dev, "Long and short term RPS not set\n");
+		dev_err_ratelimited(core->dev, "Long and short term RPS not set\n");
 		return -EINVAL;
 	}
 
@@ -566,12 +566,12 @@ static int rkvdec_hevc_run(struct rkvdec_ctx *ctx)
 	rkvdec_run_postamble(ctx, &run.base);
 
 	timeout_threshold = hevc_ctx->regs.common.reg013_core_timeout_threshold;
-	rkvdec_schedule_watchdog(rkvdec, timeout_threshold);
+	rkvdec_schedule_watchdog(core, timeout_threshold);
 
 	/* Start decoding! */
-	writel(timeout_threshold, rkvdec->link + VDPU383_LINK_TIMEOUT_THRESHOLD);
-	writel(VDPU383_IP_CRU_MODE, rkvdec->link + VDPU383_LINK_IP_ENABLE);
-	writel(VDPU383_DEC_E_BIT, rkvdec->link + VDPU383_LINK_DEC_ENABLE);
+	writel(timeout_threshold, core->link + VDPU383_LINK_TIMEOUT_THRESHOLD);
+	writel(VDPU383_IP_CRU_MODE, core->link + VDPU383_LINK_IP_ENABLE);
+	writel(VDPU383_DEC_E_BIT, core->link + VDPU383_LINK_DEC_ENABLE);
 
 	return 0;
 }
