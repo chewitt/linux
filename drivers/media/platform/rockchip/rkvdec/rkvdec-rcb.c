@@ -76,9 +76,8 @@ void rkvdec_free_rcb(struct rkvdec_dev *rkvdec, struct rkvdec_core *core)
 		case RKVDEC_ALLOC_SRAM:
 			virt_addr = (unsigned long)cfg->rcb_bufs[i].cpu;
 
-			if (iommu_get_domain_for_dev(core->dev))
-				iommu_unmap(iommu_get_domain_for_dev(core->dev),
-					    virt_addr, rcb_size);
+			if (rkvdec->iommu_global_domain)
+				iommu_unmap(rkvdec->iommu_global_domain, virt_addr, rcb_size);
 			gen_pool_free(core->sram_pool, virt_addr, rcb_size);
 			break;
 		case RKVDEC_ALLOC_DMA:
@@ -134,7 +133,7 @@ int rkvdec_allocate_rcb(struct rkvdec_dev *rkvdec, struct rkvdec_core *core,
 
 		/* Try allocating an SRAM buffer */
 		if (core->sram_pool) {
-			if (iommu_get_domain_for_dev(core->dev))
+			if (rkvdec->iommu_global_domain)
 				rcb_size = ALIGN(rcb_size, SZ_4K);
 
 			cpu = gen_pool_dma_zalloc_align(core->sram_pool,
@@ -144,12 +143,11 @@ int rkvdec_allocate_rcb(struct rkvdec_dev *rkvdec, struct rkvdec_core *core,
 		}
 
 		/* If an IOMMU is used, map the SRAM address through it */
-		if (cpu && iommu_get_domain_for_dev(core->dev)) {
+		if (cpu && rkvdec->iommu_global_domain) {
 			unsigned long virt_addr = (unsigned long)cpu;
 			phys_addr_t phys_addr = dma;
 
-			ret = iommu_map(iommu_get_domain_for_dev(core->dev),
-					virt_addr, phys_addr,
+			ret = iommu_map(rkvdec->iommu_global_domain, virt_addr, phys_addr,
 					rcb_size, IOMMU_READ | IOMMU_WRITE, 0);
 			if (ret) {
 				gen_pool_free(core->sram_pool,
