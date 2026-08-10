@@ -125,23 +125,28 @@ struct rkvdec_coded_fmt_desc {
 	u32 subsystem_flags;
 };
 
-struct rkvdec_dev {
-	struct v4l2_device v4l2_dev;
-	struct media_device mdev;
-	struct video_device vdev;
-	struct v4l2_m2m_dev *m2m_dev;
+struct rkvdec_core {
 	struct device *dev;
 	struct clk_bulk_data *clocks;
 	unsigned int num_clocks;
 	struct clk *axi_clk;
 	void __iomem *regs;
 	void __iomem *link;
-	struct mutex vdev_lock; /* serializes ioctls */
 	struct delayed_work watchdog_work;
 	struct gen_pool *sram_pool;
-	struct iommu_domain *iommu_domain;
 	struct iommu_domain *empty_domain;
+	struct rkvdec_rcb_config *rcb_config;
+	struct rkvdec_ctx *curr_ctx;
+};
+
+struct rkvdec_dev {
+	struct v4l2_device v4l2_dev;
+	struct media_device mdev;
+	struct video_device vdev;
+	struct v4l2_m2m_dev *m2m_dev;
+	struct mutex vdev_lock; /* serializes ioctls */
 	const struct rkvdec_variant *variant;
+	struct rkvdec_core *main_core;
 };
 
 struct rkvdec_ctx {
@@ -152,8 +157,8 @@ struct rkvdec_ctx {
 	struct v4l2_ctrl_handler ctrl_hdl;
 	struct rkvdec_dev *dev;
 	enum rkvdec_image_fmt image_fmt;
-	struct rkvdec_rcb_config *rcb_config;
 	u32 colmv_offset;
+	struct rkvdec_core *core;
 	void *priv;
 	u8 has_sps_st_rps: 1;
 	u8 has_sps_lt_rps: 1;
@@ -179,7 +184,7 @@ struct rkvdec_aux_buf {
 void rkvdec_run_preamble(struct rkvdec_ctx *ctx, struct rkvdec_run *run);
 void rkvdec_run_postamble(struct rkvdec_ctx *ctx, struct rkvdec_run *run);
 void rkvdec_memcpy_toio(void __iomem *dst, void *src, size_t len);
-void rkvdec_schedule_watchdog(struct rkvdec_dev *rkvdec, u32 timeout_threshold);
+void rkvdec_schedule_watchdog(struct rkvdec_core *core, u32 timeout_threshold);
 
 void rkvdec_quirks_disable_qos(struct rkvdec_ctx *ctx);
 

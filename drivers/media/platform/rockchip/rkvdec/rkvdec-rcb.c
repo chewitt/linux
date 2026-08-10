@@ -29,38 +29,37 @@ static size_t rkvdec_rcb_size(const struct rcb_size_info *size_info,
 
 dma_addr_t rkvdec_rcb_buf_dma_addr(struct rkvdec_ctx *ctx, int id)
 {
-	return ctx->rcb_config->rcb_bufs[id].dma;
+	return ctx->core->rcb_config->rcb_bufs[id].dma;
 }
 
 size_t rkvdec_rcb_buf_size(struct rkvdec_ctx *ctx, int id)
 {
-	return ctx->rcb_config->rcb_bufs[id].size;
+	return ctx->core->rcb_config->rcb_bufs[id].size;
 }
 
 int rkvdec_rcb_buf_count(struct rkvdec_ctx *ctx)
 {
-	return ctx->rcb_config->rcb_count;
+	return ctx->core->rcb_config->rcb_count;
 }
 
 bool rkvdec_rcb_buf_validate_size(struct rkvdec_ctx *ctx)
 {
-	struct rkvdec_rcb_config *cfg = ctx->rcb_config;
+	struct rkvdec_rcb_config *cfg = ctx->core->rcb_config;
 
 	bool ret = cfg && cfg->height >= ctx->decoded_fmt.fmt.pix_mp.height &&
 		   cfg->width >= ctx->decoded_fmt.fmt.pix_mp.width;
 
 	if (!ret && cfg) {
-		dev_dbg(ctx->dev->dev, "RCB size %ux%u -> %ux%u\n", cfg->width, cfg->height,
+		dev_dbg(ctx->core->dev, "RCB size %ux%u -> %ux%u\n", cfg->width, cfg->height,
 			ctx->decoded_fmt.fmt.pix_mp.width, ctx->decoded_fmt.fmt.pix_mp.height);
 	}
 
 	return ret;
 }
 
-void rkvdec_free_rcb(struct rkvdec_ctx *ctx)
+void rkvdec_free_rcb(struct rkvdec_dev *rkvdec, struct rkvdec_core *core)
 {
-	struct rkvdec_dev *dev = ctx->dev;
-	struct rkvdec_rcb_config *cfg = ctx->rcb_config;
+	struct rkvdec_rcb_config *cfg = core->rcb_config;
 	unsigned long virt_addr;
 	int i;
 
@@ -77,12 +76,13 @@ void rkvdec_free_rcb(struct rkvdec_ctx *ctx)
 		case RKVDEC_ALLOC_SRAM:
 			virt_addr = (unsigned long)cfg->rcb_bufs[i].cpu;
 
-			if (dev->iommu_domain)
-				iommu_unmap(dev->iommu_domain, virt_addr, rcb_size);
-			gen_pool_free(dev->sram_pool, virt_addr, rcb_size);
+			if (iommu_get_domain_for_dev(core->dev))
+				iommu_unmap(iommu_get_domain_for_dev(core->dev),
+					    virt_addr, rcb_size);
+			gen_pool_free(core->sram_pool, virt_addr, rcb_size);
 			break;
 		case RKVDEC_ALLOC_DMA:
-			dma_free_coherent(dev->dev,
+			dma_free_coherent(rkvdec->main_core->dev,
 					  rcb_size,
 					  cfg->rcb_bufs[i].cpu,
 					  cfg->rcb_bufs[i].dma);
@@ -91,33 +91,33 @@ void rkvdec_free_rcb(struct rkvdec_ctx *ctx)
 	}
 
 	if (cfg->rcb_bufs)
-		devm_kfree(dev->dev, cfg->rcb_bufs);
+		devm_kfree(core->dev, cfg->rcb_bufs);
 
-	devm_kfree(dev->dev, cfg);
+	devm_kfree(core->dev, cfg);
 
-	ctx->rcb_config = NULL;
+	core->rcb_config = NULL;
 }
 
-int rkvdec_allocate_rcb(struct rkvdec_ctx *ctx, u32 width, u32 height,
+int rkvdec_allocate_rcb(struct rkvdec_dev *rkvdec, struct rkvdec_core *core,
+			u32 width, u32 height,
 			const struct rcb_size_info *size_info,
 			size_t rcb_count)
 {
 	int ret, i;
-	struct rkvdec_dev *rkvdec = ctx->dev;
 	struct rkvdec_rcb_config *cfg;
 
 	if (!size_info || !rcb_count) {
-		ctx->rcb_config = NULL;
+		core->rcb_config = NULL;
 		return 0;
 	}
 
-	ctx->rcb_config = devm_kzalloc(rkvdec->dev, sizeof(*ctx->rcb_config), GFP_KERNEL);
-	if (!ctx->rcb_config)
+	core->rcb_config = devm_kzalloc(core->dev, sizeof(*core->rcb_config), GFP_KERNEL);
+	if (!core->rcb_config)
 		return -ENOMEM;
 
-	cfg = ctx->rcb_config;
+	cfg = core->rcb_config;
 
-	cfg->rcb_bufs = devm_kzalloc(rkvdec->dev, sizeof(*cfg->rcb_bufs) * rcb_count, GFP_KERNEL);
+	cfg->rcb_bufs = devm_kzalloc(core->dev, sizeof(*cfg->rcb_bufs) * rcb_count, GFP_KERNEL);
 	if (!cfg->rcb_bufs) {
 		ret = -ENOMEM;
 		goto err_alloc;
@@ -133,25 +133,26 @@ int rkvdec_allocate_rcb(struct rkvdec_ctx *ctx, u32 width, u32 height,
 		enum rkvdec_alloc_type alloc_type = RKVDEC_ALLOC_SRAM;
 
 		/* Try allocating an SRAM buffer */
-		if (ctx->dev->sram_pool) {
-			if (rkvdec->iommu_domain)
+		if (core->sram_pool) {
+			if (iommu_get_domain_for_dev(core->dev))
 				rcb_size = ALIGN(rcb_size, SZ_4K);
 
-			cpu = gen_pool_dma_zalloc_align(ctx->dev->sram_pool,
+			cpu = gen_pool_dma_zalloc_align(core->sram_pool,
 							rcb_size,
 							&dma,
 							SZ_4K);
 		}
 
 		/* If an IOMMU is used, map the SRAM address through it */
-		if (cpu && rkvdec->iommu_domain) {
+		if (cpu && iommu_get_domain_for_dev(core->dev)) {
 			unsigned long virt_addr = (unsigned long)cpu;
 			phys_addr_t phys_addr = dma;
 
-			ret = iommu_map(rkvdec->iommu_domain, virt_addr, phys_addr,
+			ret = iommu_map(iommu_get_domain_for_dev(core->dev),
+					virt_addr, phys_addr,
 					rcb_size, IOMMU_READ | IOMMU_WRITE, 0);
 			if (ret) {
-				gen_pool_free(ctx->dev->sram_pool,
+				gen_pool_free(core->sram_pool,
 					      (unsigned long)cpu,
 					      rcb_size);
 				cpu = NULL;
@@ -168,7 +169,7 @@ int rkvdec_allocate_rcb(struct rkvdec_ctx *ctx, u32 width, u32 height,
 ram_fallback:
 		/* Fallback to RAM */
 		if (!cpu) {
-			cpu = dma_alloc_coherent(ctx->dev->dev,
+			cpu = dma_alloc_coherent(rkvdec->main_core->dev,
 						 rcb_size,
 						 &dma,
 						 GFP_KERNEL);
@@ -191,7 +192,7 @@ ram_fallback:
 	return 0;
 
 err_alloc:
-	rkvdec_free_rcb(ctx);
+	rkvdec_free_rcb(rkvdec, core);
 
 	return ret;
 }

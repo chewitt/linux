@@ -358,22 +358,22 @@ static void set_ref_valid(struct rkvdec_vdpu381_regs_hevc *regs, int id, u32 val
 
 static void rkvdec_write_regs(struct rkvdec_ctx *ctx)
 {
-	struct rkvdec_dev *rkvdec = ctx->dev;
+	struct rkvdec_core *core = ctx->core;
 	struct rkvdec_hevc_ctx *hevc_ctx = ctx->priv;
 
-	rkvdec_memcpy_toio(rkvdec->regs + OFFSET_COMMON_REGS,
+	rkvdec_memcpy_toio(core->regs + OFFSET_COMMON_REGS,
 			   &hevc_ctx->regs.common,
 			   sizeof(hevc_ctx->regs.common));
-	rkvdec_memcpy_toio(rkvdec->regs + OFFSET_CODEC_PARAMS_REGS,
+	rkvdec_memcpy_toio(core->regs + OFFSET_CODEC_PARAMS_REGS,
 			   &hevc_ctx->regs.hevc_param,
 			   sizeof(hevc_ctx->regs.hevc_param));
-	rkvdec_memcpy_toio(rkvdec->regs + OFFSET_COMMON_ADDR_REGS,
+	rkvdec_memcpy_toio(core->regs + OFFSET_COMMON_ADDR_REGS,
 			   &hevc_ctx->regs.common_addr,
 			   sizeof(hevc_ctx->regs.common_addr));
-	rkvdec_memcpy_toio(rkvdec->regs + OFFSET_CODEC_ADDR_REGS,
+	rkvdec_memcpy_toio(core->regs + OFFSET_CODEC_ADDR_REGS,
 			   &hevc_ctx->regs.hevc_addr,
 			   sizeof(hevc_ctx->regs.hevc_addr));
-	rkvdec_memcpy_toio(rkvdec->regs + OFFSET_POC_HIGHBIT_REGS,
+	rkvdec_memcpy_toio(core->regs + OFFSET_POC_HIGHBIT_REGS,
 			   &hevc_ctx->regs.hevc_highpoc,
 			   sizeof(hevc_ctx->regs.hevc_highpoc));
 }
@@ -557,7 +557,7 @@ static int rkvdec_hevc_start(struct rkvdec_ctx *ctx)
 	if (!hevc_ctx)
 		return -ENOMEM;
 
-	priv_tbl = dma_alloc_coherent(rkvdec->dev, sizeof(*priv_tbl),
+	priv_tbl = dma_alloc_coherent(rkvdec->main_core->dev, sizeof(*priv_tbl),
 				      &hevc_ctx->priv_tbl.dma, GFP_KERNEL);
 	if (!priv_tbl) {
 		ret = -ENOMEM;
@@ -582,14 +582,14 @@ static void rkvdec_hevc_stop(struct rkvdec_ctx *ctx)
 	struct rkvdec_hevc_ctx *hevc_ctx = ctx->priv;
 	struct rkvdec_dev *rkvdec = ctx->dev;
 
-	dma_free_coherent(rkvdec->dev, hevc_ctx->priv_tbl.size,
+	dma_free_coherent(rkvdec->main_core->dev, hevc_ctx->priv_tbl.size,
 			  hevc_ctx->priv_tbl.cpu, hevc_ctx->priv_tbl.dma);
 	kfree(hevc_ctx);
 }
 
 static int rkvdec_hevc_run(struct rkvdec_ctx *ctx)
 {
-	struct rkvdec_dev *rkvdec = ctx->dev;
+	struct rkvdec_core *core = ctx->core;
 	struct rkvdec_hevc_run run;
 	struct rkvdec_hevc_ctx *hevc_ctx = ctx->priv;
 	struct rkvdec_hevc_priv_tbl *tbl = hevc_ctx->priv_tbl.cpu;
@@ -606,7 +606,7 @@ static int rkvdec_hevc_run(struct rkvdec_ctx *ctx)
 	 */
 	if ((!ctx->has_sps_lt_rps && run.sps->num_long_term_ref_pics_sps) ||
 	    (!ctx->has_sps_st_rps && run.sps->num_short_term_ref_pic_sets)) {
-		dev_warn_ratelimited(rkvdec->dev, "Long and short term RPS not set\n");
+		dev_warn_ratelimited(core->dev, "Long and short term RPS not set\n");
 	} else {
 		rkvdec_hevc_assemble_hw_rps(&run, &tbl->rps, &hevc_ctx->st_cache);
 	}
@@ -615,10 +615,10 @@ static int rkvdec_hevc_run(struct rkvdec_ctx *ctx)
 
 	rkvdec_run_postamble(ctx, &run.base);
 
-	rkvdec_schedule_watchdog(rkvdec, hevc_ctx->regs.common.reg032_timeout_threshold);
+	rkvdec_schedule_watchdog(core, hevc_ctx->regs.common.reg032_timeout_threshold);
 
 	/* Start decoding! */
-	writel(VDPU381_DEC_E_BIT, rkvdec->regs + VDPU381_REG_DEC_E);
+	writel(VDPU381_DEC_E_BIT, ctx->core->regs + VDPU381_REG_DEC_E);
 
 	return 0;
 }
