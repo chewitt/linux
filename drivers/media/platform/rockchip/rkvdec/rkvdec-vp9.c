@@ -371,6 +371,7 @@ static void config_registers(struct rkvdec_ctx *ctx,
 	struct rkvdec_vp9_ctx *vp9_ctx = ctx->priv;
 	struct rkvdec_regs *regs = &vp9_ctx->regs;
 	const struct v4l2_vp9_segmentation *seg;
+	struct rkvdec_core *core = ctx->core;
 	struct rkvdec_dev *rkvdec = ctx->dev;
 	dma_addr_t addr;
 	bool intra_only;
@@ -546,18 +547,19 @@ static void config_registers(struct rkvdec_ctx *ctx,
 
 	regs->vp9.reg44.strmd_error_e = 0xe;
 
-	rkvdec_memcpy_toio(rkvdec->regs, regs,
+	rkvdec_memcpy_toio(core->regs, regs,
 			   MIN(sizeof(*regs), sizeof(u32) * rkvdec->variant->num_regs));
 }
 
 static int validate_dec_params(struct rkvdec_ctx *ctx,
 			       const struct v4l2_ctrl_vp9_frame *dec_params)
 {
+	struct rkvdec_core *core = ctx->core;
 	unsigned int aligned_width, aligned_height;
 
 	/* We only support profile 0. */
 	if (dec_params->profile != 0) {
-		dev_err(ctx->dev->dev, "unsupported profile %d\n",
+		dev_err(core->dev, "unsupported profile %d\n",
 			dec_params->profile);
 		return -EINVAL;
 	}
@@ -571,7 +573,7 @@ static int validate_dec_params(struct rkvdec_ctx *ctx,
 	 */
 	if (aligned_width != ctx->decoded_fmt.fmt.pix_mp.width ||
 	    aligned_height != ctx->decoded_fmt.fmt.pix_mp.height) {
-		dev_err(ctx->dev->dev,
+		dev_err(core->dev,
 			"unexpected bitstream resolution %dx%d\n",
 			dec_params->frame_width_minus_1 + 1,
 			dec_params->frame_height_minus_1 + 1);
@@ -657,6 +659,7 @@ static int rkvdec_vp9_run_preamble(struct rkvdec_ctx *ctx,
 
 static int rkvdec_vp9_run(struct rkvdec_ctx *ctx)
 {
+	struct rkvdec_core *core = ctx->core;
 	struct rkvdec_dev *rkvdec = ctx->dev;
 	struct rkvdec_vp9_run run = { };
 	int ret;
@@ -675,10 +678,10 @@ static int rkvdec_vp9_run(struct rkvdec_ctx *ctx)
 
 	rkvdec_run_postamble(ctx, &run.base);
 
-	schedule_delayed_work(&rkvdec->watchdog_work, msecs_to_jiffies(2000));
+	schedule_delayed_work(&core->watchdog_work, msecs_to_jiffies(2000));
 
-	writel(1, rkvdec->regs + RKVDEC_REG_PREF_LUMA_CACHE_COMMAND);
-	writel(1, rkvdec->regs + RKVDEC_REG_PREF_CHR_CACHE_COMMAND);
+	writel(1, core->regs + RKVDEC_REG_PREF_LUMA_CACHE_COMMAND);
+	writel(1, core->regs + RKVDEC_REG_PREF_CHR_CACHE_COMMAND);
 
 	if (rkvdec->variant->quirks & RKVDEC_QUIRK_DISABLE_QOS)
 		rkvdec_quirks_disable_qos(ctx);
@@ -686,7 +689,7 @@ static int rkvdec_vp9_run(struct rkvdec_ctx *ctx)
 	/* Start decoding! */
 	writel(RKVDEC_INTERRUPT_DEC_E | RKVDEC_CONFIG_DEC_CLK_GATE_E |
 	       RKVDEC_TIMEOUT_E | RKVDEC_BUF_EMPTY_E,
-	       rkvdec->regs + RKVDEC_REG_INTERRUPT);
+	       core->regs + RKVDEC_REG_INTERRUPT);
 
 	return 0;
 }
@@ -868,7 +871,7 @@ static int rkvdec_vp9_start(struct rkvdec_ctx *ctx)
 	ctx->priv = vp9_ctx;
 
 	BUILD_BUG_ON(sizeof(priv_tbl->probs) % 16); /* ensure probs size is 128-bit aligned */
-	priv_tbl = dma_alloc_coherent(rkvdec->dev, sizeof(*priv_tbl),
+	priv_tbl = dma_alloc_coherent(rkvdec->main_core->dev, sizeof(*priv_tbl),
 				      &vp9_ctx->priv_tbl.dma, GFP_KERNEL);
 	if (!priv_tbl) {
 		ret = -ENOMEM;
@@ -878,7 +881,7 @@ static int rkvdec_vp9_start(struct rkvdec_ctx *ctx)
 	vp9_ctx->priv_tbl.size = sizeof(*priv_tbl);
 	vp9_ctx->priv_tbl.cpu = priv_tbl;
 
-	count_tbl = dma_alloc_coherent(rkvdec->dev, RKVDEC_VP9_COUNT_SIZE,
+	count_tbl = dma_alloc_coherent(rkvdec->main_core->dev, RKVDEC_VP9_COUNT_SIZE,
 				       &vp9_ctx->count_tbl.dma, GFP_KERNEL);
 	if (!count_tbl) {
 		ret = -ENOMEM;
@@ -892,7 +895,7 @@ static int rkvdec_vp9_start(struct rkvdec_ctx *ctx)
 	return 0;
 
 err_free_priv_tbl:
-	dma_free_coherent(rkvdec->dev, vp9_ctx->priv_tbl.size,
+	dma_free_coherent(rkvdec->main_core->dev, vp9_ctx->priv_tbl.size,
 			  vp9_ctx->priv_tbl.cpu, vp9_ctx->priv_tbl.dma);
 
 err_free_ctx:
@@ -905,9 +908,9 @@ static void rkvdec_vp9_stop(struct rkvdec_ctx *ctx)
 	struct rkvdec_vp9_ctx *vp9_ctx = ctx->priv;
 	struct rkvdec_dev *rkvdec = ctx->dev;
 
-	dma_free_coherent(rkvdec->dev, vp9_ctx->count_tbl.size,
+	dma_free_coherent(rkvdec->main_core->dev, vp9_ctx->count_tbl.size,
 			  vp9_ctx->count_tbl.cpu, vp9_ctx->count_tbl.dma);
-	dma_free_coherent(rkvdec->dev, vp9_ctx->priv_tbl.size,
+	dma_free_coherent(rkvdec->main_core->dev, vp9_ctx->priv_tbl.size,
 			  vp9_ctx->priv_tbl.cpu, vp9_ctx->priv_tbl.dma);
 	kfree(vp9_ctx);
 }
