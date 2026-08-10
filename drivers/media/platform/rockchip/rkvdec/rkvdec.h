@@ -15,6 +15,7 @@
 #include <linux/videodev2.h>
 #include <linux/wait.h>
 #include <linux/clk.h>
+#include <linux/spinlock.h>
 
 #include <media/v4l2-ctrls.h>
 #include <media/v4l2-device.h>
@@ -137,6 +138,7 @@ struct rkvdec_core {
 	struct iommu_domain *empty_domain;
 	struct rkvdec_rcb_config *rcb_config;
 	struct rkvdec_ctx *curr_ctx;
+	int id;
 };
 
 struct rkvdec_dev {
@@ -146,7 +148,13 @@ struct rkvdec_dev {
 	struct v4l2_m2m_dev *m2m_dev;
 	struct mutex vdev_lock; /* serializes ioctls */
 	const struct rkvdec_variant *variant;
+	struct rkvdec_core **cores;
+	int core_count;
+	struct rkvdec_core **available_cores;
+	unsigned int available_core_count;
+	spinlock_t cores_lock; /* serializes core list access */
 	struct rkvdec_core *main_core;
+	struct iommu_domain *iommu_global_domain;
 };
 
 struct rkvdec_ctx {
