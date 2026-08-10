@@ -1264,6 +1264,37 @@ static const struct media_device_ops rkvdec_media_ops = {
 	.req_queue = v4l2_m2m_request_queue,
 };
 
+/**
+ * Return a core that is available for decoding or null if no core is found.
+ * The caller should make sure to call release_core() when the core is no longer needed.
+ */
+static struct rkvdec_core *acquire_core(struct rkvdec_dev *rkvdec, struct rkvdec_ctx *ctx)
+{
+	struct rkvdec_core *core = NULL;
+
+	guard(spinlock_irqsave)(&rkvdec->cores_lock);
+
+	if (rkvdec->available_core_count) {
+		core = rkvdec->available_cores[--rkvdec->available_core_count];
+
+		// Set the current core's ctx to this ctx
+		core->curr_ctx = ctx;
+	}
+
+	return core;
+}
+
+/**
+ * Release the core to make it available for a next job.
+ */
+static void release_core(struct rkvdec_dev *rkvdec, struct rkvdec_core *core)
+{
+	guard(spinlock_irqsave)(&rkvdec->cores_lock);
+
+	core->curr_ctx = NULL;
+	rkvdec->available_cores[rkvdec->available_core_count++] = core;
+}
+
 static void rkvdec_job_finish_no_pm(struct rkvdec_ctx *ctx,
 				  enum vb2_buffer_state result)
 {
@@ -1276,6 +1307,11 @@ static void rkvdec_job_finish_no_pm(struct rkvdec_ctx *ctx,
 		src_buf = v4l2_m2m_next_src_buf(m2m_ctx);
 		dst_buf = v4l2_m2m_next_dst_buf(m2m_ctx);
 		ctx->coded_fmt_desc->ops->done(ctx, src_buf, dst_buf, result);
+	}
+
+	if (ctx->core) {
+		release_core(ctx->dev, ctx->core);
+		ctx->core = NULL;
 	}
 
 	v4l2_m2m_buf_done_and_job_finish(m2m_dev, m2m_ctx, result);
@@ -1359,8 +1395,9 @@ static void rkvdec_device_run(void *priv)
 	if (WARN_ON(!desc))
 		return;
 
-	ctx->core = ctx->dev->main_core;
-	ctx->core->curr_ctx = ctx;
+	ctx->core = acquire_core(ctx->dev, ctx);
+	if (WARN_ON(!ctx->core))
+		return;
 
 	ret = pm_runtime_resume_and_get(ctx->core->dev);
 	if (ret < 0) {
@@ -1630,6 +1667,7 @@ static void rkvdec_v4l2_cleanup(struct rkvdec_dev *rkvdec)
 
 static void rkvdec_iommu_restore(struct rkvdec_core *core)
 {
+	int ret;
 	if (core->empty_domain) {
 		/*
 		 * To rewrite mapping into the attached IOMMU core, attach a new empty domain that
@@ -1638,8 +1676,14 @@ static void rkvdec_iommu_restore(struct rkvdec_core *core)
 		 * This is safely done in this interrupt handler to make sure no memory get mapped
 		 * through the IOMMU while the empty domain is attached.
 		 */
-		iommu_attach_device(core->empty_domain, core->dev);
+		iommu_detach_device(core->curr_ctx->dev->iommu_global_domain, core->dev);
+		ret = iommu_attach_device(core->empty_domain, core->dev);
+		if (ret)
+			dev_warn(core->dev, "Cannot attach empty domain: %d\n", ret);
 		iommu_detach_device(core->empty_domain, core->dev);
+		ret = iommu_attach_device(core->curr_ctx->dev->iommu_global_domain, core->dev);
+		if (ret)
+			dev_warn(core->dev, "Cannot attach global domain: %d\n", ret);
 	}
 }
 
@@ -1942,14 +1986,35 @@ static int rkvdec_core_bind(struct device *dev, struct device *master, void *dat
 	struct platform_device *pdev = to_platform_device(dev);
 	struct rkvdec_core *core = platform_get_drvdata(pdev);
 	struct rkvdec_dev *rkvdec = data;
+	int id, ret;
 
-	if (rkvdec->main_core)
-		return dev_err_probe(dev, -EBUSY,
-				     "rkvdec already has a bound core\n");
+	id = rkvdec->core_count;
+	core->id = id;
+	rkvdec->cores[id] = core;
 
-	rkvdec->main_core = core;
+	if (id == 0)
+		rkvdec->main_core = core;
 
-	dev_info(dev, "Registered core\n");
+	if (iommu_get_domain_for_dev(dev)) {
+		if (!rkvdec->iommu_global_domain) {
+			rkvdec->iommu_global_domain = iommu_get_domain_for_dev(dev);
+			if (IS_ERR(rkvdec->iommu_global_domain)) {
+				rkvdec->iommu_global_domain = NULL;
+				dev_warn_once(dev, "cannot get global domain\n");
+			}
+		}
+
+		if (rkvdec->iommu_global_domain) {
+			ret = iommu_attach_device(rkvdec->iommu_global_domain, dev);
+			if (ret)
+				dev_warn(dev, "cannot attach global domain to core %d\n", id);
+		}
+	}
+
+	release_core(rkvdec, core);
+	rkvdec->core_count++;
+
+	dev_info(dev, "Registered core %d\n", id);
 
 	return 0;
 }
@@ -2118,6 +2183,8 @@ static int rkvdec_bind(struct device *dev)
 	if (ret)
 		goto err_unbind;
 
+	v4l2_m2m_set_max_parallel_jobs(rkvdec->m2m_dev, rkvdec->core_count);
+
 	return 0;
 
 err_unbind:
@@ -2128,12 +2195,15 @@ err_unbind:
 static void rkvdec_unbind(struct device *dev)
 {
 	struct rkvdec_dev *rkvdec = dev_get_drvdata(dev);
+	int i;
 
-	cancel_delayed_work_sync(&rkvdec->main_core->watchdog_work);
+	for (i = 0; i < rkvdec->core_count; i++)
+		cancel_delayed_work_sync(&rkvdec->cores[i]->watchdog_work);
 
 	rkvdec_v4l2_cleanup(rkvdec);
 
-	rkvdec_free_rcb(rkvdec, rkvdec->main_core);
+	for (i = 0; i < rkvdec->core_count; i++)
+		rkvdec_free_rcb(rkvdec, rkvdec->cores[i]);
 
 	component_unbind_all(dev, NULL);
 }
@@ -2150,6 +2220,7 @@ static int rkvdec_probe(struct platform_device *pdev)
 	struct component_match *match = NULL;
 	struct device_node *core_node;
 	struct rkvdec_dev *rkvdec;
+	unsigned int num_cores = 0;
 
 	if (!match_desc)
 		return dev_err_probe(dev, -ENODEV, "missing platform data\n");
@@ -2161,6 +2232,7 @@ static int rkvdec_probe(struct platform_device *pdev)
 		of_node_get(core_node);
 		component_match_add_release(dev, &match, component_release_of,
 					    component_compare_of, core_node);
+		num_cores++;
 	}
 
 	if (!match)
@@ -2171,11 +2243,23 @@ static int rkvdec_probe(struct platform_device *pdev)
 	if (!rkvdec)
 		return -ENOMEM;
 
+	rkvdec->cores = devm_kcalloc(dev, num_cores, sizeof(*rkvdec->cores),
+				     GFP_KERNEL);
+	if (!rkvdec->cores)
+		return -ENOMEM;
+
+	rkvdec->available_cores = devm_kcalloc(dev, num_cores,
+					       sizeof(*rkvdec->available_cores),
+					       GFP_KERNEL);
+	if (!rkvdec->available_cores)
+		return -ENOMEM;
+
 	rkvdec->variant = match_desc->data;
 	if (!rkvdec->variant)
 		return dev_err_probe(dev, -ENODEV, "failed to get match data\n");
 
 	mutex_init(&rkvdec->vdev_lock);
+	spin_lock_init(&rkvdec->cores_lock);
 
 	dev_set_drvdata(dev, rkvdec);
 
