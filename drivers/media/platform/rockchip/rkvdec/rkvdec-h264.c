@@ -227,6 +227,7 @@ static void set_poc_reg(struct rkvdec_regs *regs, uint32_t poc, int id, bool bot
 static void config_registers(struct rkvdec_ctx *ctx,
 			     struct rkvdec_h264_run *run)
 {
+	struct rkvdec_core *core = ctx->core;
 	struct rkvdec_dev *rkvdec = ctx->dev;
 	const struct v4l2_ctrl_h264_decode_params *dec_params = run->decode_params;
 	const struct v4l2_ctrl_h264_sps *sps = run->sps;
@@ -333,7 +334,7 @@ static void config_registers(struct rkvdec_ctx *ctx,
 	offset = offsetof(struct rkvdec_h264_priv_tbl, err_info);
 	regs->h26x.errorinfo_base = priv_start_addr + offset;
 
-	rkvdec_memcpy_toio(rkvdec->regs, regs,
+	rkvdec_memcpy_toio(core->regs, regs,
 			   MIN(sizeof(*regs), sizeof(u32) * rkvdec->variant->num_regs));
 }
 
@@ -358,7 +359,7 @@ static int rkvdec_h264_start(struct rkvdec_ctx *ctx)
 	if (!h264_ctx)
 		return -ENOMEM;
 
-	priv_tbl = dma_alloc_coherent(rkvdec->dev, sizeof(*priv_tbl),
+	priv_tbl = dma_alloc_coherent(rkvdec->main_core->dev, sizeof(*priv_tbl),
 				      &h264_ctx->priv_tbl.dma, GFP_KERNEL);
 	if (!priv_tbl) {
 		ret = -ENOMEM;
@@ -383,7 +384,7 @@ static void rkvdec_h264_stop(struct rkvdec_ctx *ctx)
 	struct rkvdec_h264_ctx *h264_ctx = ctx->priv;
 	struct rkvdec_dev *rkvdec = ctx->dev;
 
-	dma_free_coherent(rkvdec->dev, h264_ctx->priv_tbl.size,
+	dma_free_coherent(rkvdec->main_core->dev, h264_ctx->priv_tbl.size,
 			  h264_ctx->priv_tbl.cpu, h264_ctx->priv_tbl.dma);
 	kfree(h264_ctx);
 }
@@ -391,7 +392,7 @@ static void rkvdec_h264_stop(struct rkvdec_ctx *ctx)
 static int rkvdec_h264_run(struct rkvdec_ctx *ctx)
 {
 	struct v4l2_h264_reflist_builder reflist_builder;
-	struct rkvdec_dev *rkvdec = ctx->dev;
+	struct rkvdec_core *core = ctx->core;
 	struct rkvdec_h264_ctx *h264_ctx = ctx->priv;
 	struct rkvdec_h264_run run;
 	struct rkvdec_h264_priv_tbl *tbl = h264_ctx->priv_tbl.cpu;
@@ -413,15 +414,15 @@ static int rkvdec_h264_run(struct rkvdec_ctx *ctx)
 
 	rkvdec_run_postamble(ctx, &run.base);
 
-	schedule_delayed_work(&rkvdec->watchdog_work, msecs_to_jiffies(2000));
+	schedule_delayed_work(&core->watchdog_work, msecs_to_jiffies(2000));
 
-	writel(1, rkvdec->regs + RKVDEC_REG_PREF_LUMA_CACHE_COMMAND);
-	writel(1, rkvdec->regs + RKVDEC_REG_PREF_CHR_CACHE_COMMAND);
+	writel(1, core->regs + RKVDEC_REG_PREF_LUMA_CACHE_COMMAND);
+	writel(1, core->regs + RKVDEC_REG_PREF_CHR_CACHE_COMMAND);
 
 	/* Start decoding! */
 	writel(RKVDEC_INTERRUPT_DEC_E | RKVDEC_CONFIG_DEC_CLK_GATE_E |
 	       RKVDEC_TIMEOUT_E | RKVDEC_BUF_EMPTY_E,
-	       rkvdec->regs + RKVDEC_REG_INTERRUPT);
+	       core->regs + RKVDEC_REG_INTERRUPT);
 
 	return 0;
 }
