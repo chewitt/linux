@@ -17,6 +17,8 @@
 struct rkvdec_rcb_config {
 	struct rkvdec_aux_buf *rcb_bufs;
 	size_t rcb_count;
+	u32 width;
+	u32 height;
 };
 
 static size_t rkvdec_rcb_size(const struct rcb_size_info *size_info,
@@ -38,6 +40,21 @@ size_t rkvdec_rcb_buf_size(struct rkvdec_ctx *ctx, int id)
 int rkvdec_rcb_buf_count(struct rkvdec_ctx *ctx)
 {
 	return ctx->rcb_config->rcb_count;
+}
+
+bool rkvdec_rcb_buf_validate_size(struct rkvdec_ctx *ctx)
+{
+	struct rkvdec_rcb_config *cfg = ctx->rcb_config;
+
+	bool ret = cfg && cfg->height >= ctx->decoded_fmt.fmt.pix_mp.height &&
+		   cfg->width >= ctx->decoded_fmt.fmt.pix_mp.width;
+
+	if (!ret && cfg) {
+		dev_dbg(ctx->dev->dev, "RCB size %ux%u -> %ux%u\n", cfg->width, cfg->height,
+			ctx->decoded_fmt.fmt.pix_mp.width, ctx->decoded_fmt.fmt.pix_mp.height);
+	}
+
+	return ret;
 }
 
 void rkvdec_free_rcb(struct rkvdec_ctx *ctx)
@@ -77,14 +94,15 @@ void rkvdec_free_rcb(struct rkvdec_ctx *ctx)
 		devm_kfree(dev->dev, cfg->rcb_bufs);
 
 	devm_kfree(dev->dev, cfg);
+
+	ctx->rcb_config = NULL;
 }
 
-int rkvdec_allocate_rcb(struct rkvdec_ctx *ctx,
+int rkvdec_allocate_rcb(struct rkvdec_ctx *ctx, u32 width, u32 height,
 			const struct rcb_size_info *size_info,
 			size_t rcb_count)
 {
 	int ret, i;
-	u32 width, height;
 	struct rkvdec_dev *rkvdec = ctx->dev;
 	struct rkvdec_rcb_config *cfg;
 
@@ -105,8 +123,8 @@ int rkvdec_allocate_rcb(struct rkvdec_ctx *ctx,
 		goto err_alloc;
 	}
 
-	width = ctx->decoded_fmt.fmt.pix_mp.width;
-	height = ctx->decoded_fmt.fmt.pix_mp.height;
+	cfg->width = width;
+	cfg->height = height;
 
 	for (i = 0; i < rcb_count; i++) {
 		void *cpu = NULL;
