@@ -78,7 +78,6 @@ static const uint64_t format_modifiers_win_full[] = {
 };
 
 static const uint64_t format_modifiers_win_full_afbc[] = {
-	ROCKCHIP_AFBC_MOD,
 	DRM_FORMAT_MOD_LINEAR,
 	DRM_FORMAT_MOD_INVALID,
 };
