@@ -463,43 +463,37 @@ static int iep2_probe(struct platform_device *pdev)
 		return PTR_ERR(iep2->base.regs);
 
 	iep2->aclk = devm_clk_get(&pdev->dev, "aclk");
-	if (IS_ERR(iep2->aclk)) {
-		dev_err(&pdev->dev, "failed to get aclk\n");
-		return PTR_ERR(iep2->aclk);
-	}
+	if (IS_ERR(iep2->aclk))
+		return dev_err_probe(&pdev->dev, PTR_ERR(iep2->aclk),
+				     "failed to get aclk\n");
 
 	iep2->hclk = devm_clk_get(&pdev->dev, "hclk");
-	if (IS_ERR(iep2->hclk)) {
-		dev_err(&pdev->dev, "failed to get hclk\n");
-		return PTR_ERR(iep2->hclk);
-	}
+	if (IS_ERR(iep2->hclk))
+		return dev_err_probe(&pdev->dev, PTR_ERR(iep2->hclk),
+				     "failed to get hclk\n");
 
 	iep2->sclk = devm_clk_get(&pdev->dev, "sclk");
-	if (IS_ERR(iep2->sclk)) {
-		dev_err(&pdev->dev, "failed to get sclk\n");
-		return PTR_ERR(iep2->sclk);
+	if (IS_ERR(iep2->sclk))
+		return dev_err_probe(&pdev->dev, PTR_ERR(iep2->sclk),
+				     "failed to get sclk\n");
+
+	ret = dma_set_coherent_mask(&pdev->dev, DMA_BIT_MASK(32));
+	if (ret) {
+		dev_err(&pdev->dev, "Could not set DMA coherent mask\n");
+		return ret;
 	}
 
 	/* Allocate DMA working buffers */
 	iep2->mv_buf = dma_alloc_coherent(&pdev->dev, IEP2_MV_BUF_SIZE,
 					   &iep2->mv_dma, GFP_KERNEL);
-	if (!iep2->mv_buf) {
-		dev_err(&pdev->dev, "failed to allocate MV buffer\n");
+	if (!iep2->mv_buf)
 		return -ENOMEM;
-	}
 
 	iep2->md_buf = dma_alloc_coherent(&pdev->dev, IEP2_MD_BUF_SIZE,
 					   &iep2->md_dma, GFP_KERNEL);
 	if (!iep2->md_buf) {
-		dev_err(&pdev->dev, "failed to allocate MD buffer\n");
 		ret = -ENOMEM;
 		goto err_free_mv;
-	}
-
-	ret = dma_set_coherent_mask(&pdev->dev, DMA_BIT_MASK(32));
-	if (ret) {
-		dev_err(&pdev->dev, "Could not set DMA coherent mask\n");
-		goto err_free_md;
 	}
 
 	vb2_dma_contig_set_max_seg_size(&pdev->dev, DMA_BIT_MASK(32));
@@ -625,4 +619,4 @@ module_platform_driver(iep2_pdrv);
 
 MODULE_AUTHOR("Christian Hewitt <christianshewitt@gmail.com>");
 MODULE_DESCRIPTION("Rockchip Image Enhancement Processor v2");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");

@@ -23427,6 +23427,7 @@ M:	Christian Hewitt <christianshewitt@gmail.com>
 L:	linux-media@vger.kernel.org
 L:	linux-rockchip@lists.infradead.org
 S:	Maintained
+F:	Documentation/devicetree/bindings/media/rockchip,rk3568-iep2.yaml
 F:	Documentation/devicetree/bindings/media/rockchip-iep.yaml
 F:	drivers/media/platform/rockchip/iep/
 
