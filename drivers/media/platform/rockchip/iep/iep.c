@@ -359,16 +359,14 @@ static int iep_probe(struct platform_device *pdev)
 	iep->base.hw_init = iep_hw_init;
 
 	iep->axi_clk = devm_clk_get(iep->base.dev, "axi");
-	if (IS_ERR(iep->axi_clk)) {
-		dev_err(iep->base.dev, "failed to get aclk clock\n");
-		return PTR_ERR(iep->axi_clk);
-	}
+	if (IS_ERR(iep->axi_clk))
+		return dev_err_probe(iep->base.dev, PTR_ERR(iep->axi_clk),
+				     "failed to get axi clock\n");
 
 	iep->ahb_clk = devm_clk_get(iep->base.dev, "ahb");
-	if (IS_ERR(iep->ahb_clk)) {
-		dev_err(iep->base.dev, "failed to get hclk clock\n");
-		return PTR_ERR(iep->ahb_clk);
-	}
+	if (IS_ERR(iep->ahb_clk))
+		return dev_err_probe(iep->base.dev, PTR_ERR(iep->ahb_clk),
+				     "failed to get ahb clock\n");
 
 	ret = clk_set_rate(iep->axi_clk, 300000000);
 	if (ret) {
@@ -477,4 +475,4 @@ module_platform_driver(iep_pdrv);
 
 MODULE_AUTHOR("Alex Bee <knaerzche@gmail.com>");
 MODULE_DESCRIPTION("Rockchip Image Enhancement Processor");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");

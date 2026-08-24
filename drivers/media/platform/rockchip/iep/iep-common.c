@@ -479,7 +479,7 @@ int rk_iep_open(struct file *file)
 	if (mutex_lock_interruptible(&iep_dev->mutex))
 		return -ERESTARTSYS;
 
-	ctx = kzalloc(sizeof(*ctx), GFP_KERNEL);
+	ctx = kzalloc_obj(*ctx);
 	if (!ctx) {
 		mutex_unlock(&iep_dev->mutex);
 		return -ENOMEM;
@@ -663,4 +663,4 @@ void rk_iep_unregister(struct rk_iep_dev *iep_dev)
 EXPORT_SYMBOL_GPL(rk_iep_unregister);
 
 MODULE_DESCRIPTION("Rockchip IEP common framework");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");
