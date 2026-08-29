@@ -1,0 +1,40 @@
+# SPDX-License-Identifier: GPL-2.0-only
+
+config WLAN_VENDOR_AIC
+	bool "AIC devices"
+	default y
+	help
+	  Say Y to expose the AIC8800D80 U02 SDIO Wi-Fi driver.
+	  The first upstreaming target is a narrow D80 U02 SDIO station
+	  configuration; legacy transport, Bluetooth, Android, test and
+	  manufacturing build switches are intentionally not exposed.
+
+if WLAN_VENDOR_AIC
+
+menuconfig AIC8800_BSP_SUPPORT
+	tristate "AIC8800D80 U02 SDIO bus support"
+	depends on MMC
+	select CRYPTO_LIB_MD5
+	help
+	  Enable the AIC8800D80 U02 SDIO bus support package. It provides
+	  the SDIO transport, chip operations and firmware download path used
+	  by the AIC8800 FullMAC WLAN driver.
+
+	  Firmware files are loaded from the aic8800/ subdirectory of the
+	  kernel firmware search path, normally /lib/firmware/aic8800/.
+
+	  If unsure, say N.
+
+if AIC8800_BSP_SUPPORT
+
+config AIC8800_SDIO_SUPPORT
+	def_bool y
+
+config AIC8800_SDIO_PWRCTRL
+	def_bool y
+
+source "drivers/net/wireless/aic/aic8800_bsp/Kconfig"
+source "drivers/net/wireless/aic/aic8800_fdrv/Kconfig"
+
+endif # AIC8800_BSP_SUPPORT
+endif # WLAN_VENDOR_AIC

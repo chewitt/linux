@@ -1,0 +1,37 @@
+# SPDX-License-Identifier: GPL-2.0-only
+
+menuconfig AIC8800_WLAN_SUPPORT
+	tristate "AIC8800D80 U02 SDIO station support"
+	depends on AIC8800_BSP_SUPPORT
+	depends on CFG80211
+	help
+	  Enable the AIC8800D80 U02 FullMAC Wi-Fi driver for the first
+	  upstreaming baseline. This build is restricted to the SDIO station
+	  path and uses cfg80211/nl80211 for normal Wi-Fi operation.
+
+	  If unsure, say N.
+
+if AIC8800_WLAN_SUPPORT
+
+config RWNX_FULLMAC
+	def_bool y
+
+config AIC8800_STA_ONLY
+	def_bool y
+	help
+	  Limit the initial upstream driver to station mode. The AP, P2P,
+	  monitor, mesh and TDLS implementations remain in the source tree
+	  so they can be enabled when those modes are ready for upstream.
+
+config AIC8800_NONSTA_SUPPORT
+	def_bool y if !AIC8800_STA_ONLY
+
+config AIC8800_GENL
+	bool "AIC8800 private generic netlink interface"
+	help
+	  Enable the private generic netlink command interface used by
+	  vendor tools.
+
+	  If unsure, say N.
+
+endif # AIC8800_WLAN_SUPPORT

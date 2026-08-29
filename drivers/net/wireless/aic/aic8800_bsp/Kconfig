@@ -1,0 +1,3 @@
+# SPDX-License-Identifier: GPL-2.0-only
+
+# The D80 U02 SDIO station baseline has no selectable BSP suboptions.
