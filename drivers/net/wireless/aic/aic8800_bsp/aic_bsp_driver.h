@@ -317,16 +317,7 @@ struct dbg_start_app_cfm {
 	u32 bootstatus;
 };
 
-int aicwf_plat_patch_load_8800dc(struct aic_sdio_dev *sdiodev);
-int aicwf_plat_rftest_load_8800dc(struct aic_sdio_dev *sdiodev);
-#ifdef CONFIG_DPD
-int aicwf_misc_ram_valid_check_8800dc(struct aic_sdio_dev *sdiodev,
-				      int *valid_out);
-int aicwf_plat_calib_load_8800dc(struct aic_sdio_dev *sdiodev);
-#endif
-
 int rwnx_load_firmware(u32 **fw_buf, const char *name, struct device *device);
-int aicwf_patch_table_load(struct aic_sdio_dev *rwnx_hw, char *filename);
 
 int rwnx_send_dbg_mem_read_req(struct aic_sdio_dev *sdiodev, u32 mem_addr,
 			       struct dbg_mem_read_cfm *cfm);
