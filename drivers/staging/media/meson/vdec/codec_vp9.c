@@ -890,7 +890,7 @@ static void codec_vp9_set_sao(struct amvdec_session *sess,
 
 	if (codec_hevc_use_downsample(sess->pixfmt_cap, vp9->is_10bit))
 		buf_y_paddr =
-			vp9->common.fbc_buffer_paddr[vb->index];
+			codec_hevc_fbc_body_addr(&vp9->common, vb->index);
 	else
 		buf_y_paddr =
 		       vb2_dma_contig_plane_dma_addr(vb, 0);

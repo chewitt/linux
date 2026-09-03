@@ -899,7 +899,7 @@ codec_hevc_set_sao(struct amvdec_session *sess, struct hevc_frame *frame)
 	    codec_hevc_use_mmu(core->platform->revision, sess->pixfmt_cap,
 			       hevc->is_10bit))
 		buf_y_paddr =
-		     hevc->common.fbc_buffer_paddr[vb->index];
+		     codec_hevc_fbc_body_addr(&hevc->common, vb->index);
 	else
 		buf_y_paddr =
 		       vb2_dma_contig_plane_dma_addr(vb, 0);

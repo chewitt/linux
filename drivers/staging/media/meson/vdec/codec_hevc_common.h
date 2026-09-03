@@ -18,9 +18,23 @@ extern const u16 vdec_hevc_parser_cmd[VDEC_HEVC_PARSER_CMD_LEN];
 
 #define MAX_REF_PIC_NUM	24
 
+struct fbc_chunk;
+
 struct codec_hevc_common {
+	/*
+	 * Non-MMU FBC (pre-G12A): the compressed body must be physically
+	 * contiguous because the hardware strides through it directly.
+	 */
 	void      *fbc_buffer_vaddr[MAX_REF_PIC_NUM];
 	dma_addr_t fbc_buffer_paddr[MAX_REF_PIC_NUM];
+
+	/*
+	 * MMU FBC (G12A+): the body is reached only through the per-frame
+	 * page map, so it needs no contiguity at all - it is assembled
+	 * from fixed-size chunks handed out by a shared pool.
+	 */
+	struct fbc_chunk **fbc_chunks[MAX_REF_PIC_NUM];
+	u32        fbc_nr_chunks;
 	/* size the fbc buffers were allocated with - used to free them
 	 * correctly if the session dimensions changed in between
 	 */
@@ -56,6 +70,9 @@ static inline int codec_hevc_use_mmu(u32 revision, u32 pixfmt, int is_10bit)
 void codec_hevc_setup_decode_head(struct amvdec_session *sess, int is_10bit);
 
 void codec_hevc_fbc_pool_drain(void);
+
+/* Base address of a frame's compressed body, whichever backing is in use */
+dma_addr_t codec_hevc_fbc_body_addr(struct codec_hevc_common *comm, u32 idx);
 void codec_hevc_free_fbc_buffers(struct amvdec_session *sess,
 				 struct codec_hevc_common *comm);
 
