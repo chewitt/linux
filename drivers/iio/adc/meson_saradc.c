@@ -18,6 +18,7 @@
 #include <linux/of.h>
 #include <linux/of_irq.h>
 #include <linux/platform_device.h>
+#include <linux/property.h>
 #include <linux/regmap.h>
 #include <linux/regulator/consumer.h>
 #include <linux/mfd/syscon.h>
@@ -350,6 +351,8 @@ struct meson_sar_adc_priv {
 	struct clk_gate				clk_gate;
 	struct clk				*adc_div_clk;
 	struct clk_divider			clk_div;
+	struct clk_gate				acpi_core_gate;
+	u32					acpi_vref_uv;
 	struct completion			done;
 	/* lock to protect against multiple access to the device */
 	struct mutex				lock;
@@ -691,10 +694,15 @@ static int meson_sar_adc_iio_info_read_raw(struct iio_dev *indio_dev,
 
 	case IIO_CHAN_INFO_SCALE:
 		if (chan->type == IIO_VOLTAGE) {
-			ret = regulator_get_voltage(priv->vref);
-			if (ret < 0) {
-				dev_err(dev, "failed to get vref voltage: %d\n", ret);
-				return ret;
+			if (priv->vref) {
+				ret = regulator_get_voltage(priv->vref);
+				if (ret < 0) {
+					dev_err(dev, "failed to get vref voltage: %d\n", ret);
+					return ret;
+				}
+			} else {
+				/* ACPI: fixed rail, voltage stated by firmware */
+				ret = priv->acpi_vref_uv;
 			}
 
 			*val = ret / 1000;
@@ -774,6 +782,151 @@ static int meson_sar_adc_clk_init(struct iio_dev *indio_dev,
 
 	priv->clk_gate.reg = base + MESON_SAR_ADC_REG3;
 	priv->clk_gate.bit_idx = __ffs(MESON_SAR_ADC_REG3_CLK_EN);
+	priv->clk_gate.hw.init = &init;
+
+	priv->adc_clk = devm_clk_register(dev, &priv->clk_gate.hw);
+	if (WARN_ON(IS_ERR(priv->adc_clk)))
+		return PTR_ERR(priv->adc_clk);
+
+	return 0;
+}
+
+#define MESON_SAR_ADC_ACPI_AO_CLK_GATE0_BIT	8
+#define MESON_SAR_ADC_ACPI_AO_SAR_CLK_DIV_SHIFT	0
+#define MESON_SAR_ADC_ACPI_AO_SAR_CLK_DIV_WIDTH	8
+#define MESON_SAR_ADC_ACPI_AO_SAR_CLK_GATE_BIT	8
+#define MESON_SAR_ADC_ACPI_AO_SAR_CLK_MUX_MASK	GENMASK(10, 9)
+
+static void meson_sar_adc_acpi_core_disable(void *data)
+{
+	clk_disable_unprepare(data);
+}
+
+/*
+ * ACPI: DT reaches the xtal and the AO clock controller (the pclk gate
+ * in AO_CLK_GATE0, the converter mux/div/gate in AO_SAR_CLK) through
+ * phandles ACPI cannot express, and the AO clock controller has no
+ * ACPI port (per-driver islands instead).  Firmware passes the two AO
+ * registers as extra _CRS windows - index 1 = AO_CLK_GATE0, index 2 =
+ * AO_SAR_CLK - and this island rebuilds the same chain on them:
+ * fixed-rate xtal -> divider AO_SAR_CLK[7:0] -> gate AO_SAR_CLK[8],
+ * with the pclk gate AO_CLK_GATE0[8] enabled for the device lifetime.
+ * The mux field AO_SAR_CLK[10:9] is pointed at the xtal once, the same
+ * parent DT selects via clk_set_parent(adc_sel, clkin).
+ *
+ * Both windows are mapped WITHOUT claiming: other devices' _CRS
+ * windows overlap this page (the vdec AO-sysctrl window covers it but
+ * touches only SLEEP0/ISO0) and every driver RMWs disjoint registers.
+ *
+ * The pre-GXBB internal REG3 divider path (meson_sar_adc_clk_init) is
+ * unused under ACPI, so its clk_div/clk_gate fields are reused here
+ * for the AO registers.
+ */
+static int meson_sar_adc_clk_init_acpi(struct iio_dev *indio_dev)
+{
+	struct meson_sar_adc_priv *priv = iio_priv(indio_dev);
+	struct device *dev = indio_dev->dev.parent;
+	struct platform_device *pdev = to_platform_device(dev);
+	void __iomem *gate_base, *sar_clk_base;
+	struct clk_init_data init;
+	const char *clk_parents[1];
+	u32 xtal_rate = 24000000;
+	struct resource *res;
+	struct clk_hw *xtal;
+	int ret;
+
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 1);
+	if (!res)
+		return -ENOENT;
+
+	gate_base = devm_ioremap(dev, res->start, resource_size(res));
+	if (!gate_base)
+		return -ENOMEM;
+
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 2);
+	if (!res)
+		return -ENOENT;
+
+	sar_clk_base = devm_ioremap(dev, res->start, resource_size(res));
+	if (!sar_clk_base)
+		return -ENOMEM;
+
+	device_property_read_u32(dev, "clock-frequency", &xtal_rate);
+
+	xtal = devm_clk_hw_register_fixed_rate(dev,
+			devm_kasprintf(dev, GFP_KERNEL, "%s#xtal",
+				       dev_name(dev)),
+			NULL, 0, xtal_rate);
+	if (IS_ERR(xtal))
+		return PTR_ERR(xtal);
+
+	priv->clkin = xtal->clk;
+
+	init.name = devm_kasprintf(dev, GFP_KERNEL, "%s#core", dev_name(dev));
+	if (!init.name)
+		return -ENOMEM;
+
+	init.flags = 0;
+	init.ops = &clk_gate_ops;
+	clk_parents[0] = __clk_get_name(priv->clkin);
+	init.parent_names = clk_parents;
+	init.num_parents = 1;
+
+	priv->acpi_core_gate.reg = gate_base;
+	priv->acpi_core_gate.bit_idx = MESON_SAR_ADC_ACPI_AO_CLK_GATE0_BIT;
+	priv->acpi_core_gate.hw.init = &init;
+
+	priv->core_clk = devm_clk_register(dev, &priv->acpi_core_gate.hw);
+	if (WARN_ON(IS_ERR(priv->core_clk)))
+		return PTR_ERR(priv->core_clk);
+
+	ret = clk_prepare_enable(priv->core_clk);
+	if (ret)
+		return ret;
+
+	ret = devm_add_action_or_reset(dev, meson_sar_adc_acpi_core_disable,
+				       priv->core_clk);
+	if (ret)
+		return ret;
+
+	/* select the xtal as the converter clock source, as DT does */
+	writel(readl(sar_clk_base) & ~MESON_SAR_ADC_ACPI_AO_SAR_CLK_MUX_MASK,
+	       sar_clk_base);
+
+	init.name = devm_kasprintf(dev, GFP_KERNEL, "%s#adc_div",
+				   dev_name(dev));
+	if (!init.name)
+		return -ENOMEM;
+
+	init.flags = 0;
+	init.ops = &clk_divider_ops;
+	clk_parents[0] = __clk_get_name(priv->clkin);
+	init.parent_names = clk_parents;
+	init.num_parents = 1;
+
+	priv->clk_div.reg = sar_clk_base;
+	priv->clk_div.shift = MESON_SAR_ADC_ACPI_AO_SAR_CLK_DIV_SHIFT;
+	priv->clk_div.width = MESON_SAR_ADC_ACPI_AO_SAR_CLK_DIV_WIDTH;
+	priv->clk_div.hw.init = &init;
+	priv->clk_div.flags = 0;
+
+	priv->adc_div_clk = devm_clk_register(dev, &priv->clk_div.hw);
+	if (WARN_ON(IS_ERR(priv->adc_div_clk)))
+		return PTR_ERR(priv->adc_div_clk);
+
+	init.name = devm_kasprintf(dev, GFP_KERNEL, "%s#adc_en",
+				   dev_name(dev));
+	if (!init.name)
+		return -ENOMEM;
+
+	init.flags = CLK_SET_RATE_PARENT;
+	init.ops = &clk_gate_ops;
+	clk_parents[0] = __clk_get_name(priv->adc_div_clk);
+	init.parent_names = clk_parents;
+	init.num_parents = 1;
+
+	priv->clk_gate.reg = sar_clk_base;
+	priv->clk_gate.bit_idx = MESON_SAR_ADC_ACPI_AO_SAR_CLK_GATE_BIT;
 	priv->clk_gate.hw.init = &init;
 
 	priv->adc_clk = devm_clk_register(dev, &priv->clk_gate.hw);
@@ -1053,10 +1206,12 @@ static int meson_sar_adc_hw_enable(struct iio_dev *indio_dev)
 		goto err_lock;
 	}
 
-	ret = regulator_enable(priv->vref);
-	if (ret < 0) {
-		dev_err(dev, "failed to enable vref regulator\n");
-		goto err_vref;
+	if (priv->vref) {
+		ret = regulator_enable(priv->vref);
+		if (ret < 0) {
+			dev_err(dev, "failed to enable vref regulator\n");
+			goto err_vref;
+		}
 	}
 
 	regval = FIELD_PREP(MESON_SAR_ADC_REG0_FIFO_CNT_IRQ_MASK, 1);
@@ -1084,7 +1239,8 @@ err_adc_clk:
 	regmap_clear_bits(priv->regmap, MESON_SAR_ADC_REG3,
 			  MESON_SAR_ADC_REG3_ADC_EN);
 	meson_sar_adc_set_bandgap(indio_dev, false);
-	regulator_disable(priv->vref);
+	if (priv->vref)
+		regulator_disable(priv->vref);
 err_vref:
 	meson_sar_adc_unlock(indio_dev);
 err_lock:
@@ -1111,7 +1267,8 @@ static void meson_sar_adc_hw_disable(struct iio_dev *indio_dev)
 
 	meson_sar_adc_set_bandgap(indio_dev, false);
 
-	regulator_disable(priv->vref);
+	if (priv->vref)
+		regulator_disable(priv->vref);
 
 	if (!ret)
 		meson_sar_adc_unlock(indio_dev);
@@ -1373,7 +1530,7 @@ static int meson_sar_adc_probe(struct platform_device *pdev)
 	priv = iio_priv(indio_dev);
 	init_completion(&priv->done);
 
-	match_data = of_device_get_match_data(dev);
+	match_data = device_get_match_data(dev);
 	if (!match_data)
 		return dev_err_probe(dev, -ENODEV, "failed to get match data\n");
 
@@ -1391,29 +1548,35 @@ static int meson_sar_adc_probe(struct platform_device *pdev)
 	if (IS_ERR(priv->regmap))
 		return dev_err_probe(dev, PTR_ERR(priv->regmap), "failed to init regmap\n");
 
-	irq = irq_of_parse_and_map(dev->of_node, 0);
-	if (!irq)
-		return dev_err_probe(dev, -EINVAL, "failed to get irq\n");
+	irq = platform_get_irq(pdev, 0);
+	if (irq < 0)
+		return dev_err_probe(dev, irq, "failed to get irq\n");
 
 	ret = devm_request_irq(dev, irq, meson_sar_adc_irq, IRQF_SHARED, dev_name(dev), indio_dev);
 	if (ret)
 		return dev_err_probe(dev, ret, "failed to request irq\n");
 
-	priv->clkin = devm_clk_get(dev, "clkin");
-	if (IS_ERR(priv->clkin))
-		return dev_err_probe(dev, PTR_ERR(priv->clkin), "failed to get clkin\n");
+	if (dev->of_node) {
+		priv->clkin = devm_clk_get(dev, "clkin");
+		if (IS_ERR(priv->clkin))
+			return dev_err_probe(dev, PTR_ERR(priv->clkin), "failed to get clkin\n");
 
-	priv->core_clk = devm_clk_get_enabled(dev, "core");
-	if (IS_ERR(priv->core_clk))
-		return dev_err_probe(dev, PTR_ERR(priv->core_clk), "failed to get core clk\n");
+		priv->core_clk = devm_clk_get_enabled(dev, "core");
+		if (IS_ERR(priv->core_clk))
+			return dev_err_probe(dev, PTR_ERR(priv->core_clk), "failed to get core clk\n");
 
-	priv->adc_clk = devm_clk_get_optional(dev, "adc_clk");
-	if (IS_ERR(priv->adc_clk))
-		return dev_err_probe(dev, PTR_ERR(priv->adc_clk), "failed to get adc clk\n");
+		priv->adc_clk = devm_clk_get_optional(dev, "adc_clk");
+		if (IS_ERR(priv->adc_clk))
+			return dev_err_probe(dev, PTR_ERR(priv->adc_clk), "failed to get adc clk\n");
 
-	priv->adc_sel_clk = devm_clk_get_optional(dev, "adc_sel");
-	if (IS_ERR(priv->adc_sel_clk))
-		return dev_err_probe(dev, PTR_ERR(priv->adc_sel_clk), "failed to get adc_sel clk\n");
+		priv->adc_sel_clk = devm_clk_get_optional(dev, "adc_sel");
+		if (IS_ERR(priv->adc_sel_clk))
+			return dev_err_probe(dev, PTR_ERR(priv->adc_sel_clk), "failed to get adc_sel clk\n");
+	} else {
+		ret = meson_sar_adc_clk_init_acpi(indio_dev);
+		if (ret)
+			return dev_err_probe(dev, ret, "failed to init ACPI clk island\n");
+	}
 
 	/* on pre-GXBB SoCs the SAR ADC itself provides the ADC clock: */
 	if (!priv->adc_clk) {
@@ -1422,9 +1585,22 @@ static int meson_sar_adc_probe(struct platform_device *pdev)
 			return dev_err_probe(dev, ret, "failed to init internal clk\n");
 	}
 
-	priv->vref = devm_regulator_get(dev, "vref");
-	if (IS_ERR(priv->vref))
-		return dev_err_probe(dev, PTR_ERR(priv->vref), "failed to get vref regulator\n");
+	if (dev->of_node) {
+		priv->vref = devm_regulator_get(dev, "vref");
+		if (IS_ERR(priv->vref))
+			return dev_err_probe(dev, PTR_ERR(priv->vref), "failed to get vref regulator\n");
+	} else {
+		/*
+		 * No regulator framework under ACPI (the core refuses dummy
+		 * supplies without a populated DT).  The reference is a fixed
+		 * always-on rail; firmware states its voltage as a _DSD fact
+		 * for the IIO scale.  priv->vref stays NULL and every
+		 * regulator call site is guarded on it.
+		 */
+		priv->acpi_vref_uv = 1800000;
+		device_property_read_u32(dev, "vref-microvolt",
+					 &priv->acpi_vref_uv);
+	}
 
 	priv->calibscale = MILLION;
 
