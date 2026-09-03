@@ -547,13 +547,26 @@ static int axg_tdm_iface_probe(struct platform_device *pdev)
 
 	/* Bit clock provided on the pad */
 	iface->sclk = devm_clk_get(dev, "sclk");
-	if (IS_ERR(iface->sclk))
+	if (IS_ERR(iface->sclk)) {
+		/*
+		 * Under ACPI the clock controller publishes this clock as
+		 * a clkdev lookup from its own probe; until that has run
+		 * the lookup is simply absent, not broken.  Deferring on
+		 * sclk alone is sufficient ordering: the controller
+		 * registers every lookup, mclk included, in one probe.
+		 */
+		if (!dev->of_node && PTR_ERR(iface->sclk) == -ENOENT)
+			return -EPROBE_DEFER;
 		return dev_err_probe(dev, PTR_ERR(iface->sclk), "failed to get sclk\n");
+	}
 
 	/* Sample clock provided on the pad */
 	iface->lrclk = devm_clk_get(dev, "lrclk");
-	if (IS_ERR(iface->lrclk))
+	if (IS_ERR(iface->lrclk)) {
+		if (!dev->of_node && PTR_ERR(iface->lrclk) == -ENOENT)
+			return -EPROBE_DEFER;
 		return dev_err_probe(dev, PTR_ERR(iface->lrclk), "failed to get lrclk\n");
+	}
 
 	/*
 	 * mclk maybe be missing when the cpu dai is in slave mode and
