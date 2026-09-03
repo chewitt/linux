@@ -207,6 +207,7 @@ enum nal_unit_type {
 	NAL_UNIT_CODED_SLICE_BLA_N_LP	= 18,
 	NAL_UNIT_CODED_SLICE_IDR	= 19,
 	NAL_UNIT_CODED_SLICE_IDR_N_LP	= 20,
+	NAL_UNIT_CODED_SLICE_CRA	= 21,
 };
 
 enum slice_type {
@@ -237,6 +238,13 @@ struct hevc_frame {
 struct codec_hevc {
 	/* Protect the data structure */
 	struct mutex lock;
+
+	/*
+	 * Set once the first IRAP slice of the session has been seen;
+	 * everything before it is skipped (a session fed from mid-GOP
+	 * has no valid references at all).
+	 */
+	u32 seen_irap;
 
 	/* Common part of the HEVC decoder */
 	struct codec_hevc_common common;
@@ -731,6 +739,38 @@ codec_hevc_get_frame_by_poc(struct codec_hevc *hevc, u32 poc)
 	return NULL;
 }
 
+/*
+ * Stand-in for a reference frame missing from the DPB: the
+ * nearest-POC frame that has FINISHED decoding.  The current frame
+ * must never be used - in MMU/FBC mode its compressed-frame header is
+ * written by the hardware as decode progresses, and a motion-
+ * compensation read through a not-yet-written header entry is a DMA
+ * to physical page 0 (secure firmware territory), which trips the DMC
+ * firewall and wedges the SoC beyond even a watchdog reset.
+ */
+static struct hevc_frame *
+codec_hevc_nearest_done_frame(struct codec_hevc *hevc,
+			      struct hevc_frame *cur_frame, u32 poc)
+{
+	struct hevc_frame *tmp, *best = NULL;
+	u32 best_dist = U32_MAX;
+
+	list_for_each_entry(tmp, &hevc->ref_frames_list, list) {
+		u32 dist;
+
+		if (tmp == cur_frame)
+			continue;
+
+		dist = tmp->poc > poc ? tmp->poc - poc : poc - tmp->poc;
+		if (dist < best_dist) {
+			best = tmp;
+			best_dist = dist;
+		}
+	}
+
+	return best;
+}
+
 static struct hevc_frame *
 codec_hevc_prepare_new_frame(struct amvdec_session *sess)
 {
@@ -1144,6 +1184,7 @@ static void codec_hevc_set_mcrcc(struct amvdec_session *sess)
 }
 
 static void codec_hevc_set_ref_list(struct amvdec_session *sess,
+				    struct hevc_frame *cur_frame,
 				    u32 ref_num, u32 *ref_poc_list)
 {
 	struct codec_hevc *hevc = sess->priv;
@@ -1159,8 +1200,27 @@ static void codec_hevc_set_ref_list(struct amvdec_session *sess,
 		if (!ref_frame) {
 			dev_warn(core->dev, "Couldn't find ref. frame %u\n",
 				 ref_poc_list[i]);
-			continue;
+			/*
+			 * HEVCD_MPP_ANC_CANVAS_DATA_ADDR is an
+			 * auto-incrementing port: one write per reference,
+			 * in order.  Skipping a missing reference shifts
+			 * every later entry into the wrong slot and leaves
+			 * the tail slots holding stale canvas IDs, so the
+			 * MC engine reads through freed (MMU-unmapped)
+			 * buffers - that DMA locks the bus and hangs the
+			 * whole SoC.  Substitute the nearest COMPLETED
+			 * frame (see codec_hevc_nearest_done_frame for why
+			 * the in-flight current frame must not be used):
+			 * wrong pixels until the next IRAP, but always
+			 * valid, fully-written memory.
+			 */
+			ref_frame = codec_hevc_nearest_done_frame(hevc,
+							cur_frame,
+							ref_poc_list[i]);
+			if (!ref_frame)
+				ref_frame = cur_frame;
 		}
+
 
 		if (codec_hevc_use_fbc(sess->pixfmt_cap, hevc->is_10bit)) {
 			buf_id_y = ref_frame->vbuf->vb2_buf.index;
@@ -1186,7 +1246,7 @@ static void codec_hevc_set_mc(struct amvdec_session *sess,
 		return;
 
 	amvdec_write_dos(core, HEVCD_MPP_ANC_CANVAS_ACCCONFIG_ADDR, 1);
-	codec_hevc_set_ref_list(sess, frame->ref_num[0],
+	codec_hevc_set_ref_list(sess, frame, frame->ref_num[0],
 				frame->ref_poc_list[0][frame->cur_slice_idx]);
 
 	if (frame->cur_slice_type == P_SLICE)
@@ -1194,7 +1254,7 @@ static void codec_hevc_set_mc(struct amvdec_session *sess,
 
 	amvdec_write_dos(core, HEVCD_MPP_ANC_CANVAS_ACCCONFIG_ADDR,
 			 BIT(12) | BIT(0));
-	codec_hevc_set_ref_list(sess, frame->ref_num[1],
+	codec_hevc_set_ref_list(sess, frame, frame->ref_num[1],
 				frame->ref_poc_list[1][frame->cur_slice_idx]);
 }
 
@@ -1301,12 +1361,47 @@ static void codec_hevc_process_segment_header(struct amvdec_session *sess)
 	codec_hevc_update_pocs(sess);
 }
 
+/*
+ * Tell the firmware to skip the current slice and search for the next
+ * start code without decoding (vendor nal-skip protocol: clear the
+ * decode wait flag, respond ACTION_DONE, kick the MCPU).
+ */
+static int codec_hevc_skip_slice(struct amvdec_session *sess)
+{
+	struct amvdec_core *core = sess->core;
+
+	amvdec_clear_dos_bits(core, HEVC_WAIT_FLAG, BIT(1));
+	amvdec_write_dos(core, HEVC_DEC_STATUS_REG, HEVC_ACTION_DONE);
+	amvdec_write_dos(core, HEVC_MCPU_INTR_REQ, AMRISC_MAIN_REQ);
+
+	return 0;
+}
+
 static int codec_hevc_process_segment(struct amvdec_session *sess)
 {
 	struct codec_hevc *hevc = sess->priv;
 	struct amvdec_core *core = sess->core;
 	union rpm_param *param = &hevc->rpm_param;
 	u32 slice_segment_address = param->p.slice_segment_address;
+	u32 nal_type = param->p.m_nalUnitType;
+
+	/*
+	 * A session fed from the middle of a GOP (a player resuming
+	 * after a decode error, or seeking without snapping to a sync
+	 * sample) has no valid reference for anything until the first
+	 * IRAP.  Skip, per the V4L2 stateful-decoder contract.
+	 */
+	if (!hevc->seen_irap) {
+		if (nal_type >= NAL_UNIT_CODED_SLICE_BLA &&
+		    nal_type <= NAL_UNIT_CODED_SLICE_CRA) {
+			hevc->seen_irap = 1;
+		} else {
+			dev_dbg(core->dev,
+				"skipping pre-IRAP slice (nal %u)\n",
+				nal_type);
+			return codec_hevc_skip_slice(sess);
+		}
+	}
 
 	/* First slice: new frame */
 	if (slice_segment_address == 0) {
@@ -1317,8 +1412,16 @@ static int codec_hevc_process_segment(struct amvdec_session *sess)
 		if (!hevc->cur_frame)
 			return -1;
 	} else {
+		/*
+		 * A continuation slice with no current frame: the
+		 * in-place stall recovery dropped the frame these
+		 * slices belong to.  Skip until the next frame start.
+		 */
+		if (!hevc->cur_frame)
+			return codec_hevc_skip_slice(sess);
 		hevc->cur_frame->cur_slice_idx++;
 	}
+
 
 	codec_hevc_update_frame_refs(sess, hevc->cur_frame);
 	codec_hevc_update_col_frame(hevc);
