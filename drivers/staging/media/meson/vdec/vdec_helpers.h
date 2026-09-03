@@ -27,6 +27,25 @@ void amvdec_clear_dos_bits(struct amvdec_core *core, u32 reg, u32 val);
 u32 amvdec_read_parser(struct amvdec_core *core, u32 reg);
 void amvdec_write_parser(struct amvdec_core *core, u32 reg, u32 val);
 
+/*
+ * DDR-controller request-port control.
+ *
+ * Every decoder reset or power transition must happen with the unit's
+ * DMC request ports parked, or a sub-engine stuck mid-transaction wedges
+ * the port and takes the whole SoC down - past even a watchdog reset.
+ * The masks are the DMC channel bits of the unit (see vdec_1.c /
+ * vdec_hevc.c); DMC_REQ_CTRL and DMC_CHAN_STS share one bit numbering.
+ *
+ * These registers live OUTSIDE every decoder power domain and are safe
+ * to touch at any point of a power transition - unlike the DOS-space
+ * registers, which must not be touched before the memories are powered
+ * and isolation is removed.
+ */
+void amvdec_dmc_park(struct amvdec_core *core, u32 mask);
+void amvdec_dmc_unpark(struct amvdec_core *core, u32 mask);
+/* G12B latches DMC-side decode pipeline state; pulse it before unparking */
+void amvdec_dmc_pipeline_reset(struct amvdec_core *core);
+
 /* Helpers for the Amlogic compressed framebuffer format */
 u32 amvdec_amfbc_body_size(u32 width, u32 height, u32 is_10bit, u32 use_mmu);
 u32 amvdec_amfbc_head_size(u32 width, u32 height);
