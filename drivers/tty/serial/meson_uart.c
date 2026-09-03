@@ -5,6 +5,7 @@
  * Copyright (C) 2014 Carlo Caione <carlo@caione.org>
  */
 
+#include <linux/acpi.h>
 #include <linux/clk.h>
 #include <linux/console.h>
 #include <linux/delay.h>
@@ -15,6 +16,7 @@
 #include <linux/kernel.h>
 #include <linux/of.h>
 #include <linux/platform_device.h>
+#include <linux/property.h>
 #include <linux/serial.h>
 #include <linux/serial_core.h>
 #include <linux/tty.h>
@@ -669,6 +671,25 @@ static int meson_uart_probe_clocks(struct platform_device *pdev,
 	struct clk *clk_pclk = NULL;
 	struct clk *clk_baud = NULL;
 
+	if (!pdev->dev.of_node) {
+		/*
+		 * ACPI (PRP0001) description: there is no clock provider -
+		 * firmware keeps the peripheral clock running (on the AO
+		 * domain it is firmware's own console) and states the baud
+		 * reference as a "clock-frequency" property.  24000000
+		 * selects the XTAL divider path in meson_uart_change_speed
+		 * exactly as the DT xtal reference does.
+		 */
+		u32 freq;
+
+		if (device_property_read_u32(&pdev->dev, "clock-frequency",
+					     &freq))
+			return dev_err_probe(&pdev->dev, -EINVAL,
+					     "no clock-frequency property\n");
+		port->uartclk = freq;
+		return 0;
+	}
+
 	clk_pclk = devm_clk_get_enabled(&pdev->dev, "pclk");
 	if (IS_ERR(clk_pclk))
 		return PTR_ERR(clk_pclk);
@@ -705,6 +726,17 @@ static int meson_uart_probe(struct platform_device *pdev)
 
 	if (pdev->dev.of_node)
 		pdev->id = of_alias_get_id(pdev->dev.of_node, "serial");
+	else if (has_acpi_companion(&pdev->dev)) {
+		/*
+		 * The _UID takes the role of the DT serial alias so the
+		 * line number (and console name) is stable across boots
+		 * and matches the DT-mode name for the same port.
+		 */
+		u64 uid;
+
+		if (!acpi_dev_uid_to_integer(ACPI_COMPANION(&pdev->dev), &uid))
+			pdev->id = uid;
+	}
 
 	if (pdev->id < 0) {
 		int id;
@@ -728,8 +760,8 @@ static int meson_uart_probe(struct platform_device *pdev)
 	if (irq < 0)
 		return irq;
 
-	of_property_read_u32(pdev->dev.of_node, "fifo-size", &fifosize);
-	has_rtscts = of_property_read_bool(pdev->dev.of_node, "uart-has-rtscts");
+	device_property_read_u32(&pdev->dev, "fifo-size", &fifosize);
+	has_rtscts = device_property_read_bool(&pdev->dev, "uart-has-rtscts");
 
 	if (meson_ports[pdev->id]) {
 		return dev_err_probe(&pdev->dev, -EBUSY,
