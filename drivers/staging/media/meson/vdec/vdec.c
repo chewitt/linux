@@ -299,6 +299,20 @@ static int vdec_start_streaming(struct vb2_queue *q, unsigned int count)
 	if (!sess->streamon_out)
 		return 0;
 
+	/*
+	 * Codecs without a resolution-change resume op program the CAPTURE
+	 * buffer canvases exactly once, in vdec_ops->start(), from the
+	 * buffers queued on the CAPTURE queue at that moment.  Starting
+	 * them at OUTPUT streamon - before userspace has negotiated and
+	 * streamed the CAPTURE queue, as GStreamer's stateful-decoder flow
+	 * does - leaves the canvas map empty, so every hardware
+	 * buffer-done report resolves to buffer 0 and the session
+	 * collapses.  Codecs with a resume op reprogram the canvases when
+	 * the CAPTURE side appears and may start immediately.
+	 */
+	if (!codec_ops->resume && !sess->streamon_cap)
+		return 0;
+
 	if (sess->status == STATUS_NEEDS_RESUME &&
 	    q->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE &&
 	    sess->changed_format) {
