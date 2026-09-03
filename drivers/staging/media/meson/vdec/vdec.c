@@ -1024,7 +1024,6 @@ static int vdec_probe(struct platform_device *pdev)
 	struct device *dev = &pdev->dev;
 	struct video_device *vdev;
 	struct amvdec_core *core;
-	const struct of_device_id *of_id;
 	int irq;
 	int ret;
 
@@ -1035,53 +1034,118 @@ static int vdec_probe(struct platform_device *pdev)
 	core->dev = dev;
 	platform_set_drvdata(pdev, core);
 
-	core->dos_base = devm_platform_ioremap_resource_byname(pdev, "dos");
-	if (IS_ERR(core->dos_base))
-		return PTR_ERR(core->dos_base);
+	if (dev->of_node) {
+		core->dos_base = devm_platform_ioremap_resource_byname(pdev, "dos");
+		if (IS_ERR(core->dos_base))
+			return PTR_ERR(core->dos_base);
 
-	core->esparser_base = devm_platform_ioremap_resource_byname(pdev, "esparser");
-	if (IS_ERR(core->esparser_base))
-		return PTR_ERR(core->esparser_base);
+		core->esparser_base =
+			devm_platform_ioremap_resource_byname(pdev, "esparser");
+		if (IS_ERR(core->esparser_base))
+			return PTR_ERR(core->esparser_base);
 
-	core->regmap_ao =
-		syscon_regmap_lookup_by_phandle(dev->of_node,
-						"amlogic,ao-sysctrl");
-	if (IS_ERR(core->regmap_ao)) {
-		dev_err(dev, "Couldn't regmap AO sysctrl\n");
-		return PTR_ERR(core->regmap_ao);
+		core->regmap_ao =
+			syscon_regmap_lookup_by_phandle(dev->of_node,
+							"amlogic,ao-sysctrl");
+		if (IS_ERR(core->regmap_ao)) {
+			dev_err(dev, "Couldn't regmap AO sysctrl\n");
+			return PTR_ERR(core->regmap_ao);
+		}
+	} else {
+		/*
+		 * ACPI (PRP0001): _CRS entries are unnamed, so index order
+		 * is the ABI (kept in the firmware's SsdtVdec.asl):
+		 *   [0] DOS  [1] esparser  [2] EE reset pulse bank 1
+		 *   [3] AO sysctrl window  [4] HHI window
+		 * The shared AO/HHI windows are mapped without claiming
+		 * (meson-drm precedent); the private AO regmap replaces the
+		 * DT syscon phandle, and the reset pulse register replaces
+		 * the OF reset control (RESET_PARSER = bank 1 bit 8).
+		 */
+		static const struct regmap_config vdec_acpi_ao_cfg = {
+			.reg_bits = 32,
+			.val_bits = 32,
+			.reg_stride = 4,
+			.max_register = 0xff,
+		};
+		struct resource *res;
+		void __iomem *base;
+
+		core->dos_base = devm_platform_ioremap_resource(pdev, 0);
+		if (IS_ERR(core->dos_base))
+			return PTR_ERR(core->dos_base);
+
+		core->esparser_base = devm_platform_ioremap_resource(pdev, 1);
+		if (IS_ERR(core->esparser_base))
+			return PTR_ERR(core->esparser_base);
+
+		core->esparser_reset_base =
+			devm_platform_ioremap_resource(pdev, 2);
+		if (IS_ERR(core->esparser_reset_base))
+			return PTR_ERR(core->esparser_reset_base);
+
+		res = platform_get_resource(pdev, IORESOURCE_MEM, 3);
+		if (!res)
+			return -ENODEV;
+		base = devm_ioremap(dev, res->start, resource_size(res));
+		if (!base)
+			return -ENOMEM;
+		core->regmap_ao = devm_regmap_init_mmio(dev, base,
+							&vdec_acpi_ao_cfg);
+		if (IS_ERR(core->regmap_ao)) {
+			dev_err(dev, "Couldn't regmap AO sysctrl\n");
+			return PTR_ERR(core->regmap_ao);
+		}
+
+		res = platform_get_resource(pdev, IORESOURCE_MEM, 4);
+		if (!res)
+			return -ENODEV;
+		base = devm_ioremap(dev, res->start, resource_size(res));
+		if (!base)
+			return -ENOMEM;
+		ret = vdec_acpi_init_clks(core, base);
+		if (ret)
+			return ret;
 	}
 
 	core->canvas = meson_canvas_get(dev);
 	if (IS_ERR(core->canvas))
 		return PTR_ERR(core->canvas);
 
-	of_id = of_match_node(vdec_dt_match, dev->of_node);
-	core->platform = of_id->data;
+	core->platform = device_get_match_data(dev);
+	if (!core->platform)
+		return -ENODEV;
 
-	if (core->platform->revision == VDEC_REVISION_G12A ||
-	    core->platform->revision == VDEC_REVISION_SM1) {
-		core->vdec_hevcf_clk = devm_clk_get(dev, "vdec_hevcf");
-		if (IS_ERR(core->vdec_hevcf_clk))
+	if (dev->of_node) {
+		if (core->platform->revision == VDEC_REVISION_G12A ||
+		    core->platform->revision == VDEC_REVISION_SM1) {
+			core->vdec_hevcf_clk = devm_clk_get(dev, "vdec_hevcf");
+			if (IS_ERR(core->vdec_hevcf_clk))
+				return -EPROBE_DEFER;
+		}
+
+		core->dos_parser_clk = devm_clk_get(dev, "dos_parser");
+		if (IS_ERR(core->dos_parser_clk))
+			return -EPROBE_DEFER;
+
+		core->dos_clk = devm_clk_get(dev, "dos");
+		if (IS_ERR(core->dos_clk))
+			return -EPROBE_DEFER;
+
+		core->vdec_1_clk = devm_clk_get(dev, "vdec_1");
+		if (IS_ERR(core->vdec_1_clk))
+			return -EPROBE_DEFER;
+
+		core->vdec_hevc_clk = devm_clk_get(dev, "vdec_hevc");
+		if (IS_ERR(core->vdec_hevc_clk))
 			return -EPROBE_DEFER;
 	}
+	/* else: the local clock island filled core->*_clk already */
 
-	core->dos_parser_clk = devm_clk_get(dev, "dos_parser");
-	if (IS_ERR(core->dos_parser_clk))
-		return -EPROBE_DEFER;
-
-	core->dos_clk = devm_clk_get(dev, "dos");
-	if (IS_ERR(core->dos_clk))
-		return -EPROBE_DEFER;
-
-	core->vdec_1_clk = devm_clk_get(dev, "vdec_1");
-	if (IS_ERR(core->vdec_1_clk))
-		return -EPROBE_DEFER;
-
-	core->vdec_hevc_clk = devm_clk_get(dev, "vdec_hevc");
-	if (IS_ERR(core->vdec_hevc_clk))
-		return -EPROBE_DEFER;
-
-	irq = platform_get_irq_byname(pdev, "vdec");
+	if (dev->of_node)
+		irq = platform_get_irq_byname(pdev, "vdec");
+	else
+		irq = platform_get_irq(pdev, 0);
 	if (irq < 0)
 		return irq;
 

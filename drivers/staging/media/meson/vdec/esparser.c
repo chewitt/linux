@@ -399,7 +399,15 @@ int esparser_power_up(struct amvdec_session *sess)
 	struct amvdec_core *core = sess->core;
 	struct amvdec_ops *vdec_ops = sess->fmt_out->vdec_ops;
 
-	reset_control_reset(core->esparser_reset);
+	if (core->esparser_reset)
+		reset_control_reset(core->esparser_reset);
+	else
+		/*
+		 * ACPI: no OF reset provider - pulse RESET_PARSER directly
+		 * (EE reset controller bank 1 bit 8, self-clearing pulse
+		 * register mapped as _CRS index 2).
+		 */
+		writel(BIT(8), core->esparser_reset_base);
 	amvdec_write_parser(core, PARSER_CONFIG,
 			    (10 << PS_CFG_PFIFO_EMPTY_CNT_BIT) |
 			    (1  << PS_CFG_MAX_ES_WR_CYCLE_BIT) |
@@ -443,7 +451,10 @@ int esparser_init(struct platform_device *pdev, struct amvdec_core *core)
 	int ret;
 	int irq;
 
-	irq = platform_get_irq_byname(pdev, "esparser");
+	if (dev->of_node)
+		irq = platform_get_irq_byname(pdev, "esparser");
+	else
+		irq = platform_get_irq(pdev, 1);
 	if (irq < 0)
 		return irq;
 
@@ -454,12 +465,15 @@ int esparser_init(struct platform_device *pdev, struct amvdec_core *core)
 		return ret;
 	}
 
-	core->esparser_reset =
-		devm_reset_control_get_exclusive(dev, "esparser");
-	if (IS_ERR(core->esparser_reset)) {
-		dev_err(dev, "Failed to get esparser_reset\n");
-		return PTR_ERR(core->esparser_reset);
+	if (dev->of_node) {
+		core->esparser_reset =
+			devm_reset_control_get_exclusive(dev, "esparser");
+		if (IS_ERR(core->esparser_reset)) {
+			dev_err(dev, "Failed to get esparser_reset\n");
+			return PTR_ERR(core->esparser_reset);
+		}
 	}
+	/* else: core->esparser_reset stays NULL, the pulse register is used */
 
 	return 0;
 }

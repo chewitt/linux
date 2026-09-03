@@ -85,6 +85,8 @@ struct amvdec_core {
 	struct clk *vdec_hevcf_clk;
 
 	struct reset_control *esparser_reset;
+	/* ACPI: EE reset pulse register replacing esparser_reset */
+	void __iomem *esparser_reset_base;
 
 	struct video_device *vdev_dec;
 	struct v4l2_device v4l2_dev;
@@ -288,5 +290,7 @@ static inline struct amvdec_session *file_to_amvdec_session(struct file *filp)
 }
 
 u32 amvdec_get_output_size(struct amvdec_session *sess);
+
+int vdec_acpi_init_clks(struct amvdec_core *core, void __iomem *hhi);
 
 #endif
