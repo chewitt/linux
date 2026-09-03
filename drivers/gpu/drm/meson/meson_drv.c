@@ -12,6 +12,7 @@
 #include <linux/component.h>
 #include <linux/module.h>
 #include <linux/of_graph.h>
+#include <linux/property.h>
 #include <linux/sys_soc.h>
 #include <linux/platform_device.h>
 #include <linux/soc/amlogic/meson-canvas.h>
@@ -109,9 +110,37 @@ static const struct drm_driver meson_driver = {
 	.minor			= 0,
 };
 
+/*
+ * ACPI PRP0001 mode (no of_node, no OF graph): the only output this
+ * platform describes is the G12A DW-HDMI, published as its own device.
+ * Finding it replaces walking the OF-graph endpoints.
+ */
+static int meson_acpi_compat_match(struct device *dev, const void *data)
+{
+	return fwnode_device_is_compatible(dev_fwnode(dev), data);
+}
+
+static struct device *meson_acpi_find_hdmi(void)
+{
+	return bus_find_device(&platform_bus_type, NULL,
+			       "amlogic,meson-g12a-dw-hdmi",
+			       meson_acpi_compat_match);
+}
+
 static bool meson_vpu_has_available_connectors(struct device *dev)
 {
 	struct device_node *ep, *remote;
+
+	if (!dev->of_node) {
+		struct device *hdmi_dev = meson_acpi_find_hdmi();
+
+		if (hdmi_dev) {
+			put_device(hdmi_dev);
+			return true;
+		}
+
+		return false;
+	}
 
 	/* Parses each endpoint and check if remote exists */
 	for_each_endpoint_of_node(dev->of_node, ep) {
@@ -194,7 +223,8 @@ static int meson_drv_bind_master(struct device *dev, bool has_components)
 		return -ENODEV;
 	}
 
-	match = of_device_get_match_data(dev);
+	/* device_get_match_data() also resolves the ACPI PRP0001 compatible */
+	match = device_get_match_data(dev);
 	if (!match)
 		return -ENODEV;
 
@@ -213,7 +243,14 @@ static int meson_drv_bind_master(struct device *dev, bool has_components)
 	priv->compat = match->compat;
 	priv->afbcd.ops = match->afbcd_ops;
 
-	regs = devm_platform_ioremap_resource_byname(pdev, "vpu");
+	/*
+	 * ACPI _CRS entries are unnamed: the DT reg-names "vpu"/"hhi"
+	 * become index order 0/1 there (the SSDT documents this as ABI).
+	 */
+	if (dev->of_node)
+		regs = devm_platform_ioremap_resource_byname(pdev, "vpu");
+	else
+		regs = devm_platform_ioremap_resource(pdev, 0);
 	if (IS_ERR(regs)) {
 		ret = PTR_ERR(regs);
 		goto free_drm;
@@ -221,7 +258,10 @@ static int meson_drv_bind_master(struct device *dev, bool has_components)
 
 	priv->io_base = regs;
 
-	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "hhi");
+	if (dev->of_node)
+		res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "hhi");
+	else
+		res = platform_get_resource(pdev, IORESOURCE_MEM, 1);
 	if (!res) {
 		ret = -EINVAL;
 		goto free_drm;
@@ -480,6 +520,28 @@ static int meson_drv_probe(struct platform_device *pdev)
 	struct device_node *np = pdev->dev.of_node;
 	struct device_node *ep, *remote;
 	int count = 0;
+
+	if (!np) {
+		struct device *hdmi_dev = meson_acpi_find_hdmi();
+
+		/* No output described: simply bail out (headless ACPI) */
+		if (!hdmi_dev)
+			return 0;
+
+		/*
+		 * component_compare_dev matches by pointer identity, so the
+		 * reference can be dropped right away.
+		 */
+		component_match_add(&pdev->dev, &match, component_compare_dev,
+				    hdmi_dev);
+		put_device(hdmi_dev);
+
+		dev_info(&pdev->dev, "Queued 1 output on vpu (ACPI)\n");
+
+		return component_master_add_with_match(&pdev->dev,
+						       &meson_drv_master_ops,
+						       match);
+	}
 
 	for_each_endpoint_of_node(np, ep) {
 		remote = of_graph_get_remote_port_parent(ep);

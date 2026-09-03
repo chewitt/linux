@@ -59,6 +59,13 @@ struct meson_drm {
 	struct drm_plane *overlay_plane;
 	void *encoders[MESON_ENC_LAST];
 
+	/*
+	 * ACPI mode only: the dw-hdmi bridge, published by
+	 * meson_dw_hdmi_bind for meson_encoder_hdmi_probe, replacing the
+	 * OF-graph + of_drm_find_bridge lookup (which needs of_node).
+	 */
+	struct drm_bridge *hdmi_bridge;
+
 	const struct meson_drm_soc_limits *limits;
 
 	/* Components Data */
