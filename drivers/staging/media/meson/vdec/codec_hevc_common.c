@@ -13,6 +13,54 @@
 #define MMU_COMPRESS_HEADER_SIZE 0x48000
 #define MMU_MAP_SIZE 0x4800
 
+/*
+ * Generational deferred-free: a body buffer parked here is NEVER
+ * handed to a new session (writing into a buffer the VD1 plane still
+ * scans corrupts the picture and can hang the display's FBC
+ * decompressor - a fatal DMC wedge).  gen[0] holds the most recently
+ * stopped session(s); it rotates to gen[1] - and gen[1] is freed -
+ * only once a LATER session has delivered at least one frame, which
+ * proves the parked frames are off-screen.  A session that dies
+ * without delivering anything parks alongside gen[0].
+ */
+struct fbc_gen {
+	u32 buf_size;
+	u32 count;
+	void *vaddr[MAX_REF_PIC_NUM];
+	dma_addr_t paddr[MAX_REF_PIC_NUM];
+};
+
+static struct {
+	/* protects all fields; sessions are serialized but drain isn't */
+	struct mutex lock;
+	struct device *dev;
+	struct fbc_gen gen[2];
+} fbc_pool = {
+	.lock = __MUTEX_INITIALIZER(fbc_pool.lock),
+};
+
+static void fbc_gen_free_locked(struct fbc_gen *g)
+{
+	u32 i;
+
+	for (i = 0; i < g->count; i++)
+		dma_free_coherent(fbc_pool.dev, g->buf_size,
+				  g->vaddr[i], g->paddr[i]);
+	g->count = 0;
+	g->buf_size = 0;
+}
+
+void codec_hevc_fbc_pool_drain(void)
+{
+	mutex_lock(&fbc_pool.lock);
+	if (fbc_pool.dev) {
+		fbc_gen_free_locked(&fbc_pool.gen[0]);
+		fbc_gen_free_locked(&fbc_pool.gen[1]);
+	}
+	mutex_unlock(&fbc_pool.lock);
+}
+EXPORT_SYMBOL_GPL(codec_hevc_fbc_pool_drain);
+
 const u16 vdec_hevc_parser_cmd[] = {
 	0x0401,	0x8401,	0x0800,	0x0402,
 	0x9002,	0x1423,	0x8CC3,	0x1423,
@@ -216,14 +264,44 @@ void codec_hevc_free_fbc_buffers(struct amvdec_session *sess,
 	struct device *dev = sess->core->dev;
 	int i;
 
-	for (i = 0; i < MAX_REF_PIC_NUM; ++i) {
-		if (comm->fbc_buffer_vaddr[i]) {
+	mutex_lock(&fbc_pool.lock);
+	fbc_pool.dev = dev;
+	if (sess->sequence_cap == 0) {
+		/*
+		 * This session never delivered a frame: nothing of it
+		 * can be on screen, free its buffers immediately.  The
+		 * still-displayed generation (if any) stays parked.
+		 */
+		for (i = 0; i < MAX_REF_PIC_NUM; ++i) {
+			if (!comm->fbc_buffer_vaddr[i])
+				continue;
 			dma_free_coherent(dev, comm->fbc_buffer_size,
 					  comm->fbc_buffer_vaddr[i],
 					  comm->fbc_buffer_paddr[i]);
 			comm->fbc_buffer_vaddr[i] = NULL;
 		}
+	} else {
+		/*
+		 * This session's frames took the screen, so whatever
+		 * gen[0] holds is off-plane now: age it out and park
+		 * the current buffers as the new gen[0].
+		 */
+		fbc_gen_free_locked(&fbc_pool.gen[1]);
+		fbc_pool.gen[1] = fbc_pool.gen[0];
+		memset(&fbc_pool.gen[0], 0, sizeof(fbc_pool.gen[0]));
+		fbc_pool.gen[0].buf_size = comm->fbc_buffer_size;
+		for (i = 0; i < MAX_REF_PIC_NUM; ++i) {
+			if (!comm->fbc_buffer_vaddr[i])
+				continue;
+			fbc_pool.gen[0].vaddr[fbc_pool.gen[0].count] =
+				comm->fbc_buffer_vaddr[i];
+			fbc_pool.gen[0].paddr[fbc_pool.gen[0].count] =
+				comm->fbc_buffer_paddr[i];
+			fbc_pool.gen[0].count++;
+			comm->fbc_buffer_vaddr[i] = NULL;
+		}
 	}
+	mutex_unlock(&fbc_pool.lock);
 
 	if (comm->mmu_map_vaddr) {
 		dma_free_coherent(dev, MMU_MAP_SIZE,
@@ -254,12 +332,57 @@ static int codec_hevc_alloc_fbc_buffers(struct amvdec_session *sess,
 				      is_10bit, use_mmu);
 	comm->fbc_buffer_size = am21_size;
 
+	/*
+	 * ALWAYS allocate fresh body buffers.  Parked generations are
+	 * never reused - the display may still be scanning them, and
+	 * decoding into a scanned-out buffer corrupts the picture and
+	 * can hang the display FBC decompressor (fatal DMC wedge).
+	 *
+	 * A NEW session starting is proof that gen[1] (two sessions
+	 * old) is off every screen - free it here so parked memory is
+	 * bounded to a single generation.
+	 */
+	mutex_lock(&fbc_pool.lock);
+	if (fbc_pool.dev)
+		fbc_gen_free_locked(&fbc_pool.gen[1]);
+	mutex_unlock(&fbc_pool.lock);
+
 	v4l2_m2m_for_each_dst_buf(sess->m2m_ctx, buf) {
 		u32 idx = buf->vb.vb2_buf.index;
 		dma_addr_t paddr;
+		void *vaddr;
 
-		void *vaddr = dma_alloc_coherent(dev, am21_size, &paddr,
-						 GFP_KERNEL);
+		/*
+		 * Per-index idempotency: recovery re-runs and staged
+		 * buffer negotiation (players may grow the CAPTURE
+		 * queue after the first resolution event) must
+		 * allocate exactly the missing bodies - an
+		 * all-or-nothing guard left grown buffers bodyless
+		 * (table entries pointing nowhere = confetti frames).
+		 */
+		if (comm->fbc_buffer_vaddr[idx])
+			continue;
+
+		vaddr = dma_alloc_coherent(dev, am21_size, &paddr,
+					   GFP_KERNEL);
+		if (!vaddr) {
+			/*
+			 * CMA can be too fragmented for another pool
+			 * while a parked generation pins scattered
+			 * ranges.  Emergency-drain the parking and
+			 * retry: under memory pressure, freeing the
+			 * (probably off-screen) previous generation
+			 * beats failing the session.
+			 */
+			mutex_lock(&fbc_pool.lock);
+			fbc_gen_free_locked(&fbc_pool.gen[1]);
+			fbc_gen_free_locked(&fbc_pool.gen[0]);
+			mutex_unlock(&fbc_pool.lock);
+			dev_warn_once(dev,
+				      "CMA pressure: drained parked FBC generations\n");
+			vaddr = dma_alloc_coherent(dev, am21_size, &paddr,
+						   GFP_KERNEL);
+		}
 		if (!vaddr) {
 			codec_hevc_free_fbc_buffers(sess, comm);
 			return -ENOMEM;

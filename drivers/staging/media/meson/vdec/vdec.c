@@ -21,6 +21,7 @@
 #include <media/videobuf2-dma-contig.h>
 
 #include "vdec.h"
+#include "codec_hevc_common.h"
 #include "esparser.h"
 #include "vdec_helpers.h"
 
@@ -1307,6 +1308,7 @@ static void vdec_remove(struct platform_device *pdev)
 {
 	struct amvdec_core *core = platform_get_drvdata(pdev);
 
+	codec_hevc_fbc_pool_drain();
 	video_unregister_device(core->vdev_dec);
 	v4l2_device_unregister(&core->v4l2_dev);
 }
