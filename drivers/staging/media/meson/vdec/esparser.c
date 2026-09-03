@@ -308,7 +308,9 @@ esparser_queue(struct amvdec_session *sess, struct vb2_v4l2_buffer *vbuf)
 	 * they could pause when there is no capture buffer available and
 	 * resume on this notification.
 	 */
-	if (sess->fmt_out->pixfmt == V4L2_PIX_FMT_VP9 && sess->streamon_cap) {
+	if ((sess->fmt_out->pixfmt == V4L2_PIX_FMT_VP9 ||
+	     sess->fmt_out->pixfmt == V4L2_PIX_FMT_HEVC) &&
+	    sess->streamon_cap) {
 		/*
 		 * This throttle only makes sense once the CAPTURE queue
 		 * exists: before that (during header parsing for the
@@ -316,6 +318,11 @@ esparser_queue(struct amvdec_session *sess, struct vb2_v4l2_buffer *vbuf)
 		 * u32 subtraction below used to wrap, accidentally letting
 		 * the header through - gate on streamon_cap and clamp so
 		 * both phases behave as intended.
+		 *
+		 * HEVC joins VP9 here: both hold reference frames in the
+		 * CAPTURE queue and cannot decode when it is full, which is
+		 * exactly the backpressure H.264 lacks (and why 4K60 H.264
+		 * wedges the pipeline instead of degrading).
 		 */
 		if (codec_ops->num_pending_bufs)
 			num_dst_bufs = codec_ops->num_pending_bufs(sess);
@@ -326,6 +333,7 @@ esparser_queue(struct amvdec_session *sess, struct vb2_v4l2_buffer *vbuf)
 		if (esparser_vififo_get_free_space(sess) < payload_size ||
 		    atomic_read(&sess->esparser_queued_bufs) >= num_dst_bufs)
 			return -EAGAIN;
+
 	} else if (esparser_vififo_get_free_space(sess) < payload_size) {
 		return -EAGAIN;
 	}
