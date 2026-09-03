@@ -223,6 +223,11 @@ static int vdec_queue_setup(struct vb2_queue *q, unsigned int *num_buffers,
 				    sizes[2] < output_size / 4)
 					return -EINVAL;
 				break;
+			case V4L2_PIX_FMT_MESON_AM21C:
+				if (*num_planes != 1 ||
+				    sizes[0] < AM21C_HEADER_SIZE)
+					return -EINVAL;
+				break;
 			default:
 				return -EINVAL;
 			}
@@ -251,6 +256,10 @@ static int vdec_queue_setup(struct vb2_queue *q, unsigned int *num_buffers,
 			sizes[1] = output_size / 4;
 			sizes[2] = output_size / 4;
 			*num_planes = 3;
+			break;
+		case V4L2_PIX_FMT_MESON_AM21C:
+			sizes[0] = AM21C_HEADER_SIZE;
+			*num_planes = 1;
 			break;
 		default:
 			return -EINVAL;
@@ -631,6 +640,11 @@ vdec_try_fmt_common(struct amvdec_session *sess, u32 size,
 			pfmt[2].sizeimage = output_size / 2;
 			pfmt[2].bytesperline = ALIGN(pixmp->width, 64) / 2;
 			pixmp->num_planes = 3;
+		} else if (pixmp->pixelformat == V4L2_PIX_FMT_MESON_AM21C) {
+			/* one plane: the FBC/MMU compression header */
+			pfmt[0].sizeimage = AM21C_HEADER_SIZE;
+			pfmt[0].bytesperline = 0;
+			pixmp->num_planes = 1;
 		}
 	}
 
