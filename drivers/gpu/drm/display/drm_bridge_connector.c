@@ -274,6 +274,20 @@ static void drm_bridge_connector_reset(struct drm_connector *connector)
 	if (bridge_connector->bridge_hdmi)
 		__drm_atomic_helper_connector_hdmi_reset(connector,
 							 connector->state);
+
+	/*
+	 * Bridge connectors have no driver reset hook to re-apply the
+	 * "max bpc" default the encoder chose at attach time, so a
+	 * drm_mode_config_reset() after property attach (the normal init
+	 * order) leaves max_requested_bpc at 0 - a value userspace can
+	 * never set (the property range starts at 8) - and downstream
+	 * bridges then refuse every deep-color format.  Restore the
+	 * attach-time default: a range property stores [min, max] and
+	 * the helper attaches with the max as default.
+	 */
+	if (connector->state && connector->max_bpc_property)
+		connector->state->max_requested_bpc =
+			connector->max_bpc_property->values[1];
 }
 
 static const struct drm_connector_funcs drm_bridge_connector_funcs = {
