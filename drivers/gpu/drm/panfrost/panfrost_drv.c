@@ -12,6 +12,7 @@
 #include <linux/pagemap.h>
 #include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
+#include <linux/property.h>
 #include <drm/panfrost_drm.h>
 #include <drm/drm_debugfs.h>
 #include <drm/drm_drv.h>
@@ -972,7 +973,14 @@ static int panfrost_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, pfdev);
 
-	pfdev->comp = of_device_get_match_data(&pdev->dev);
+	/*
+	 * of_device_get_match_data() returns NULL when probing through ACPI
+	 * PRP0001 (dev->of_node is NULL).  device_get_match_data() resolves
+	 * the _DSD compatible against the same of_match_table, so
+	 * "amlogic,meson-g12a-mali" still selects amlogic_data and the
+	 * GPU_PWR_OVERRIDE quirk still applies.
+	 */
+	pfdev->comp = device_get_match_data(&pdev->dev);
 	if (!pfdev->comp)
 		return -ENODEV;
 

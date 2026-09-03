@@ -2,11 +2,14 @@
 /* Copyright 2018 Marty E. Plummer <hanetzer@startmail.com> */
 /* Copyright 2019 Linaro, Ltd, Rob Herring <robh@kernel.org> */
 
+#include <linux/acpi.h>
 #include <linux/clk.h>
+#include <linux/clk-provider.h>
 #include <linux/reset.h>
 #include <linux/platform_device.h>
 #include <linux/pm_domain.h>
 #include <linux/pm_runtime.h>
+#include <linux/property.h>
 #include <linux/regulator/consumer.h>
 
 #include "panfrost_device.h"
@@ -42,8 +45,30 @@ static int panfrost_clk_init(struct panfrost_device *pfdev)
 
 	pfdev->clock = devm_clk_get(pfdev->base.dev, NULL);
 	if (IS_ERR(pfdev->clock)) {
-		dev_err(pfdev->base.dev, "get clock failed %ld\n", PTR_ERR(pfdev->clock));
-		return PTR_ERR(pfdev->clock);
+		struct clk_hw *hw;
+		u32 acpi_rate = 800000000;
+
+		if (!has_acpi_companion(pfdev->base.dev)) {
+			dev_err(pfdev->base.dev, "get clock failed %ld\n", PTR_ERR(pfdev->clock));
+			return PTR_ERR(pfdev->clock);
+		}
+
+		/*
+		 * ACPI has no clock provider.  Firmware has already muxed,
+		 * rated, and ungated the GPU clock; only the rate is
+		 * observable here, stated by the _DSD "clock-frequency"
+		 * property.  There is no devfreq under ACPI (the OPP table
+		 * add fails -ENODEV first), so nothing ever tries to set a
+		 * rate on this fixed-rate stand-in.
+		 */
+		device_property_read_u32(pfdev->base.dev, "clock-frequency",
+					 &acpi_rate);
+		hw = devm_clk_hw_register_fixed_rate(pfdev->base.dev,
+						     dev_name(pfdev->base.dev),
+						     NULL, 0, acpi_rate);
+		if (IS_ERR(hw))
+			return PTR_ERR(hw);
+		pfdev->clock = hw->clk;
 	}
 
 	rate = clk_get_rate(pfdev->clock);
@@ -101,6 +126,17 @@ static void panfrost_clk_fini(struct panfrost_device *pfdev)
 static int panfrost_regulator_init(struct panfrost_device *pfdev)
 {
 	int ret, i;
+
+	/*
+	 * Under ACPI the regulator core refuses dummy supplies
+	 * (!have_full_constraints() without a populated DT), so the "mali"
+	 * bulk get returns -ENODEV and would fail probe.  The rail is fixed
+	 * and always on (no amlogic board describes mali-supply even in DT -
+	 * DT boots run on the dummy regulator here).  Skip acquisition;
+	 * panfrost_regulator_fini() already tolerates NULL regulators.
+	 */
+	if (has_acpi_companion(pfdev->base.dev))
+		return 0;
 
 	pfdev->regulators = devm_kcalloc(pfdev->base.dev, pfdev->comp->num_supplies,
 					 sizeof(*pfdev->regulators),
