@@ -32,9 +32,16 @@ struct dummy_buf {
 /* 16 MiB for parsed bitstream swap exchange */
 #define SIZE_VIFIFO SZ_16M
 
+/*
+ * The VDEC writes and the VPU (VD1 scanout) reads through canvases in
+ * 64-byte swap mode - line strides must be 64-byte aligned.  A 32-byte
+ * stride happens to work for CPU consumers reading the linear memory,
+ * but direct scanout of such buffers (DRMPRIME) shears into columns for
+ * any width that is not a multiple of 64 (e.g. DVD 720, VCD 352).
+ */
 static u32 get_output_size(u32 width, u32 height)
 {
-	return ALIGN(width * height, SZ_64K);
+	return ALIGN(ALIGN(width, 64) * height, SZ_64K);
 }
 
 u32 amvdec_get_output_size(struct amvdec_session *sess)
@@ -609,20 +616,20 @@ vdec_try_fmt_common(struct amvdec_session *sess, u32 size,
 		memset(pfmt[1].reserved, 0, sizeof(pfmt[1].reserved));
 		if (pixmp->pixelformat == V4L2_PIX_FMT_NV12M) {
 			pfmt[0].sizeimage = output_size;
-			pfmt[0].bytesperline = ALIGN(pixmp->width, 32);
+			pfmt[0].bytesperline = ALIGN(pixmp->width, 64);
 
 			pfmt[1].sizeimage = output_size / 2;
-			pfmt[1].bytesperline = ALIGN(pixmp->width, 32);
+			pfmt[1].bytesperline = ALIGN(pixmp->width, 64);
 			pixmp->num_planes = 2;
 		} else if (pixmp->pixelformat == V4L2_PIX_FMT_YUV420M) {
 			pfmt[0].sizeimage = output_size;
-			pfmt[0].bytesperline = ALIGN(pixmp->width, 32);
+			pfmt[0].bytesperline = ALIGN(pixmp->width, 64);
 
 			pfmt[1].sizeimage = output_size / 4;
-			pfmt[1].bytesperline = ALIGN(pixmp->width, 32) / 2;
+			pfmt[1].bytesperline = ALIGN(pixmp->width, 64) / 2;
 
 			pfmt[2].sizeimage = output_size / 2;
-			pfmt[2].bytesperline = ALIGN(pixmp->width, 32) / 2;
+			pfmt[2].bytesperline = ALIGN(pixmp->width, 64) / 2;
 			pixmp->num_planes = 3;
 		}
 	}
