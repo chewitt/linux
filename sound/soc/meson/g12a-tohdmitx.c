@@ -249,7 +249,12 @@ static int g12a_tohdmitx_probe(struct platform_device *pdev)
 	struct regmap *map;
 	int ret;
 
-	ret = device_reset(dev);
+	/*
+	 * Under ACPI the reset is an AML _RST method; only the optional
+	 * variant of device_reset() stops after evaluating it (the
+	 * non-optional variant still demands an OF/lookup reset control).
+	 */
+	ret = dev->of_node ? device_reset(dev) : device_reset_optional(dev);
 	if (ret)
 		return ret;
 
