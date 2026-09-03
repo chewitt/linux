@@ -2647,10 +2647,11 @@ static u32 *dw_hdmi_bridge_atomic_get_output_bus_fmts(struct drm_bridge *bridge,
 	/*
 	 * Order bus formats from 16bit to 8bit and from YUV422 to RGB
 	 * if supported. In any case the default RGB888 format is added
+	 * before the 8-bit YUV formats, so sinks without deep-color
+	 * support negotiate exactly what they always did - but deep
+	 * color entries must come FIRST or the bridge-chain selector
+	 * (first resolvable wins) can never pick them.
 	 */
-
-	/* Default 8bit RGB fallback */
-	output_fmts[i++] = MEDIA_BUS_FMT_RGB888_1X24;
 
 	if (max_bpc >= 16 && info->bpc == 16) {
 		if (info->color_formats & BIT(DRM_OUTPUT_COLOR_FORMAT_YCBCR444))
@@ -2660,24 +2661,32 @@ static u32 *dw_hdmi_bridge_atomic_get_output_bus_fmts(struct drm_bridge *bridge,
 	}
 
 	if (max_bpc >= 12 && info->bpc >= 12) {
-		if (info->color_formats & BIT(DRM_OUTPUT_COLOR_FORMAT_YCBCR422))
-			output_fmts[i++] = MEDIA_BUS_FMT_UYVY12_1X24;
-
 		if (info->color_formats & BIT(DRM_OUTPUT_COLOR_FORMAT_YCBCR444))
 			output_fmts[i++] = MEDIA_BUS_FMT_YUV12_1X36;
 
 		output_fmts[i++] = MEDIA_BUS_FMT_RGB121212_1X36;
+
+		if (info->color_formats & BIT(DRM_OUTPUT_COLOR_FORMAT_YCBCR422))
+			output_fmts[i++] = MEDIA_BUS_FMT_UYVY12_1X24;
 	}
 
 	if (max_bpc >= 10 && info->bpc >= 10) {
-		if (info->color_formats & BIT(DRM_OUTPUT_COLOR_FORMAT_YCBCR422))
-			output_fmts[i++] = MEDIA_BUS_FMT_UYVY10_1X20;
-
+		/*
+		 * Full-chroma formats first: 4:2:2 carries 10-bit at the
+		 * 8-bit TMDS rate (cheaper), but halves chroma - prefer
+		 * it only as the fallback within the depth.
+		 */
 		if (info->color_formats & BIT(DRM_OUTPUT_COLOR_FORMAT_YCBCR444))
 			output_fmts[i++] = MEDIA_BUS_FMT_YUV10_1X30;
 
 		output_fmts[i++] = MEDIA_BUS_FMT_RGB101010_1X30;
+
+		if (info->color_formats & BIT(DRM_OUTPUT_COLOR_FORMAT_YCBCR422))
+			output_fmts[i++] = MEDIA_BUS_FMT_UYVY10_1X20;
 	}
+
+	/* Default 8bit RGB fallback */
+	output_fmts[i++] = MEDIA_BUS_FMT_RGB888_1X24;
 
 	if (info->color_formats & BIT(DRM_OUTPUT_COLOR_FORMAT_YCBCR422))
 		output_fmts[i++] = MEDIA_BUS_FMT_UYVY8_1X16;
@@ -3208,6 +3217,18 @@ bool dw_hdmi_bus_fmt_is_420(struct dw_hdmi *hdmi)
 	return hdmi_bus_fmt_is_yuv420(hdmi->hdmi_data.enc_out_bus_format);
 }
 EXPORT_SYMBOL_GPL(dw_hdmi_bus_fmt_is_420);
+
+/*
+ * The negotiated TMDS character clock in kHz, valid once the bridge has
+ * been set up (hdmi_av_composer computes it from the mode and the
+ * negotiated output depth).  Platform PHY drivers need it to pick the
+ * correct band/swing configuration for deep-color rates.
+ */
+unsigned long dw_hdmi_get_tmds_clock(struct dw_hdmi *hdmi)
+{
+	return hdmi->hdmi_data.video_mode.mtmdsclock / 1000;
+}
+EXPORT_SYMBOL_GPL(dw_hdmi_get_tmds_clock);
 
 struct dw_hdmi *dw_hdmi_probe(struct platform_device *pdev,
 			      const struct dw_hdmi_plat_data *plat_data)

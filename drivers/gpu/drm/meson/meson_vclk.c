@@ -357,6 +357,20 @@ enum {
 	MESON_VCLK_HDMI_594000,
 /* 2970 /1 /1 /1 /5 /1  => /1 /2 */
 	MESON_VCLK_HDMI_594000_YUV420,
+/*
+ * Deep color (10/12-bit) entries: TMDS runs at pixel * 1.25 (10-bit)
+ * or * 1.5 (12-bit), realised with the fractional vid_pll dividers
+ * this file's DOC block always said were the missing piece.
+ * PHY = VCO / od1 / od2;  vclk = PHY / od3 / vid_pll_div / vclk_div.
+ */
+/* 3712.5 /2 /1 /1 /6.25 /2  => /1 /1   1080p @ 10-bit */
+	MESON_VCLK_HDMI_148500_10B,
+/* 3712.5 /1 /1 /1 /6.25 /2  => /1 /1   4K30-class @ 10-bit */
+	MESON_VCLK_HDMI_297000_10B,
+/* 3712.5 /1 /1 /1 /6.25 /1  => /1 /2   4K60 YUV420 @ 10-bit */
+	MESON_VCLK_HDMI_594000_YUV420_10B,
+/* 4455 /2 /1 /1 /7.5 /2  => /1 /1      1080p @ 12-bit */
+	MESON_VCLK_HDMI_148500_12B,
 };
 
 struct meson_vclk_params {
@@ -467,6 +481,54 @@ struct meson_vclk_params {
 		.vid_pll_div = VID_PLL_DIV_5,
 		.vclk_div = 1,
 	},
+	[MESON_VCLK_HDMI_148500_10B] = {
+		.pll_freq = 3712500000,
+		.phy_freq = 1856250000,
+		.venc_freq = 148500000,
+		.vclk_freq = 148500000,
+		.pixel_freq = 148500000,
+		.pll_od1 = 2,
+		.pll_od2 = 1,
+		.pll_od3 = 1,
+		.vid_pll_div = VID_PLL_DIV_6p25,
+		.vclk_div = 2,
+	},
+	[MESON_VCLK_HDMI_297000_10B] = {
+		.pll_freq = 3712500000,
+		.phy_freq = 3712500000,
+		.venc_freq = 297000000,
+		.vclk_freq = 297000000,
+		.pixel_freq = 297000000,
+		.pll_od1 = 1,
+		.pll_od2 = 1,
+		.pll_od3 = 1,
+		.vid_pll_div = VID_PLL_DIV_6p25,
+		.vclk_div = 2,
+	},
+	[MESON_VCLK_HDMI_594000_YUV420_10B] = {
+		.pll_freq = 3712500000,
+		.phy_freq = 3712500000,
+		.venc_freq = 594000000,
+		.vclk_freq = 594000000,
+		.pixel_freq = 297000000,
+		.pll_od1 = 1,
+		.pll_od2 = 1,
+		.pll_od3 = 1,
+		.vid_pll_div = VID_PLL_DIV_6p25,
+		.vclk_div = 1,
+	},
+	[MESON_VCLK_HDMI_148500_12B] = {
+		.pll_freq = 4455000000,
+		.phy_freq = 2227500000,
+		.venc_freq = 148500000,
+		.vclk_freq = 148500000,
+		.pixel_freq = 148500000,
+		.pll_od1 = 2,
+		.pll_od2 = 1,
+		.pll_od3 = 1,
+		.vid_pll_div = VID_PLL_DIV_7p5,
+		.vclk_div = 2,
+	},
 	{ /* sentinel */ },
 };
 
@@ -557,6 +619,18 @@ static void meson_hdmi_pll_set_params(struct meson_drm *priv, unsigned int m,
 			}
 			regmap_write(priv->hhi, HHI_HDMI_PLL_CNTL6, 0x39272000);
 			regmap_write(priv->hhi, HHI_HDMI_PLL_CNTL7, 0x55540000);
+		} else if (m >= 0x9a) {
+			/*
+			 * 3.7125-4.455 GHz VCO band (the deep-color rates):
+			 * per the vendor hdmitx hw_g12a.c cases 3712500 and
+			 * 4455000 - the low-band analog parameters below do
+			 * NOT lock at these frequencies (proven on a VIM3:
+			 * the lock poll spun forever and hung boot).
+			 */
+			regmap_write(priv->hhi, HHI_HDMI_PLL_CNTL4, 0x6a685c00);
+			regmap_write(priv->hhi, HHI_HDMI_PLL_CNTL5, 0x43231290);
+			regmap_write(priv->hhi, HHI_HDMI_PLL_CNTL6, 0x29272000);
+			regmap_write(priv->hhi, HHI_HDMI_PLL_CNTL7, 0x56540028);
 		} else {
 			regmap_write(priv->hhi, HHI_HDMI_PLL_CNTL4, 0x0a691c00);
 			regmap_write(priv->hhi, HHI_HDMI_PLL_CNTL5, 0x33771290);
@@ -564,23 +638,36 @@ static void meson_hdmi_pll_set_params(struct meson_drm *priv, unsigned int m,
 			regmap_write(priv->hhi, HHI_HDMI_PLL_CNTL7, 0x50540000);
 		}
 
-		do {
-			/* Reset PLL */
-			regmap_update_bits(priv->hhi, HHI_HDMI_PLL_CNTL,
-					HDMI_PLL_RESET_G12A, HDMI_PLL_RESET_G12A);
+		{
+			int lock_tries = 100;
 
-			/* UN-Reset PLL */
-			regmap_update_bits(priv->hhi, HHI_HDMI_PLL_CNTL,
-					HDMI_PLL_RESET_G12A, 0);
+			do {
+				/* Reset PLL */
+				regmap_update_bits(priv->hhi, HHI_HDMI_PLL_CNTL,
+						HDMI_PLL_RESET_G12A, HDMI_PLL_RESET_G12A);
 
-			/* Poll for lock bits */
-			if (!regmap_read_poll_timeout(priv->hhi,
-						      HHI_HDMI_PLL_CNTL, val,
-						      ((val & HDMI_PLL_LOCK_G12A)
-						        == HDMI_PLL_LOCK_G12A),
-						      10, 100))
-				break;
-		} while(1);
+				/* UN-Reset PLL */
+				regmap_update_bits(priv->hhi, HHI_HDMI_PLL_CNTL,
+						HDMI_PLL_RESET_G12A, 0);
+
+				/* Poll for lock bits */
+				if (!regmap_read_poll_timeout(priv->hhi,
+							      HHI_HDMI_PLL_CNTL, val,
+							      ((val & HDMI_PLL_LOCK_G12A)
+							        == HDMI_PLL_LOCK_G12A),
+							      10, 100))
+					break;
+			} while (--lock_tries);
+
+			/*
+			 * An unbounded loop here hangs the whole boot with no
+			 * console if the analog parameters are wrong for the
+			 * requested VCO.  A broken mode beats a dead board.
+			 */
+			if (!lock_tries)
+				pr_err("HDMI PLL failed to lock for m=0x%x frac=0x%x\n",
+				       m, frac);
+		}
 	}
 
 	if (meson_vpu_is_compatible(priv, VPU_COMPATIBLE_GXBB))
@@ -889,6 +976,18 @@ static void meson_vclk_set(struct meson_drm *priv,
 		case 4320000000:
 			m = vic_alternate_clock ? 0xb3 : 0xb4;
 			frac = vic_alternate_clock ? 0x1a3ee : 0;
+			break;
+		case 3712500000:
+			/* deep color: TMDS x1.25 rates (vendor hw_g12a.c
+			 * case 3712500 uses the same m/frac)
+			 */
+			m = 0x9a;
+			frac = vic_alternate_clock ? 0x110e1 : 0x16000;
+			break;
+		case 4455000000:
+			/* deep color: TMDS x1.5 rates */
+			m = 0xb9;
+			frac = vic_alternate_clock ? 0xe113 : 0x14000;
 			break;
 		case 5940000000:
 			m = 0xf7;
