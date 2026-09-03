@@ -276,6 +276,21 @@ int xhci_plat_probe(struct platform_device *pdev, struct device *sysdev, const s
 
 		if (device_property_read_bool(tmpdev, "xhci-skip-phy-init-quirk"))
 			xhci->quirks |= XHCI_SKIP_PHY_INIT;
+		if (device_property_read_bool(tmpdev, "xhci-broken-streams-quirk"))
+			xhci->quirks |= XHCI_BROKEN_STREAMS;
+
+		/*
+		 * The DWC3 xHCI on Amlogic G12-family SoCs wedges its command
+		 * ring under concurrent bulk-stream traffic (UAS sync-write
+		 * bursts): stream completions stop, Stop Endpoint never
+		 * completes and the host is declared dead.  Streams cannot be
+		 * used safely on this controller; uas then binds storage via
+		 * usb-storage (BOT) instead.
+		 */
+		if (tmpdev->of_node &&
+		    of_device_is_compatible(tmpdev->of_node,
+					    "amlogic,meson-g12a-usb-ctrl"))
+			xhci->quirks |= XHCI_BROKEN_STREAMS;
 
 		device_property_read_u32(tmpdev, "imod-interval-ns",
 					 &xhci->imod_interval);
