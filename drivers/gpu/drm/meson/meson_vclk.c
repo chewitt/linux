@@ -492,6 +492,7 @@ static void meson_hdmi_pll_set_params(struct meson_drm *priv, unsigned int m,
 				      unsigned int od2, unsigned int od3)
 {
 	unsigned int val;
+	int lock_tries = 100;
 
 	if (meson_vpu_is_compatible(priv, VPU_COMPATIBLE_GXBB)) {
 		regmap_write(priv->hhi, HHI_HDMI_PLL_CNTL, 0x58000200 | m);
@@ -580,7 +581,11 @@ static void meson_hdmi_pll_set_params(struct meson_drm *priv, unsigned int m,
 						        == HDMI_PLL_LOCK_G12A),
 						      10, 100))
 				break;
-		} while(1);
+		} while (--lock_tries);
+
+		if (!lock_tries)
+			pr_err("HDMI PLL failed to lock for m=0x%x frac=0x%x\n",
+			       m, frac);
 	}
 
 	if (meson_vpu_is_compatible(priv, VPU_COMPATIBLE_GXBB))
