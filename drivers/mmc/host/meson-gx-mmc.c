@@ -27,6 +27,8 @@
 #include <linux/interrupt.h>
 #include <linux/bitfield.h>
 #include <linux/pinctrl/consumer.h>
+#include <linux/acpi.h>
+#include <linux/property.h>
 
 #define DRIVER_NAME "meson-gx-mmc"
 
@@ -416,6 +418,27 @@ static int meson_mmc_clk_set(struct meson_host *host, unsigned long rate,
  * generating the MMC clock.  Use the clock framework to create and
  * manage these clocks.
  */
+/*
+ * Default rates of the two SD_EMMC clock mux parents on G12x, used when
+ * firmware does not declare them: clkin0 is SD_EMMC_x_CLK0, which the VIM3
+ * firmware programs to the 24 MHz crystal divided by one, and clkin1 is
+ * FCLK_DIV2 (the 2 GHz fixed PLL halved).
+ */
+#define MESON_MMC_ACPI_CLKIN0_RATE	24000000UL
+#define MESON_MMC_ACPI_CLKIN1_RATE	1000000000UL
+
+static unsigned long meson_mmc_acpi_parent_rate(struct device *dev, int idx)
+{
+	char prop[24];
+	u32 rate;
+
+	snprintf(prop, sizeof(prop), "clkin%d-frequency", idx);
+	if (!device_property_read_u32(dev, prop, &rate) && rate)
+		return rate;
+
+	return idx ? MESON_MMC_ACPI_CLKIN1_RATE : MESON_MMC_ACPI_CLKIN0_RATE;
+}
+
 static int meson_mmc_clk_init(struct meson_host *host)
 {
 	struct clk_init_data init;
@@ -443,6 +466,34 @@ static int meson_mmc_clk_init(struct meson_host *host)
 		char name[16];
 
 		snprintf(name, sizeof(name), "clkin%d", i);
+
+		if (has_acpi_companion(host->dev)) {
+			struct clk_hw *hw;
+
+			/*
+			 * ACPI exposes no clock provider, so the "clkinN"
+			 * references a DeviceTree boot resolves do not exist.
+			 * They are only needed for a name and a rate: the mux
+			 * and divider registered below both live in this
+			 * controller's own SD_EMMC_CLOCK register, so once the
+			 * parents are described the whole rate-setting path
+			 * works unchanged.  Firmware is required to leave both
+			 * parents running.
+			 */
+			snprintf(clk_name, sizeof(clk_name), "%s#clkin%d",
+				 dev_name(host->dev), i);
+			hw = devm_clk_hw_register_fixed_rate(host->dev, clk_name,
+				NULL, 0,
+				meson_mmc_acpi_parent_rate(host->dev, i));
+			if (IS_ERR(hw))
+				return dev_err_probe(host->dev, PTR_ERR(hw),
+						     "Failed to register %s\n",
+						     clk_name);
+
+			mux_parent_names[i] = clk_hw_get_name(hw);
+			continue;
+		}
+
 		clk = devm_clk_get(host->dev, name);
 		if (IS_ERR(clk))
 			return dev_err_probe(host->dev, PTR_ERR(clk),
@@ -1100,6 +1151,38 @@ static int meson_mmc_voltage_switch(struct mmc_host *mmc, struct mmc_ios *ios)
 		return ret < 0 ? ret : 0;
 	}
 
+	/*
+	 * No vqmmc regulator.  The stock assumption below is a fixed 3.3 V I/O
+	 * rail, which is wrong on boards that hard-wire VCCQ to 1.8 V - and
+	 * there is no regulator object to discover that from.  Firmware knows
+	 * the wiring, so let it say so via _DSD.
+	 *
+	 * On the VIM3, vqmmc is "emmc_1v8": regulator-fixed, 1800000 uV,
+	 * regulator-always-on.  Nothing can switch it and nothing needs to -
+	 * the eMMC is already signalling at 1.8 V.  Rejecting the core's
+	 * request is what prevents HS200 from ever being selected.
+	 *
+	 * Note this describes the I/O rail (vqmmc) only.  The card supply
+	 * (vmmc) is separate and remains 3.3 V; do not conflate them.
+	 */
+	u32 fixed_uv = 0;
+
+	device_property_read_u32(mmc_dev(mmc), "fixed-signal-voltage-microvolt",
+				 &fixed_uv);
+
+	if (fixed_uv) {
+		bool want_180 = ios->signal_voltage == MMC_SIGNAL_VOLTAGE_180;
+
+		/* Already at the requested level, or cannot get there at all. */
+		if (want_180)
+			return fixed_uv == 1800000 ? 0 : -EINVAL;
+
+		if (ios->signal_voltage == MMC_SIGNAL_VOLTAGE_330)
+			return fixed_uv == 3300000 ? 0 : -EINVAL;
+
+		return -EINVAL;
+	}
+
 	/* no vqmmc regulator, assume fixed regulator at 3/3.3V */
 	if (ios->signal_voltage == MMC_SIGNAL_VOLTAGE_330)
 		return 0;
@@ -1160,16 +1243,52 @@ static int meson_mmc_probe(struct platform_device *pdev)
 	if (ret)
 		return ret;
 
+	if (has_acpi_companion(&pdev->dev) && !mmc->ocr_avail) {
+		/*
+		 * ACPI describes no vmmc regulator, so the call above leaves
+		 * ocr_avail empty and mmc_select_voltage() then rejects every
+		 * card with "no support for card's volts".  Both controllers
+		 * on this board are fed from a fixed 3.3 V rail
+		 * (vmmc-supply = <&vcc_3v3> under DeviceTree), so say so.
+		 *
+		 * Only 3.3 V is advertised: switching the I/O signalling to
+		 * 1.8 V requires vqmmc, which ACPI cannot describe either, so
+		 * the 1.8 V modes must stay off.
+		 */
+		mmc->ocr_avail = MMC_VDD_32_33 | MMC_VDD_33_34;
+	}
+
 	ret = mmc_of_parse(mmc);
 	if (ret)
 		return dev_err_probe(&pdev->dev, ret, "error parsing DT\n");
+
+	if (has_acpi_companion(&pdev->dev) && !mmc->f_max) {
+		/*
+		 * ACPI only: keep the DeviceTree path byte-for-byte original.
+		 *
+		 * f_max has no default: mmc_alloc_host() leaves it zero and
+		 * mmc_of_parse() only fills it from the optional
+		 * "max-frequency" property.  Left at zero, mmc_set_clock()'s
+		 * "if (hz > host->f_max) hz = host->f_max" silently turns every
+		 * requested rate into 0 Hz.  Card identification still works,
+		 * because mmc_rescan() floors its first attempt with
+		 * max(freq, host->f_min) - but the moment the core selects a
+		 * transfer speed the clock stops and every command times out.
+		 *
+		 * 50 MHz matches MAX_TRANSFER_CLOCK in the VIM3 EDK2
+		 * MesonSdMmcDxe, i.e. the fastest rate this controller is known
+		 * good at on this board.  Faster modes need 1.8 V signalling,
+		 * which has no regulator to switch it here.
+		 */
+		mmc->f_max = 50000000;
+	}
 
 	mmc->caps |= MMC_CAP_CMD23;
 
 	if (mmc->caps & MMC_CAP_SDIO_IRQ)
 		mmc->caps2 |= MMC_CAP2_SDIO_IRQ_NOTHREAD;
 
-	host->data = of_device_get_match_data(&pdev->dev);
+	host->data = device_get_match_data(&pdev->dev);
 	if (!host->data)
 		return -EINVAL;
 
@@ -1189,20 +1308,39 @@ static int meson_mmc_probe(struct platform_device *pdev)
 	mmc_gpio_set_cd_irq(mmc, cd_irq);
 
 	host->pinctrl = devm_pinctrl_get(&pdev->dev);
-	if (IS_ERR(host->pinctrl))
-		return PTR_ERR(host->pinctrl);
+	if (IS_ERR(host->pinctrl)) {
+		/*
+		 * ACPI describes no pin controller.  The pads are already
+		 * muxed by firmware and clock gating falls back to
+		 * CFG_STOP_CLOCK, so this is not fatal there.
+		 */
+		if (!has_acpi_companion(&pdev->dev))
+			return PTR_ERR(host->pinctrl);
 
-	host->pins_clk_gate = pinctrl_lookup_state(host->pinctrl,
-						   "clk-gate");
-	if (IS_ERR(host->pins_clk_gate)) {
-		dev_warn(&pdev->dev,
-			 "can't get clk-gate pinctrl, using clk_stop bit\n");
-		host->pins_clk_gate = NULL;
+		host->pinctrl = NULL;
 	}
 
-	core_clk = devm_clk_get_enabled(&pdev->dev, "core");
-	if (IS_ERR(core_clk))
-		return PTR_ERR(core_clk);
+	host->pins_clk_gate = NULL;
+	if (host->pinctrl) {
+		host->pins_clk_gate = pinctrl_lookup_state(host->pinctrl,
+							   "clk-gate");
+		if (IS_ERR(host->pins_clk_gate)) {
+			dev_warn(&pdev->dev,
+				 "can't get clk-gate pinctrl, using clk_stop bit\n");
+			host->pins_clk_gate = NULL;
+		}
+	}
+
+	/*
+	 * The "core" clock is acquired only to hold the peripheral gate open;
+	 * it is never referenced again.  Under ACPI there is no clock provider
+	 * and firmware leaves that gate enabled for us.
+	 */
+	if (!has_acpi_companion(&pdev->dev)) {
+		core_clk = devm_clk_get_enabled(&pdev->dev, "core");
+		if (IS_ERR(core_clk))
+			return PTR_ERR(core_clk);
+	}
 
 	ret = meson_mmc_clk_init(host);
 	if (ret)
