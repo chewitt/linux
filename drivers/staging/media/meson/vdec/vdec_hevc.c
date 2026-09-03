@@ -8,6 +8,8 @@
 
 #include <linux/firmware.h>
 #include <linux/clk.h>
+#include <linux/delay.h>
+#include <linux/io.h>
 
 #include "vdec_1.h"
 #include "vdec_helpers.h"
@@ -22,6 +24,36 @@
 	#define GEN_PWR_VDEC_HEVC_SM1 (BIT(2))
 
 #define MC_SIZE	(4096 * 4)
+
+/*
+ * DMC glue for safely stopping a wedged core.  The DMC is documented by
+ * WORD offset: byte = base + offset*4, so CHAN_STS (0x36) is at 0xd8.
+ */
+#define G12A_DMC_BASE		0xff638000
+#define G12A_DMC_SIZE		0x100
+	#define DMC_REQ_CTRL	0x00
+	#define DMC_CHAN_STS	0xd8
+	#define DMC_REQ_HEVC	(BIT(4) | BIT(8))  /* hevc + hevcb ports */
+#define G12A_RESET7_ADDR	0xffd01020	/* pulse register */
+	#define RESET7_DMC_PIPEL	GENMASK(15, 11)
+#define G12B_RESET7_LEVEL_ADDR	0xffd0109c	/* level register (low = reset) */
+	#define RESET7_LEVEL_HEVC_DMC	(BIT(14) | BIT(13))
+
+/* Registers the vendor stop/reset discipline needs (dos byte offsets) */
+#define HEVC_SAO_MMU_RESET_CTRL	0x9904
+#define HEVC_LMEM_DMA_CTRL	0xcd40
+#define HEVC_WRRSP_LMEM		0xcd4c
+
+/*
+ * Targeted HEVC sub-engine reset set used by the vendor's
+ * hevc_reset_core(): parser(3), parser_state(4), dblk(8),
+ * wrrsp-lmem(10), mcpu(11), ccpu(12), ddr(13), iqit(14), ipp(15),
+ * qdct(17), mpred(18), sao(19), hevc_afifo(24), rst_mmu_n(26).
+ */
+#define DOS_SW_RESET3_HEVC_QUIESCE					\
+	(BIT(3) | BIT(4) | BIT(8) | BIT(10) | BIT(11) | BIT(12) |	\
+	 BIT(13) | BIT(14) | BIT(15) | BIT(17) | BIT(18) | BIT(19) |	\
+	 BIT(24) | BIT(26))
 
 static int vdec_hevc_load_firmware(struct amvdec_session *sess,
 				   const char *fwname)
@@ -63,8 +95,18 @@ static int vdec_hevc_load_firmware(struct amvdec_session *sess,
 	amvdec_write_dos(core, HEVC_IMEM_DMA_COUNT, MC_SIZE / 4);
 	amvdec_write_dos(core, HEVC_IMEM_DMA_CTRL, (0x8000 | (7 << 16)));
 
-	while (i && (readl(core->dos_base + HEVC_IMEM_DMA_CTRL) & 0x8000))
+	/*
+	 * Vendor waits up to a full second with real delays; the old
+	 * bare 100-iteration spin could declare success while the IMEM
+	 * DMA was still running - and starting the processor on
+	 * half-loaded microcode means arbitrary DMA from a bus master
+	 * (a fatal DMC wedge on a session restart).
+	 */
+	i = 100000;
+	while (i && (readl(core->dos_base + HEVC_IMEM_DMA_CTRL) & 0x8000)) {
+		udelay(10);
 		i--;
+	}
 
 	if (i == 0) {
 		dev_err(dev, "Firmware load fail (DMA hang?)\n");
@@ -110,6 +152,177 @@ static u32 vdec_hevc_vififo_level(struct amvdec_session *sess)
 	return readl_relaxed(sess->core->dos_base + HEVC_STREAM_LEVEL);
 }
 
+/*
+ * A decode session can end with a hardware sub-engine stuck
+ * mid-transaction (observed in the field: firmware frozen at
+ * HEVC_NAL_UNIT_CODED_SLICE_SEGMENT on a hostile stream, MPSR still
+ * running, stream FIFO full, no interrupt).  Power-gating the core in
+ * that state - or powering it back up for the next session - wedges
+ * its DDR-controller port and locks the SoC solid, beyond even a
+ * hardware-watchdog reset.  Do what the vendor driver does on every
+ * power transition: disconnect the HEVC request ports on the DMC,
+ * wait for the idle ack, hard-reset every HEVC sub-engine (aborting
+ * any stuck transaction), pulse the G12B DMC pipeline reset, then
+ * reconnect.  Harmless on a healthy, idle core.
+ */
+/*
+ * Stop the AMRISC processors and wait for their DMA engines and
+ * outstanding write responses to drain (vendor amhevc_stop()).
+ * Resetting or power-gating with these in flight wedges the DDR
+ * controller port - fatally, beyond even a watchdog reset.
+ */
+static void vdec_hevc_stop_armrisc(struct amvdec_core *core)
+{
+	int i;
+
+	amvdec_write_dos(core, HEVC_MPSR, 0);
+	amvdec_write_dos(core, HEVC_CPSR, 0);
+
+	for (i = 0; i < 1000; i++) {
+		if (!(amvdec_read_dos(core, HEVC_IMEM_DMA_CTRL) & 0x8000))
+			break;
+		udelay(10);
+	}
+	for (i = 0; i < 1000; i++) {
+		if (!(amvdec_read_dos(core, HEVC_LMEM_DMA_CTRL) & 0x8000))
+			break;
+		udelay(10);
+	}
+	for (i = 0; i < 1000; i++) {
+		if (!(amvdec_read_dos(core, HEVC_WRRSP_LMEM) & 0xfff))
+			break;
+		udelay(10);
+	}
+	if (i == 1000)
+		dev_warn(core->dev, "HEVC write responses did not drain\n");
+}
+
+/*
+ * The vendor hevc_reset_core() bracket, in full.  A decode session
+ * can die with a hardware sub-engine stuck mid-transaction (observed:
+ * firmware frozen at HEVC_NAL_UNIT_CODED_SLICE_SEGMENT on a hostile
+ * stream).  Any reset or power transition without this bracket can
+ * wedge the SoC's DDR controller.  Sequence: stream fetch off ->
+ * park the DMC request ports and wait for the idle ack -> hold the
+ * SAO/MMU reset -> targeted sub-engine reset -> drain write
+ * responses -> release SAO/MMU -> G12B DMC-pipeline level+pulse
+ * resets -> reconnect.  Harmless on a healthy, idle core.
+ */
+static void __iomem *vdec_hevc_map(u64 addr, u32 size,
+				   void __iomem **cache)
+{
+	if (!*cache)
+		*cache = ioremap(addr, size);
+	return *cache;
+}
+
+static bool vdec_hevc_is_g12(struct amvdec_core *core)
+{
+	return core->platform->revision == VDEC_REVISION_G12A ||
+	       core->platform->revision == VDEC_REVISION_SM1;
+}
+
+/*
+ * Park the HEVC request ports on the DMC and wait for the idle ack.
+ * These registers live OUTSIDE the VDEC_HEVC power domain and are
+ * safe to touch at any point of a power transition.
+ */
+static void vdec_hevc_dmc_park(struct amvdec_core *core)
+{
+	static void __iomem *dmc_base;
+	u32 val;
+	int i;
+
+	if (!vdec_hevc_is_g12(core) ||
+	    !vdec_hevc_map(G12A_DMC_BASE, G12A_DMC_SIZE, &dmc_base))
+		return;
+
+	val = readl(dmc_base + DMC_REQ_CTRL);
+	writel(val & ~DMC_REQ_HEVC, dmc_base + DMC_REQ_CTRL);
+
+	for (i = 0; i < 100; i++) {
+		if ((readl(dmc_base + DMC_CHAN_STS) & DMC_REQ_HEVC) ==
+		    DMC_REQ_HEVC)
+			break;
+		udelay(10);
+	}
+	if (i == 100)
+		dev_warn(core->dev,
+			 "HEVC DMC ports did not idle before reset\n");
+}
+
+static void vdec_hevc_dmc_unpark(struct amvdec_core *core)
+{
+	static void __iomem *dmc_base;
+	u32 val;
+
+	if (!vdec_hevc_is_g12(core) ||
+	    !vdec_hevc_map(G12A_DMC_BASE, G12A_DMC_SIZE, &dmc_base))
+		return;
+
+	val = readl(dmc_base + DMC_REQ_CTRL);
+	writel(val | DMC_REQ_HEVC, dmc_base + DMC_REQ_CTRL);
+}
+
+/*
+ * Scrub the HEVC sub-engines: targeted reset, write-response drain,
+ * and the G12B DMC-pipeline LEVEL+pulse resets.  Touches HEVC core
+ * registers - the power domain MUST be fully up (memories powered,
+ * isolation removed).  Call only between dmc_park/dmc_unpark.
+ */
+static void vdec_hevc_core_scrub(struct amvdec_core *core)
+{
+	static void __iomem *reset7;
+	static void __iomem *reset7_lvl;
+	u32 val;
+	int i;
+
+	if (!vdec_hevc_is_g12(core) ||
+	    !vdec_hevc_map(G12A_RESET7_ADDR, 4, &reset7) ||
+	    !vdec_hevc_map(G12B_RESET7_LEVEL_ADDR, 4, &reset7_lvl))
+		return;
+
+	/* Stop the stream fetch engine */
+	amvdec_write_dos(core, HEVC_STREAM_CONTROL, 0);
+
+	/* Hold the SAO/MMU in reset across the sub-engine reset */
+	val = amvdec_read_dos(core, HEVC_SAO_MMU_RESET_CTRL);
+	amvdec_write_dos(core, HEVC_SAO_MMU_RESET_CTRL, val | 1);
+
+	amvdec_write_dos(core, DOS_SW_RESET3, DOS_SW_RESET3_HEVC_QUIESCE);
+	udelay(10);
+	amvdec_write_dos(core, DOS_SW_RESET3, 0);
+
+	/* Drain outstanding write responses before releasing anything */
+	for (i = 0; i < 1000; i++) {
+		if (!(amvdec_read_dos(core, HEVC_WRRSP_LMEM) & 0xfff))
+			break;
+		udelay(10);
+	}
+
+	val = amvdec_read_dos(core, HEVC_SAO_MMU_RESET_CTRL);
+	amvdec_write_dos(core, HEVC_SAO_MMU_RESET_CTRL, val & ~1);
+
+	/*
+	 * G12B: the DMC-side decode pipelines latch state.  Toggle the
+	 * LEVEL reset (low = asserted), then pulse the pipeline reset.
+	 */
+	val = readl(reset7_lvl);
+	writel(val & ~RESET7_LEVEL_HEVC_DMC, reset7_lvl);
+	udelay(10);
+	writel(val | RESET7_LEVEL_HEVC_DMC, reset7_lvl);
+	writel(RESET7_DMC_PIPEL, reset7);
+}
+
+/* Full bracket for use when the power domain is up (session stop,
+ * in-session stall recovery). */
+void vdec_hevc_quiesce_reset(struct amvdec_core *core)
+{
+	vdec_hevc_dmc_park(core);
+	vdec_hevc_core_scrub(core);
+	vdec_hevc_dmc_unpark(core);
+}
+
 static void __vdec_hevc_stop(struct amvdec_session *sess)
 {
 	struct amvdec_core *core = sess->core;
@@ -117,11 +330,13 @@ static void __vdec_hevc_stop(struct amvdec_session *sess)
 
 	/* Disable interrupt */
 	amvdec_write_dos(core, HEVC_ASSIST_MBOX1_MASK, 0);
-	/* Disable firmware processor */
-	amvdec_write_dos(core, HEVC_MPSR, 0);
+	/* Stop the firmware processors, drain their DMA + writes */
+	vdec_hevc_stop_armrisc(core);
 
 	if (sess->priv)
 		codec_ops->stop(sess);
+
+	vdec_hevc_quiesce_reset(core);
 
 	/* Enable VDEC_HEVC Isolation */
 	if (core->platform->revision == VDEC_REVISION_SM1)
@@ -181,8 +396,20 @@ static int __vdec_hevc_start(struct amvdec_session *sess)
 				   GEN_PWR_VDEC_HEVC, 0);
 	usleep_range(10, 20);
 
+	/*
+	 * The previous session may have died with sub-engines stuck
+	 * mid-transaction (hostile stream).  NEVER pulse a reset with
+	 * the DMC request ports live - park them (registers outside
+	 * this power domain, safe while it is still down), power the
+	 * domain up, THEN scrub the core and reconnect.  HEVC core
+	 * registers must not be touched before the memories are
+	 * powered and isolation is removed.
+	 */
+	vdec_hevc_dmc_park(core);
+
 	/* Reset VDEC_HEVC*/
 	amvdec_write_dos(core, DOS_SW_RESET3, 0xffffffff);
+	udelay(10);
 	amvdec_write_dos(core, DOS_SW_RESET3, 0x00000000);
 
 	amvdec_write_dos(core, DOS_GCLK_EN3, 0xffffffff);
@@ -199,7 +426,12 @@ static int __vdec_hevc_start(struct amvdec_session *sess)
 				   0xc00, 0);
 
 	amvdec_write_dos(core, DOS_SW_RESET3, 0xffffffff);
+	udelay(10);
 	amvdec_write_dos(core, DOS_SW_RESET3, 0x00000000);
+
+	/* Domain fully up: scrub the sub-engines, then reconnect DDR */
+	vdec_hevc_core_scrub(core);
+	vdec_hevc_dmc_unpark(core);
 
 	vdec_hevc_stbuf_init(sess);
 

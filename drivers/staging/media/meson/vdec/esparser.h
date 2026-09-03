@@ -12,6 +12,7 @@
 #include "vdec.h"
 
 int esparser_init(struct platform_device *pdev, struct amvdec_core *core);
+void esparser_quiesce(struct amvdec_core *core);
 int esparser_power_up(struct amvdec_session *sess);
 
 /**

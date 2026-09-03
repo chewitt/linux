@@ -129,6 +129,7 @@ static void vdec_poweroff(struct amvdec_session *sess)
 	if (codec_ops->drain)
 		codec_ops->drain(sess);
 
+	esparser_quiesce(sess->core);
 	vdec_ops->stop(sess);
 	clk_disable_unprepare(sess->core->dos_clk);
 	clk_disable_unprepare(sess->core->dos_parser_clk);
