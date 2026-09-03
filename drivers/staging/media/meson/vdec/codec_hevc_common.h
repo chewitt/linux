@@ -21,6 +21,10 @@ extern const u16 vdec_hevc_parser_cmd[VDEC_HEVC_PARSER_CMD_LEN];
 struct codec_hevc_common {
 	void      *fbc_buffer_vaddr[MAX_REF_PIC_NUM];
 	dma_addr_t fbc_buffer_paddr[MAX_REF_PIC_NUM];
+	/* size the fbc buffers were allocated with - used to free them
+	 * correctly if the session dimensions changed in between
+	 */
+	u32        fbc_buffer_size;
 
 	void      *mmu_header_vaddr[MAX_REF_PIC_NUM];
 	dma_addr_t mmu_header_paddr[MAX_REF_PIC_NUM];
@@ -64,6 +68,7 @@ int codec_hevc_setup_buffers(struct amvdec_session *sess,
 
 void codec_hevc_fill_mmu_map(struct amvdec_session *sess,
 			     struct codec_hevc_common *comm,
-			     struct vb2_buffer *vb);
+			     struct vb2_buffer *vb,
+			     u32 is_10bit);
 
 #endif
