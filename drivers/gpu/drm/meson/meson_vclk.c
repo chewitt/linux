@@ -371,6 +371,8 @@ enum {
 	MESON_VCLK_HDMI_594000_YUV420_10B,
 /* 4455 /2 /1 /1 /7.5 /2  => /1 /1      1080p @ 12-bit */
 	MESON_VCLK_HDMI_148500_12B,
+/* 4455 /1 /1 /1 /7.5 /1  => /1 /2      4K60 YUV420 @ 12-bit */
+	MESON_VCLK_HDMI_594000_YUV420_12B,
 };
 
 struct meson_vclk_params {
@@ -528,6 +530,18 @@ struct meson_vclk_params {
 		.pll_od3 = 1,
 		.vid_pll_div = VID_PLL_DIV_7p5,
 		.vclk_div = 2,
+	},
+	[MESON_VCLK_HDMI_594000_YUV420_12B] = {
+		.pll_freq = 4455000000,
+		.phy_freq = 4455000000,
+		.venc_freq = 594000000,
+		.vclk_freq = 594000000,
+		.pixel_freq = 297000000,
+		.pll_od1 = 1,
+		.pll_od2 = 1,
+		.pll_od3 = 1,
+		.vid_pll_div = VID_PLL_DIV_7p5,
+		.vclk_div = 1,
 	},
 	{ /* sentinel */ },
 };
