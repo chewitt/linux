@@ -8,6 +8,7 @@
 #include <linux/of_irq.h>
 #include <linux/of_platform.h>
 #include <linux/module.h>
+#include <linux/property.h>
 #include <linux/regmap.h>
 #include <linux/reset.h>
 #include <sound/pcm_params.h>
@@ -332,7 +333,7 @@ int axg_fifo_probe(struct platform_device *pdev)
 	void __iomem *regs;
 	int ret;
 
-	data = of_device_get_match_data(dev);
+	data = device_get_match_data(dev);
 	if (!data) {
 		dev_err(dev, "failed to match device\n");
 		return -ENODEV;
@@ -355,14 +356,30 @@ int axg_fifo_probe(struct platform_device *pdev)
 	}
 
 	fifo->pclk = devm_clk_get(dev, NULL);
-	if (IS_ERR(fifo->pclk))
+	if (IS_ERR(fifo->pclk)) {
+		/*
+		 * Under ACPI the clock controller publishes this clock as
+		 * a clkdev lookup from its own probe; until that has run
+		 * the lookup is simply absent, not broken.
+		 */
+		if (!dev->of_node && PTR_ERR(fifo->pclk) == -ENOENT)
+			return -EPROBE_DEFER;
 		return dev_err_probe(dev, PTR_ERR(fifo->pclk), "failed to get pclk\n");
+	}
 
-	fifo->arb = devm_reset_control_get_exclusive(dev, NULL);
-	if (IS_ERR(fifo->arb))
-		return dev_err_probe(dev, PTR_ERR(fifo->arb), "failed to get arb reset\n");
+	if (dev->of_node) {
+		fifo->arb = devm_reset_control_get_exclusive(dev, NULL);
+		if (IS_ERR(fifo->arb))
+			return dev_err_probe(dev, PTR_ERR(fifo->arb), "failed to get arb reset\n");
+	}
+	/*
+	 * Under ACPI the arbiter reset is unreachable (the reset core has
+	 * no non-OF lookup for it); firmware pre-enables this FIFO's
+	 * request line and the clock controller's AML _RST restores it,
+	 * so fifo->arb stays NULL and the reset ops become no-ops.
+	 */
 
-	fifo->irq = of_irq_get(dev->of_node, 0);
+	fifo->irq = platform_get_irq(pdev, 0);
 	if (fifo->irq <= 0) {
 		dev_err(dev, "failed to get irq: %d\n", fifo->irq);
 		return fifo->irq;
@@ -373,8 +390,8 @@ int axg_fifo_probe(struct platform_device *pdev)
 	if (IS_ERR(fifo->field_threshold))
 		return PTR_ERR(fifo->field_threshold);
 
-	ret = of_property_read_u32(dev->of_node, "amlogic,fifo-depth",
-				   &fifo->depth);
+	ret = device_property_read_u32(dev, "amlogic,fifo-depth",
+				       &fifo->depth);
 	if (ret) {
 		/* Error out for anything but a missing property */
 		if (ret != -EINVAL)
