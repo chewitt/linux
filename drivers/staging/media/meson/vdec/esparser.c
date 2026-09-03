@@ -308,12 +308,20 @@ esparser_queue(struct amvdec_session *sess, struct vb2_v4l2_buffer *vbuf)
 	 * they could pause when there is no capture buffer available and
 	 * resume on this notification.
 	 */
-	if (sess->fmt_out->pixfmt == V4L2_PIX_FMT_VP9) {
+	if (sess->fmt_out->pixfmt == V4L2_PIX_FMT_VP9 && sess->streamon_cap) {
+		/*
+		 * This throttle only makes sense once the CAPTURE queue
+		 * exists: before that (during header parsing for the
+		 * initial source-change event) the counts are 0 and the
+		 * u32 subtraction below used to wrap, accidentally letting
+		 * the header through - gate on streamon_cap and clamp so
+		 * both phases behave as intended.
+		 */
 		if (codec_ops->num_pending_bufs)
 			num_dst_bufs = codec_ops->num_pending_bufs(sess);
 
 		num_dst_bufs += v4l2_m2m_num_dst_bufs_ready(sess->m2m_ctx);
-		num_dst_bufs -= 3;
+		num_dst_bufs = num_dst_bufs > 3 ? num_dst_bufs - 3 : 0;
 
 		if (esparser_vififo_get_free_space(sess) < payload_size ||
 		    atomic_read(&sess->esparser_queued_bufs) >= num_dst_bufs)
