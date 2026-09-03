@@ -259,6 +259,61 @@ static int vdec_queue_setup(struct vb2_queue *q, unsigned int *num_buffers,
 	return 0;
 }
 
+/*
+ * MPEG1/2 sequence header: start code 00 00 01 B3 followed by
+ * horizontal_size (12 bits) and vertical_size (12 bits).
+ *
+ * The mpeg12 firmware has no header-parse notification, so the initial
+ * SOURCE_CHANGE event a spec-flow stateful client (ffmpeg) waits for
+ * before configuring the CAPTURE queue would never fire, parking the
+ * session in a mutual wait.  Scan the queued bitstream for the sequence
+ * header and answer with the real coded size.
+ */
+static bool vdec_parse_mpeg_seq_header(struct amvdec_session *sess,
+				       struct vb2_buffer *vb)
+{
+	const u8 *data = vb2_plane_vaddr(vb, 0);
+	u32 len = vb2_get_plane_payload(vb, 0);
+	u32 i, w, h;
+
+	if (!data)
+		return false;
+
+	for (i = 0; i + 6 < len; i++) {
+		if (data[i] != 0x00 || data[i + 1] != 0x00 ||
+		    data[i + 2] != 0x01 || data[i + 3] != 0xb3)
+			continue;
+
+		w = (data[i + 4] << 4) | (data[i + 5] >> 4);
+		h = ((data[i + 5] & 0xf) << 8) | data[i + 6];
+		if (!w || !h)
+			return false;
+
+		sess->width = w;
+		sess->height = h;
+		dev_dbg(sess->core->dev, "mpeg seq header: %ux%u\n", w, h);
+		return true;
+	}
+
+	return false;
+}
+
+static void vdec_init_src_change(struct amvdec_session *sess,
+				 struct vb2_buffer *vb)
+{
+	static const struct v4l2_event ev = {
+		.type = V4L2_EVENT_SOURCE_CHANGE,
+		.u.src_change.changes = V4L2_EVENT_SRC_CH_RESOLUTION };
+
+	if (!vdec_parse_mpeg_seq_header(sess, vb))
+		return;
+
+	v4l2_ctrl_s_ctrl(sess->ctrl_min_buf_capture,
+			 sess->fmt_out->min_buffers);
+	v4l2_event_queue_fh(&sess->fh, &ev);
+	sess->init_src_change_done = 1;
+}
+
 static void vdec_vb2_buf_queue(struct vb2_buffer *vb)
 {
 	struct vb2_v4l2_buffer *vbuf = to_vb2_v4l2_buffer(vb);
@@ -266,6 +321,11 @@ static void vdec_vb2_buf_queue(struct vb2_buffer *vb)
 	struct v4l2_m2m_ctx *m2m_ctx = sess->m2m_ctx;
 
 	v4l2_m2m_buf_queue(m2m_ctx, vbuf);
+
+	if (vb->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE &&
+	    !sess->fmt_out->codec_ops->resume &&
+	    !sess->init_src_change_done)
+		vdec_init_src_change(sess, vb);
 
 	if (!sess->streamon_out)
 		return;
@@ -432,6 +492,9 @@ static void vdec_stop_streaming(struct vb2_queue *q)
 		core->cur_sess = NULL;
 		sess->status = STATUS_STOPPED;
 	}
+
+	if (q->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE)
+		sess->init_src_change_done = 0;
 
 	if (q->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
 		while ((buf = v4l2_m2m_src_buf_remove(sess->m2m_ctx)))
