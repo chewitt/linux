@@ -26,16 +26,14 @@
 #define MC_SIZE	(4096 * 4)
 
 /*
- * DMC glue for safely stopping a wedged core.  The DMC is documented by
- * WORD offset: byte = base + offset*4, so CHAN_STS (0x36) is at 0xd8.
+ * DMC request ports of this unit: axibus channel 4 ("hevc front") and
+ * channel 8 ("hevc_b").  Confirmed against the A311D datasheet and on
+ * silicon - under a 4K Main10 decode these two channels read busy 11.7 %
+ * and 76.9 % of samples respectively, while every other decode channel
+ * stays idle.  The park/unpark helpers live in vdec_helpers.c.
  */
-#define G12A_DMC_BASE		0xff638000
-#define G12A_DMC_SIZE		0x100
-	#define DMC_REQ_CTRL	0x00
-	#define DMC_CHAN_STS	0xd8
-	#define DMC_REQ_HEVC	(BIT(4) | BIT(8))  /* hevc + hevcb ports */
-#define G12A_RESET7_ADDR	0xffd01020	/* pulse register */
-	#define RESET7_DMC_PIPEL	GENMASK(15, 11)
+#define DMC_REQ_HEVC		(BIT(4) | BIT(8))
+
 #define G12B_RESET7_LEVEL_ADDR	0xffd0109c	/* level register (low = reset) */
 	#define RESET7_LEVEL_HEVC_DMC	(BIT(14) | BIT(13))
 
@@ -208,14 +206,6 @@ static void vdec_hevc_stop_armrisc(struct amvdec_core *core)
  * responses -> release SAO/MMU -> G12B DMC-pipeline level+pulse
  * resets -> reconnect.  Harmless on a healthy, idle core.
  */
-static void __iomem *vdec_hevc_map(u64 addr, u32 size,
-				   void __iomem **cache)
-{
-	if (!*cache)
-		*cache = ioremap(addr, size);
-	return *cache;
-}
-
 static bool vdec_hevc_is_g12(struct amvdec_core *core)
 {
 	return core->platform->revision == VDEC_REVISION_G12A ||
@@ -229,39 +219,18 @@ static bool vdec_hevc_is_g12(struct amvdec_core *core)
  */
 static void vdec_hevc_dmc_park(struct amvdec_core *core)
 {
-	static void __iomem *dmc_base;
-	u32 val;
-	int i;
-
-	if (!vdec_hevc_is_g12(core) ||
-	    !vdec_hevc_map(G12A_DMC_BASE, G12A_DMC_SIZE, &dmc_base))
+	if (!vdec_hevc_is_g12(core))
 		return;
 
-	val = readl(dmc_base + DMC_REQ_CTRL);
-	writel(val & ~DMC_REQ_HEVC, dmc_base + DMC_REQ_CTRL);
-
-	for (i = 0; i < 100; i++) {
-		if ((readl(dmc_base + DMC_CHAN_STS) & DMC_REQ_HEVC) ==
-		    DMC_REQ_HEVC)
-			break;
-		udelay(10);
-	}
-	if (i == 100)
-		dev_warn(core->dev,
-			 "HEVC DMC ports did not idle before reset\n");
+	amvdec_dmc_park(core, DMC_REQ_HEVC);
 }
 
 static void vdec_hevc_dmc_unpark(struct amvdec_core *core)
 {
-	static void __iomem *dmc_base;
-	u32 val;
-
-	if (!vdec_hevc_is_g12(core) ||
-	    !vdec_hevc_map(G12A_DMC_BASE, G12A_DMC_SIZE, &dmc_base))
+	if (!vdec_hevc_is_g12(core))
 		return;
 
-	val = readl(dmc_base + DMC_REQ_CTRL);
-	writel(val | DMC_REQ_HEVC, dmc_base + DMC_REQ_CTRL);
+	amvdec_dmc_unpark(core, DMC_REQ_HEVC);
 }
 
 /*
@@ -272,14 +241,16 @@ static void vdec_hevc_dmc_unpark(struct amvdec_core *core)
  */
 static void vdec_hevc_core_scrub(struct amvdec_core *core)
 {
-	static void __iomem *reset7;
 	static void __iomem *reset7_lvl;
 	u32 val;
 	int i;
 
-	if (!vdec_hevc_is_g12(core) ||
-	    !vdec_hevc_map(G12A_RESET7_ADDR, 4, &reset7) ||
-	    !vdec_hevc_map(G12B_RESET7_LEVEL_ADDR, 4, &reset7_lvl))
+	if (!vdec_hevc_is_g12(core))
+		return;
+
+	if (!reset7_lvl)
+		reset7_lvl = ioremap(G12B_RESET7_LEVEL_ADDR, 4);
+	if (!reset7_lvl)
 		return;
 
 	/* Stop the stream fetch engine */
@@ -311,7 +282,7 @@ static void vdec_hevc_core_scrub(struct amvdec_core *core)
 	writel(val & ~RESET7_LEVEL_HEVC_DMC, reset7_lvl);
 	udelay(10);
 	writel(val | RESET7_LEVEL_HEVC_DMC, reset7_lvl);
-	writel(RESET7_DMC_PIPEL, reset7);
+	amvdec_dmc_pipeline_reset(core);
 }
 
 /* Full bracket for use when the power domain is up (session stop,

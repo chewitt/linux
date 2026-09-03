@@ -5,6 +5,8 @@
  */
 
 #include <linux/gcd.h>
+#include <linux/delay.h>
+#include <linux/io.h>
 #include <media/v4l2-mem2mem.h>
 #include <media/v4l2-event.h>
 #include <media/videobuf2-dma-contig.h>
@@ -13,6 +15,80 @@
 
 #define NUM_CANVAS_NV12 2
 #define NUM_CANVAS_YUV420 3
+
+/*
+ * DDR memory controller, G12 family.  The DMC is documented by WORD
+ * offset: byte address = base + offset * 4.  DMC_REQ_CTRL is word 0,
+ * DMC_CHAN_STS is word 0x36 = byte 0xd8 - NOT 0xc8, which is word 0x32
+ * (DMC_STICKY_50, a scratch register reading a constant 0xffffffff: an
+ * idle poll against it is satisfied on its first read and never waits).
+ *
+ * Both registers use the same bit numbering: bits 15:0 are the axibus
+ * channels, bits 23:16 the ambus channels.  In DMC_CHAN_STS a set bit
+ * means the channel is IDLE.
+ */
+#define G12A_DMC_BASE		0xff638000
+#define G12A_DMC_SIZE		0x100
+	#define DMC_REQ_CTRL	0x00
+	#define DMC_CHAN_STS	0xd8
+
+/* RESET7 pulse register; bits 15:11 are the DMC decode pipelines */
+#define G12A_RESET7_ADDR	0xffd01020
+	#define RESET7_DMC_PIPEL	GENMASK(15, 11)
+
+static void __iomem *amvdec_map(u64 addr, u32 size, void __iomem **cache)
+{
+	if (!*cache)
+		*cache = ioremap(addr, size);
+	return *cache;
+}
+
+void amvdec_dmc_park(struct amvdec_core *core, u32 mask)
+{
+	static void __iomem *dmc_base;
+	u32 val;
+	int i;
+
+	if (!amvdec_map(G12A_DMC_BASE, G12A_DMC_SIZE, &dmc_base))
+		return;
+
+	val = readl(dmc_base + DMC_REQ_CTRL);
+	writel(val & ~mask, dmc_base + DMC_REQ_CTRL);
+
+	for (i = 0; i < 100; i++) {
+		if ((readl(dmc_base + DMC_CHAN_STS) & mask) == mask)
+			break;
+		udelay(10);
+	}
+	if (i == 100)
+		dev_warn(core->dev,
+			 "DMC ports %08x did not idle before reset\n", mask);
+}
+EXPORT_SYMBOL_GPL(amvdec_dmc_park);
+
+void amvdec_dmc_unpark(struct amvdec_core *core, u32 mask)
+{
+	static void __iomem *dmc_base;
+	u32 val;
+
+	if (!amvdec_map(G12A_DMC_BASE, G12A_DMC_SIZE, &dmc_base))
+		return;
+
+	val = readl(dmc_base + DMC_REQ_CTRL);
+	writel(val | mask, dmc_base + DMC_REQ_CTRL);
+}
+EXPORT_SYMBOL_GPL(amvdec_dmc_unpark);
+
+void amvdec_dmc_pipeline_reset(struct amvdec_core *core)
+{
+	static void __iomem *reset7;
+
+	if (!amvdec_map(G12A_RESET7_ADDR, 4, &reset7))
+		return;
+
+	writel(RESET7_DMC_PIPEL, reset7);
+}
+EXPORT_SYMBOL_GPL(amvdec_dmc_pipeline_reset);
 
 u32 amvdec_read_dos(struct amvdec_core *core, u32 reg)
 {
