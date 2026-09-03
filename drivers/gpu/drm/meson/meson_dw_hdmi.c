@@ -12,6 +12,7 @@
 #include <linux/of.h>
 #include <linux/of_graph.h>
 #include <linux/platform_device.h>
+#include <linux/property.h>
 #include <linux/regulator/consumer.h>
 #include <linux/reset.h>
 
@@ -153,7 +154,12 @@ struct meson_dw_hdmi {
 static inline int dw_hdmi_is_compatible(struct meson_dw_hdmi *dw_hdmi,
 					const char *compat)
 {
-	return of_device_is_compatible(dw_hdmi->dev->of_node, compat);
+	/*
+	 * device_is_compatible() resolves both the OF compatible and the
+	 * ACPI PRP0001 _DSD compatible, so the family checks keep working
+	 * on an ACPI-described device.
+	 */
+	return device_is_compatible(dw_hdmi->dev, compat);
 }
 
 /* PHY (via TOP bridge) and Controller dedicated register interface */
@@ -653,6 +659,15 @@ static int meson_enable_clk(struct device *dev, char *name)
 	struct clk *clk;
 	int ret;
 
+	/*
+	 * ACPI mode has no clock provider: firmware pre-opened the only
+	 * gates these map to (CLKID_HDMI is rewritten raw by
+	 * meson_dw_hdmi_init below; HTX_PCLK and VPU_INTR are left open in
+	 * HHI_GCLK_MPEG2 by the firmware display bring-up).
+	 */
+	if (!dev->of_node)
+		return 0;
+
 	clk = devm_clk_get(dev, name);
 	if (IS_ERR(clk)) {
 		dev_err(dev, "Unable to get %s pclk\n", name);
@@ -680,7 +695,8 @@ static int meson_dw_hdmi_bind(struct device *dev, struct device *master,
 
 	DRM_DEBUG_DRIVER("\n");
 
-	match = of_device_get_match_data(&pdev->dev);
+	/* device_get_match_data() also resolves the ACPI PRP0001 compatible */
+	match = device_get_match_data(&pdev->dev);
 	if (!match) {
 		dev_err(&pdev->dev, "failed to get match data\n");
 		return -ENODEV;
@@ -700,25 +716,34 @@ static int meson_dw_hdmi_bind(struct device *dev, struct device *master,
 	if (ret < 0 && ret != -ENODEV)
 		return ret;
 
-	meson_dw_hdmi->hdmitx_apb = devm_reset_control_get_exclusive(dev,
-						"hdmitx_apb");
-	if (IS_ERR(meson_dw_hdmi->hdmitx_apb)) {
-		dev_err(dev, "Failed to get hdmitx_apb reset\n");
-		return PTR_ERR(meson_dw_hdmi->hdmitx_apb);
-	}
+	/*
+	 * ACPI mode has no reset provider; NULL stubs make the
+	 * reset_control_reset() pulses in meson_dw_hdmi_init no-ops.  That
+	 * is safe here: firmware pulsed exactly these lines during its own
+	 * HDMI bring-up, and the init path still soft-resets the whole TX
+	 * via HDMITX_TOP_SW_RESET.
+	 */
+	if (dev->of_node) {
+		meson_dw_hdmi->hdmitx_apb = devm_reset_control_get_exclusive(dev,
+							"hdmitx_apb");
+		if (IS_ERR(meson_dw_hdmi->hdmitx_apb)) {
+			dev_err(dev, "Failed to get hdmitx_apb reset\n");
+			return PTR_ERR(meson_dw_hdmi->hdmitx_apb);
+		}
 
-	meson_dw_hdmi->hdmitx_ctrl = devm_reset_control_get_exclusive(dev,
-						"hdmitx");
-	if (IS_ERR(meson_dw_hdmi->hdmitx_ctrl)) {
-		dev_err(dev, "Failed to get hdmitx reset\n");
-		return PTR_ERR(meson_dw_hdmi->hdmitx_ctrl);
-	}
+		meson_dw_hdmi->hdmitx_ctrl = devm_reset_control_get_exclusive(dev,
+							"hdmitx");
+		if (IS_ERR(meson_dw_hdmi->hdmitx_ctrl)) {
+			dev_err(dev, "Failed to get hdmitx reset\n");
+			return PTR_ERR(meson_dw_hdmi->hdmitx_ctrl);
+		}
 
-	meson_dw_hdmi->hdmitx_phy = devm_reset_control_get_exclusive(dev,
-						"hdmitx_phy");
-	if (IS_ERR(meson_dw_hdmi->hdmitx_phy)) {
-		dev_err(dev, "Failed to get hdmitx_phy reset\n");
-		return PTR_ERR(meson_dw_hdmi->hdmitx_phy);
+		meson_dw_hdmi->hdmitx_phy = devm_reset_control_get_exclusive(dev,
+							"hdmitx_phy");
+		if (IS_ERR(meson_dw_hdmi->hdmitx_phy)) {
+			dev_err(dev, "Failed to get hdmitx_phy reset\n");
+			return PTR_ERR(meson_dw_hdmi->hdmitx_phy);
+		}
 	}
 
 	meson_dw_hdmi->hdmitx = devm_platform_ioremap_resource(pdev, 0);
@@ -765,7 +790,12 @@ static int meson_dw_hdmi_bind(struct device *dev, struct device *master,
 	dw_plat_data->input_bus_encoding = V4L2_YCBCR_ENC_709;
 	dw_plat_data->ycbcr_420_allowed = true;
 	dw_plat_data->disable_cec = true;
-	dw_plat_data->output_port = 1;
+	/*
+	 * output_port 1 makes the dw-hdmi core demand an OF-graph connector
+	 * remote; under ACPI there is no graph, and drm_bridge_connector
+	 * (built by meson_encoder_hdmi) provides the connector instead.
+	 */
+	dw_plat_data->output_port = dev->of_node ? 1 : 0;
 
 	if (dw_hdmi_is_compatible(meson_dw_hdmi, "amlogic,meson-gxl-dw-hdmi") ||
 	    dw_hdmi_is_compatible(meson_dw_hdmi, "amlogic,meson-gxm-dw-hdmi") ||
@@ -778,7 +808,20 @@ static int meson_dw_hdmi_bind(struct device *dev, struct device *master,
 	if (IS_ERR(meson_dw_hdmi->hdmi))
 		return PTR_ERR(meson_dw_hdmi->hdmi);
 
-	meson_dw_hdmi->bridge = of_drm_find_and_get_bridge(pdev->dev.of_node);
+	if (pdev->dev.of_node) {
+		meson_dw_hdmi->bridge = of_drm_find_and_get_bridge(pdev->dev.of_node);
+	} else {
+		/*
+		 * ACPI mode: of_drm_find_bridge() cannot resolve a bridge
+		 * without an of_node.  Take it straight from the dw-hdmi
+		 * core and publish it for meson_encoder_hdmi_probe, which
+		 * runs after all components are bound.  This also keeps the
+		 * HPD thread's bridge pointer non-NULL.
+		 */
+		meson_dw_hdmi->bridge =
+			drm_bridge_get(dw_hdmi_get_bridge(meson_dw_hdmi->hdmi));
+		priv->hdmi_bridge = meson_dw_hdmi->bridge;
+	}
 
 	DRM_DEBUG_DRIVER("HDMI controller initialized\n");
 
@@ -790,7 +833,12 @@ static void meson_dw_hdmi_unbind(struct device *dev, struct device *master,
 {
 	struct meson_dw_hdmi *meson_dw_hdmi = dev_get_drvdata(dev);
 	struct platform_device *pdev = to_platform_device(dev);
+	struct drm_device *drm = data;
+	struct meson_drm *priv = drm->dev_private;
 	int irq = platform_get_irq(pdev, 0);
+
+	if (priv->hdmi_bridge == meson_dw_hdmi->bridge)
+		priv->hdmi_bridge = NULL;
 
 	devm_free_irq(dev, irq, meson_dw_hdmi);
 	dw_hdmi_unbind(meson_dw_hdmi->hdmi);
