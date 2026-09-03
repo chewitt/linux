@@ -12,6 +12,7 @@
 #include <linux/list.h>
 #include <linux/module.h>
 #include <linux/reset.h>
+#include <linux/delay.h>
 #include <linux/interrupt.h>
 #include <media/videobuf2-dma-contig.h>
 #include <media/v4l2-mem2mem.h>
@@ -452,6 +453,42 @@ int esparser_power_up(struct amvdec_session *sess)
 
 	return 0;
 }
+
+
+/*
+ * Disarm the parser before its clock is gated (vendor discipline).
+ * The ES-write leg can be stalled mid-DMA against a full VIFIFO when
+ * a decode session dies; clock-gating it in that state leaves an
+ * outstanding AXI transaction that wedges the DDR controller port on
+ * the next power transition.  Cancel any fetch, drop the control
+ * word, wait for the request-pending flag, then pulse the parser
+ * reset - all while the parser clock is still running.
+ */
+void esparser_quiesce(struct amvdec_core *core)
+{
+	int i;
+
+	amvdec_write_parser(core, PARSER_FETCH_CMD, 0);
+	amvdec_write_parser(core, PARSER_CONTROL, 0);
+
+	for (i = 0; i < 100; i++) {
+		if (!(amvdec_read_parser(core, PARSER_ES_CONTROL) & BIT(19)))
+			break;
+		udelay(10);
+	}
+	if (i == 100)
+		dev_warn(core->dev, "parser ES request still pending\n");
+
+	amvdec_write_parser(core, PARSER_INT_ENABLE, 0);
+	amvdec_write_parser(core, PARSER_INT_STATUS, 0xffff);
+	amvdec_write_parser(core, PARSER_VIDEO_HOLE, 0);
+
+	if (core->esparser_reset)
+		reset_control_reset(core->esparser_reset);
+	else if (core->esparser_reset_base)
+		writel(BIT(8), core->esparser_reset_base);
+}
+EXPORT_SYMBOL_GPL(esparser_quiesce);
 
 int esparser_init(struct platform_device *pdev, struct amvdec_core *core)
 {
