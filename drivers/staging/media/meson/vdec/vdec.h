@@ -20,6 +20,18 @@
 /* 32 buffers in 3-plane YUV420 */
 #define MAX_CANVAS (32 * 3)
 
+/*
+ * Amlogic framebuffer-compressed capture (the decoder's native
+ * reference format, zero-copy scanout-able by the VD1 overlay as
+ * DRM_FORMAT_YUV420_10BIT + DRM_FORMAT_MOD_AMLOGIC_FBC(SCATTER)).
+ * One plane: the 0x48000-byte compression header ("scatter" MMU
+ * header); the compressed body pages stay driver-owned and are
+ * reached through the page table the header contains.
+ * The fourcc itself lives in uapi videodev2.h.
+ */
+/* must match MMU_COMPRESS_HEADER_SIZE in codec_hevc_common.c */
+#define AM21C_HEADER_SIZE 0x48000
+
 struct amvdec_buffer {
 	struct list_head list;
 	struct vb2_buffer *vb;
