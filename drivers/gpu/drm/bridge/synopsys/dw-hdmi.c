@@ -3204,6 +3204,12 @@ bool dw_hdmi_bus_fmt_is_420(struct dw_hdmi *hdmi)
 }
 EXPORT_SYMBOL_GPL(dw_hdmi_bus_fmt_is_420);
 
+unsigned long dw_hdmi_get_tmds_clock(struct dw_hdmi *hdmi)
+{
+	return hdmi->hdmi_data.video_mode.mtmdsclock / 1000;
+}
+EXPORT_SYMBOL_GPL(dw_hdmi_get_tmds_clock);
+
 struct dw_hdmi *dw_hdmi_probe(struct platform_device *pdev,
 			      const struct dw_hdmi_plat_data *plat_data)
 {
