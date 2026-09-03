@@ -316,7 +316,8 @@ static int meson_encoder_hdmi_atomic_check(struct drm_bridge *bridge,
 
 	dev_dbg(priv->dev, "output_bus_fmt %lx\n", encoder_hdmi->output_bus_fmt);
 
-	if (!drm_connector_atomic_hdr_metadata_equal(old_conn_state, conn_state))
+	if (!drm_connector_atomic_hdr_metadata_equal(old_conn_state, conn_state) ||
+	    old_conn_state->colorspace != conn_state->colorspace)
 		crtc_state->mode_changed = true;
 
 	return 0;
@@ -469,8 +470,21 @@ int meson_encoder_hdmi_probe(struct meson_drm *priv)
 
 	if (meson_vpu_is_compatible(priv, VPU_COMPATIBLE_GXL) ||
 	    meson_vpu_is_compatible(priv, VPU_COMPATIBLE_GXM) ||
-	    meson_vpu_is_compatible(priv, VPU_COMPATIBLE_G12A))
+	    meson_vpu_is_compatible(priv, VPU_COMPATIBLE_G12A)) {
 		drm_connector_attach_hdr_output_metadata_property(meson_encoder_hdmi->connector);
+
+		/*
+		 * HDR10 output needs BT.2020 colorimetry signalled in the
+		 * AVI infoframe alongside the PQ EOTF in the DRM infoframe;
+		 * userspace (Kodi) selects it through the Colorspace
+		 * property.  dw-hdmi builds the AVI frame from the
+		 * connector state.
+		 */
+		if (!drm_mode_create_hdmi_colorspace_property(meson_encoder_hdmi->connector,
+							      BIT(DRM_MODE_COLORIMETRY_BT2020_RGB) |
+							      BIT(DRM_MODE_COLORIMETRY_BT2020_YCC)))
+			drm_connector_attach_colorspace_property(meson_encoder_hdmi->connector);
+	}
 
 	drm_connector_attach_max_bpc_property(meson_encoder_hdmi->connector, 8, 8);
 

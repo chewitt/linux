@@ -1836,6 +1836,16 @@ static void hdmi_config_AVI(struct dw_hdmi *hdmi,
 	}
 
 	/*
+	 * When userspace selected an explicit colorimetry through the
+	 * connector Colorspace property (e.g. BT.2020 for HDR10), it
+	 * overrides the encoding-derived guess above.  Valid for RGB
+	 * output too (EXTENDED + BT2020 in the AVI infoframe).
+	 */
+	if (connector->state &&
+	    connector->state->colorspace != DRM_MODE_COLORIMETRY_DEFAULT)
+		drm_hdmi_avi_infoframe_colorimetry(&frame, connector->state);
+
+	/*
 	 * The Designware IP uses a different byte format from standard
 	 * AVI info frames, though generally the bits are in the correct
 	 * bytes.
