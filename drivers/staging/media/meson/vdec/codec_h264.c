@@ -182,6 +182,30 @@ static int codec_h264_start(struct amvdec_session *sess)
 	if (!h264->sei_vaddr)
 		return -ENOMEM;
 
+	/*
+	 * Re-pulse the decode-pipeline resets (VLD_PART, IQIDCT, MC, then
+	 * DBLK, PIC_DC) now that the clocks are running and the DOS
+	 * memories are un-gated.  The reset issued during power-on ran
+	 * while DOS_MEM_PD_VDEC was still all-ones and the power island
+	 * isolated, so the write-back/deblock state around the
+	 * just-power-cycled SRAMs never saw an effective reset - the
+	 * first GOP of every session decodes with non-deterministically
+	 * corrupt luma until the next IDR.  Mirrors the vendor
+	 * vh264_prot_init() sequence.
+	 */
+	amvdec_write_dos(core, DOS_SW_RESET0, BIT(7) | BIT(6) | BIT(4));
+	amvdec_write_dos(core, DOS_SW_RESET0, 0);
+	amvdec_read_dos(core, DOS_SW_RESET0);
+	amvdec_read_dos(core, DOS_SW_RESET0);
+	amvdec_read_dos(core, DOS_SW_RESET0);
+	amvdec_write_dos(core, DOS_SW_RESET0, BIT(7) | BIT(6) | BIT(4));
+	amvdec_write_dos(core, DOS_SW_RESET0, 0);
+	amvdec_write_dos(core, DOS_SW_RESET0, BIT(9) | BIT(8));
+	amvdec_write_dos(core, DOS_SW_RESET0, 0);
+	amvdec_read_dos(core, DOS_SW_RESET0);
+	amvdec_read_dos(core, DOS_SW_RESET0);
+	amvdec_read_dos(core, DOS_SW_RESET0);
+
 	amvdec_write_dos_bits(core, POWER_CTL_VLD, BIT(9) | BIT(6));
 
 	workspace_offset = h264->workspace_paddr - WORKSPACE_BUF_OFFSET;
