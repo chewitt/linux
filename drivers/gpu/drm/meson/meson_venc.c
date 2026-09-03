@@ -897,6 +897,54 @@ static void meson_venc_hdmi_get_dmt_vmode(const struct drm_display_mode *mode,
 {
 	memset(dmt_mode, 0, sizeof(*dmt_mode));
 
+	if (mode->hdisplay > 1920) {
+		/*
+		 * Wide (>1920px) modes scan out wrapped in the classic DMT
+		 * frame phase (sync at counter origin, active after the
+		 * back porch).  The CEA tables use the opposite phase -
+		 * active video pinned at pixel 148 and the sync position
+		 * derived from it - and wide CEA modes (4K) work; the
+		 * in-tree 2160p tables are literally the 1080p60 values
+		 * offset by the hdisplay delta.  Generate that same
+		 * transform for arbitrary wide modes.  Positions past
+		 * htotal wrap (the hardware counters wrap; the stock
+		 * 1080p60 registers already program a wrapped sync).
+		 */
+		unsigned int dh = mode->hdisplay - 1920;
+		unsigned int h = mode->htotal;
+
+		dmt_mode->encp.dvi_settings = 0x1;
+		dmt_mode->encp.video_mode = 0x4040;
+		dmt_mode->encp.video_mode_adv = 0x18;
+		dmt_mode->encp.video_prog_mode = 0x100;
+		dmt_mode->encp.video_prog_mode_present = true;
+		dmt_mode->encp.yfp1_htime = 140;
+		dmt_mode->encp.yfp2_htime = 140 + mode->hdisplay;
+		dmt_mode->encp.max_pxcnt = mode->htotal - 1;
+		dmt_mode->encp.hspuls_begin = (2156 + dh) % h;
+		dmt_mode->encp.hspuls_end = 44;
+		dmt_mode->encp.hspuls_switch = 44;
+		dmt_mode->encp.vspuls_begin = 140;
+		dmt_mode->encp.vspuls_end = (2059 + dh) % h;
+		dmt_mode->encp.vspuls_bline = 0;
+		dmt_mode->encp.vspuls_eline = 4;
+		dmt_mode->encp.havon_begin = 148;
+		dmt_mode->encp.havon_end = 147 + mode->hdisplay;
+		dmt_mode->encp.vavon_bline = mode->vtotal - mode->vsync_start;
+		dmt_mode->encp.vavon_eline = dmt_mode->encp.vavon_bline +
+					     mode->vdisplay - 1;
+		dmt_mode->encp.hso_begin = 44;
+		dmt_mode->encp.hso_end = (2156 + dh) % h;
+		dmt_mode->encp.vso_begin = (2100 + dh) % h;
+		dmt_mode->encp.vso_end = (2164 + dh) % h;
+		dmt_mode->encp.vso_bline = 0;
+		dmt_mode->encp.vso_eline = mode->vsync_end - mode->vsync_start;
+		dmt_mode->encp.vso_eline_present = true;
+		dmt_mode->encp.max_lncnt = mode->vtotal - 1;
+
+		return;
+	}
+
 	dmt_mode->encp.dvi_settings = 0x21;
 	dmt_mode->encp.video_mode = 0x4040;
 	dmt_mode->encp.video_mode_adv = 0x18;
