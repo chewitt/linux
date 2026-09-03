@@ -302,6 +302,9 @@ static void meson_hdmi_phy_setup_mode(struct meson_dw_hdmi *dw_hdmi,
 	if (tmds_clock)
 		pixel_clock = tmds_clock;
 
+	DRM_DEBUG_DRIVER("band select: mode %dkHz 420=%d tmds=%lukHz -> key=%ukHz\n",
+			 mode->clock, mode_is_420, tmds_clock, pixel_clock);
+
 	if (dw_hdmi_is_compatible(dw_hdmi, "amlogic,meson-gxl-dw-hdmi") ||
 	    dw_hdmi_is_compatible(dw_hdmi, "amlogic,meson-gxm-dw-hdmi")) {
 		if (pixel_clock >= 371250) {
@@ -395,8 +398,16 @@ static int dw_hdmi_phy_init(struct dw_hdmi *hdmi, void *data,
 	    dw_hdmi_bus_fmt_is_420(hdmi))
 		mode_is_420 = true;
 
-	/* TMDS pattern setup */
-	if (tmds_clock > 340000 && !mode_is_420) {
+	/*
+	 * TMDS pattern setup.  The clock lane switches to the 1/40
+	 * pattern purely on the TMDS character rate: with deep color a
+	 * YUV420 mode can exceed 340 MHz too (4K60 @ 10-bit = 371.25),
+	 * and excluding 420 here leaves the clock lane at 1/10 while
+	 * SCDC advertises 1/40 - the sink then can't even detect a
+	 * clock.  (The old !mode_is_420 test was a proxy for the char
+	 * rate back when this compared the unhalved mode clock.)
+	 */
+	if (tmds_clock > 340000) {
 		dw_hdmi->data->top_write(dw_hdmi, HDMITX_TOP_TMDS_CLK_PTTN_01,
 				  0);
 		dw_hdmi->data->top_write(dw_hdmi, HDMITX_TOP_TMDS_CLK_PTTN_23,

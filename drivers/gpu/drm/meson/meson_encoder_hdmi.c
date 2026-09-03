@@ -36,6 +36,17 @@
 #include "meson_venc.h"
 #include "meson_encoder_hdmi.h"
 
+/*
+ * Deep color above the 340 MHz no-scramble TMDS ceiling (e.g. 4K60
+ * YUV420 @ 10-bit = 371.25 MHz) is offered whenever the sink's
+ * declared max TMDS character rate allows it; this kill-switch
+ * restricts negotiation to the unscrambled domain for field debug.
+ */
+static bool scrambled_deep = true;
+module_param(scrambled_deep, bool, 0644);
+MODULE_PARM_DESC(scrambled_deep,
+		 "Offer deep color above 340 MHz TMDS (default Y; N restricts to the unscrambled domain)");
+
 struct meson_encoder_hdmi {
 	struct drm_encoder encoder;
 	struct drm_bridge bridge;
@@ -74,7 +85,8 @@ static void meson_encoder_hdmi_detach(struct drm_bridge *bridge)
 static bool meson_encoder_hdmi_fmt_is_420(u32 fmt)
 {
 	return fmt == MEDIA_BUS_FMT_UYYVYY8_0_5X24 ||
-	       fmt == MEDIA_BUS_FMT_UYYVYY10_0_5X30;
+	       fmt == MEDIA_BUS_FMT_UYYVYY10_0_5X30 ||
+	       fmt == MEDIA_BUS_FMT_UYYVYY12_0_5X36;
 }
 
 static bool meson_encoder_hdmi_fmt_is_422(u32 fmt)
@@ -91,6 +103,7 @@ static unsigned int meson_encoder_hdmi_fmt_depth(u32 fmt)
 	case MEDIA_BUS_FMT_UYYVYY10_0_5X30:
 		return 10;
 	case MEDIA_BUS_FMT_YUV12_1X36:
+	case MEDIA_BUS_FMT_UYYVYY12_0_5X36:
 		return 12;
 	default:
 		return 8;
@@ -358,6 +371,7 @@ static const u32 meson_encoder_hdmi_out_bus_fmts[] = {
 	MEDIA_BUS_FMT_UYVY10_1X20,
 	MEDIA_BUS_FMT_UYYVYY10_0_5X30,
 	MEDIA_BUS_FMT_YUV12_1X36,
+	MEDIA_BUS_FMT_UYYVYY12_0_5X36,
 };
 
 static u32 *
@@ -388,12 +402,13 @@ meson_encoder_hdmi_get_inp_bus_fmts(struct drm_bridge *bridge,
 	 * - the mode is a CEA/VIC mode (the CEA frame phase and the
 	 *   clock tree entries are what we validated; PC/DMT sinks
 	 *   frequently accept RGB/YCbCr-8 only at their native modes);
-	 * - the deeper TMDS character rate stays at or below BOTH the
-	 *   340 MHz no-scramble ceiling and the sink's declared TMDS
-	 *   limit.  Scrambled deep-color combinations (e.g. 4K60
-	 *   YUV420 @ 10-bit = 371.25 MHz) negotiate cleanly but were
-	 *   never validated against real silicon+sink; a sink that
-	 *   accepts the mode at 8-bit then shows NO SIGNAL at depth.
+	 * - the deeper TMDS character rate stays at or below the sink's
+	 *   declared TMDS limit (and below 340 MHz when the
+	 *   scrambled_deep kill-switch is off).  Scrambled deep color
+	 *   (e.g. 4K60 YUV420 @ 10-bit = 371.25 MHz) is validated on
+	 *   real silicon+sink; it additionally requires the 1/40 TMDS
+	 *   clock pattern in the PHY (see meson_dw_hdmi.c) - without
+	 *   it the sink cannot even detect a clock.
 	 * - (non-422) this exact mode has a clock-tree entry at the
 	 *   deeper TMDS rate; otherwise the bridge chain would
 	 *   negotiate a depth the modeset cannot deliver.  422 carries
@@ -406,7 +421,7 @@ meson_encoder_hdmi_get_inp_bus_fmts(struct drm_bridge *bridge,
 		unsigned long long vclk_freq = mode->clock * 1000ULL;
 		unsigned long long phy_freq;
 		unsigned long long tmds_khz;
-		unsigned int max_tmds_khz = 340000;
+		unsigned int max_tmds_khz = scrambled_deep ? 600000 : 340000;
 		int vic = drm_match_cea_mode(mode);
 
 		if (!vic)
