@@ -1206,6 +1206,13 @@ static int bcm_acpi_probe(struct bcm_device *dev)
 	if (ret)
 		return ret;
 
+	/*
+	 * The UART resource walk above defaults oper_speed to 4000000.
+	 * Boards enumerated via PRP0001 describe the supported rate the
+	 * same way devicetree does - honor it, as bcm_of_probe() would.
+	 */
+	device_property_read_u32(dev->dev, "max-speed", &dev->oper_speed);
+
 	if (irq_polarity != -1) {
 		dev->irq_active_low = irq_polarity;
 		dev_warn(dev->dev, "Overwriting IRQ polarity to active %s by module-param\n",
