@@ -13,6 +13,7 @@
 #include <linux/soc/amlogic/meson-canvas.h>
 #include <linux/of_address.h>
 #include <linux/of_platform.h>
+#include <linux/property.h>
 #include <linux/io.h>
 
 #define NUM_CANVAS 256
@@ -54,6 +55,33 @@ struct meson_canvas *meson_canvas_get(struct device *dev)
 	struct device_node *canvas_node;
 	struct platform_device *canvas_pdev;
 	struct meson_canvas *canvas;
+
+	/*
+	 * ACPI PRP0001 consumers (no of_node) reference the canvas provider
+	 * through a _DSD device reference of the same property name.
+	 */
+	if (!dev->of_node) {
+		struct fwnode_handle *fwnode;
+		struct device *canvas_dev;
+
+		fwnode = fwnode_find_reference(dev_fwnode(dev),
+					       "amlogic,canvas", 0);
+		if (IS_ERR(fwnode))
+			return ERR_PTR(-ENODEV);
+
+		canvas_dev = bus_find_device_by_fwnode(&platform_bus_type,
+						       fwnode);
+		fwnode_handle_put(fwnode);
+		if (!canvas_dev)
+			return ERR_PTR(-EPROBE_DEFER);
+
+		canvas = dev_get_drvdata(canvas_dev);
+		put_device(canvas_dev);
+		if (!canvas)
+			return ERR_PTR(-EINVAL);
+
+		return canvas;
+	}
 
 	canvas_node = of_parse_phandle(dev->of_node, "amlogic,canvas", 0);
 	if (!canvas_node)
@@ -176,7 +204,7 @@ static int meson_canvas_probe(struct platform_device *pdev)
 	if (IS_ERR(canvas->reg_base))
 		return PTR_ERR(canvas->reg_base);
 
-	canvas->supports_endianness = of_device_get_match_data(dev);
+	canvas->supports_endianness = device_get_match_data(dev);
 
 	canvas->dev = dev;
 	spin_lock_init(&canvas->lock);
