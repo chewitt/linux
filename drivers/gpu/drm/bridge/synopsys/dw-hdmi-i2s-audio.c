@@ -110,11 +110,24 @@ static int dw_hdmi_i2s_hw_params(struct device *dev, void *data,
 	 * AUD_CONF2 rather than from the stream.  dw-hdmi-gp-audio.c already
 	 * derives it the same way for the GP path.
 	 */
-	if (hparms->iec.status[0] & IEC958_AES0_NONAUDIO)
-		conf2 |= HDMI_AUD_CONF2_NLPCM;
+	if (hparms->iec.status[0] & IEC958_AES0_NONAUDIO) {
+		/*
+		 * HBR (TrueHD, DTS-HD MA) is the same IEC61937 payload spread
+		 * over all four I2S lanes at four times the rate, and the
+		 * controller packetises it differently -- HBR and NLPCM select
+		 * the packet type, so they are alternatives, not flags to
+		 * combine.  Eight non-PCM channels is what distinguishes them;
+		 * dw-hdmi-qp makes the same 8-channel decision.
+		 */
+		if (hparms->channels == 8)
+			conf2 |= HDMI_AUD_CONF2_HBR;
+		else
+			conf2 |= HDMI_AUD_CONF2_NLPCM;
+	}
 
 	dw_hdmi_set_sample_rate(hdmi, hparms->sample_rate);
-	dw_hdmi_set_channel_status(hdmi, hparms->iec.status);
+	dw_hdmi_set_channel_status(hdmi, hparms->iec.status,
+				   conf2 & HDMI_AUD_CONF2_HBR);
 	dw_hdmi_set_channel_count(hdmi, hparms->channels);
 	dw_hdmi_set_channel_allocation(hdmi, hparms->cea.channel_allocation);
 
