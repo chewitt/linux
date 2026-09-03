@@ -13,6 +13,7 @@
 #include <linux/of_graph.h>
 #include <linux/of_platform.h>
 #include <linux/platform_device.h>
+#include <linux/property.h>
 #include <linux/regulator/consumer.h>
 #include <linux/reset.h>
 
@@ -321,6 +322,12 @@ static int meson_encoder_hdmi_atomic_check(struct drm_bridge *bridge,
 	return 0;
 }
 
+static int meson_encoder_hdmi_acpi_compat_match(struct device *dev,
+						const void *data)
+{
+	return fwnode_device_is_compatible(dev_fwnode(dev), data);
+}
+
 static void meson_encoder_hdmi_hpd_notify(struct drm_bridge *bridge,
 					  struct drm_connector *connector,
 					  enum drm_connector_status status)
@@ -384,17 +391,32 @@ int meson_encoder_hdmi_probe(struct meson_drm *priv)
 		return PTR_ERR(meson_encoder_hdmi);
 
 	/* HDMI Transceiver Bridge */
-	remote = of_graph_get_remote_node(priv->dev->of_node, 1, 0);
-	if (!remote) {
-		dev_err(priv->dev, "HDMI transceiver device is disabled");
-		return 0;
-	}
+	if (!priv->dev->of_node) {
+		/*
+		 * ACPI mode: no OF graph and of_drm_find_bridge() cannot
+		 * work.  meson_dw_hdmi_bind (a component bound before this
+		 * runs) published its bridge in priv->hdmi_bridge.
+		 */
+		remote = NULL;
+		if (!priv->hdmi_bridge)
+			return dev_err_probe(priv->dev, -EPROBE_DEFER,
+					     "HDMI transceiver bridge not published\n");
 
-	meson_encoder_hdmi->bridge.next_bridge = of_drm_find_and_get_bridge(remote);
-	if (!meson_encoder_hdmi->bridge.next_bridge) {
-		ret = dev_err_probe(priv->dev, -EPROBE_DEFER,
-				    "Failed to find HDMI transceiver bridge\n");
-		goto err_put_node;
+		meson_encoder_hdmi->bridge.next_bridge =
+			drm_bridge_get(priv->hdmi_bridge);
+	} else {
+		remote = of_graph_get_remote_node(priv->dev->of_node, 1, 0);
+		if (!remote) {
+			dev_err(priv->dev, "HDMI transceiver device is disabled");
+			return 0;
+		}
+
+		meson_encoder_hdmi->bridge.next_bridge = of_drm_find_and_get_bridge(remote);
+		if (!meson_encoder_hdmi->bridge.next_bridge) {
+			ret = dev_err_probe(priv->dev, -EPROBE_DEFER,
+					    "Failed to find HDMI transceiver bridge\n");
+			goto err_put_node;
+		}
 	}
 
 	/* HDMI Encoder Bridge */
@@ -455,7 +477,26 @@ int meson_encoder_hdmi_probe(struct meson_drm *priv)
 	/* Handle this here until handled by drm_bridge_connector_init() */
 	meson_encoder_hdmi->connector->ycbcr_420_allowed = true;
 
-	pdev = of_find_device_by_node(remote);
+	/*
+	 * The CEC notifier is keyed on the dw-hdmi glue platform device
+	 * by POINTER IDENTITY (cec-notifier.c matches struct device *).
+	 * DT resolves it through the OF graph; under ACPI the same
+	 * device is found by its _DSD compatible on the platform bus -
+	 * the exact device the ao-cec consumer resolves through its
+	 * "hdmi-phandle" _DSD reference to \_SB.HDMI, so both sides
+	 * converge on one pointer.  of_find_device_by_node(NULL) must
+	 * never run: it could match an arbitrary of_node-less device.
+	 */
+	if (remote) {
+		pdev = of_find_device_by_node(remote);
+	} else {
+		struct device *hdmi_dev;
+
+		hdmi_dev = bus_find_device(&platform_bus_type, NULL,
+					   "amlogic,meson-g12a-dw-hdmi",
+					   meson_encoder_hdmi_acpi_compat_match);
+		pdev = hdmi_dev ? to_platform_device(hdmi_dev) : NULL;
+	}
 	of_node_put(remote);
 	if (pdev) {
 		struct cec_connector_info conn_info;
