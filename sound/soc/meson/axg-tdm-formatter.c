@@ -6,6 +6,7 @@
 #include <linux/clk.h>
 #include <linux/module.h>
 #include <linux/of_platform.h>
+#include <linux/property.h>
 #include <linux/regmap.h>
 #include <linux/reset.h>
 #include <sound/soc.h>
@@ -257,6 +258,22 @@ int axg_tdm_formatter_event(struct snd_soc_dapm_widget *w,
 }
 EXPORT_SYMBOL_GPL(axg_tdm_formatter_event);
 
+/*
+ * Under ACPI the clock controller publishes these clocks as clkdev
+ * lookups from its own probe; a missing lookup means it has not run yet,
+ * not that the reference is broken.
+ */
+static struct clk *axg_tdm_formatter_get_clk(struct device *dev,
+					     const char *id)
+{
+	struct clk *clk = devm_clk_get(dev, id);
+
+	if (IS_ERR(clk) && !dev->of_node && PTR_ERR(clk) == -ENOENT)
+		return ERR_PTR(-EPROBE_DEFER);
+
+	return clk;
+}
+
 int axg_tdm_formatter_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
@@ -264,7 +281,7 @@ int axg_tdm_formatter_probe(struct platform_device *pdev)
 	struct axg_tdm_formatter *formatter;
 	void __iomem *regs;
 
-	drv = of_device_get_match_data(dev);
+	drv = device_get_match_data(dev);
 	if (!drv) {
 		dev_err(dev, "failed to match device\n");
 		return -ENODEV;
@@ -288,27 +305,27 @@ int axg_tdm_formatter_probe(struct platform_device *pdev)
 	}
 
 	/* Peripharal clock */
-	formatter->pclk = devm_clk_get(dev, "pclk");
+	formatter->pclk = axg_tdm_formatter_get_clk(dev, "pclk");
 	if (IS_ERR(formatter->pclk))
 		return dev_err_probe(dev, PTR_ERR(formatter->pclk), "failed to get pclk\n");
 
 	/* Formatter bit clock */
-	formatter->sclk = devm_clk_get(dev, "sclk");
+	formatter->sclk = axg_tdm_formatter_get_clk(dev, "sclk");
 	if (IS_ERR(formatter->sclk))
 		return dev_err_probe(dev, PTR_ERR(formatter->sclk), "failed to get sclk\n");
 
 	/* Formatter sample clock */
-	formatter->lrclk = devm_clk_get(dev, "lrclk");
+	formatter->lrclk = axg_tdm_formatter_get_clk(dev, "lrclk");
 	if (IS_ERR(formatter->lrclk))
 		return dev_err_probe(dev, PTR_ERR(formatter->lrclk), "failed to get lrclk\n");
 
 	/* Formatter bit clock input multiplexer */
-	formatter->sclk_sel = devm_clk_get(dev, "sclk_sel");
+	formatter->sclk_sel = axg_tdm_formatter_get_clk(dev, "sclk_sel");
 	if (IS_ERR(formatter->sclk_sel))
 		return dev_err_probe(dev, PTR_ERR(formatter->sclk_sel), "failed to get sclk_sel\n");
 
 	/* Formatter sample clock input multiplexer */
-	formatter->lrclk_sel = devm_clk_get(dev, "lrclk_sel");
+	formatter->lrclk_sel = axg_tdm_formatter_get_clk(dev, "lrclk_sel");
 	if (IS_ERR(formatter->lrclk_sel))
 		return dev_err_probe(dev, PTR_ERR(formatter->lrclk_sel),
 				     "failed to get lrclk_sel\n");
