@@ -2910,6 +2910,15 @@ static int dw_hdmi_bridge_attach(struct drm_bridge *bridge,
 {
 	struct dw_hdmi *hdmi = bridge->driver_private;
 
+	/*
+	 * Without a downstream bridge (no OF-graph connector node,
+	 * e.g. ACPI platforms with output_port 0) the chain ends
+	 * here and this bridge's DETECT/EDID/HPD ops back the
+	 * drm_bridge_connector - attaching is already complete.
+	 */
+	if ((flags & DRM_BRIDGE_ATTACH_NO_CONNECTOR) && !hdmi->dev->of_node)
+		return 0;
+
 	/* DRM_BRIDGE_ATTACH_NO_CONNECTOR requires a remote-endpoint to the next bridge */
 	if (WARN_ON((flags & DRM_BRIDGE_ATTACH_NO_CONNECTOR) && !hdmi->plat_data->output_port))
 		return -EINVAL;
@@ -3409,14 +3418,25 @@ struct dw_hdmi *dw_hdmi_probe(struct platform_device *pdev,
 		hdmi->regm = plat_data->regm;
 	}
 
-	clk = devm_clk_get_enabled(hdmi->dev, "isfr");
+	/*
+	 * On a firmware-clocked ACPI platform (no of_node, no clock
+	 * provider) the gates behind isfr/iahb are already open; treat the
+	 * clocks as optional there.  The DT path keeps them required.
+	 */
+	if (hdmi->dev->of_node)
+		clk = devm_clk_get_enabled(hdmi->dev, "isfr");
+	else
+		clk = devm_clk_get_optional_enabled(hdmi->dev, "isfr");
 	if (IS_ERR(clk)) {
 		ret = PTR_ERR(clk);
 		dev_err(hdmi->dev, "Unable to get HDMI isfr clk: %d\n", ret);
 		goto err_res;
 	}
 
-	clk = devm_clk_get_enabled(hdmi->dev, "iahb");
+	if (hdmi->dev->of_node)
+		clk = devm_clk_get_enabled(hdmi->dev, "iahb");
+	else
+		clk = devm_clk_get_optional_enabled(hdmi->dev, "iahb");
 	if (IS_ERR(clk)) {
 		ret = PTR_ERR(clk);
 		dev_err(hdmi->dev, "Unable to get HDMI iahb clk: %d\n", ret);
@@ -3641,6 +3661,17 @@ void dw_hdmi_unbind(struct dw_hdmi *hdmi)
 	dw_hdmi_remove(hdmi);
 }
 EXPORT_SYMBOL_GPL(dw_hdmi_unbind);
+
+/*
+ * Accessor for glue drivers on firmware without an OF graph (ACPI
+ * PRP0001): of_drm_find_bridge() cannot resolve this bridge there, so
+ * hand it out directly.
+ */
+struct drm_bridge *dw_hdmi_get_bridge(struct dw_hdmi *hdmi)
+{
+	return &hdmi->bridge;
+}
+EXPORT_SYMBOL_GPL(dw_hdmi_get_bridge);
 
 void dw_hdmi_resume(struct dw_hdmi *hdmi)
 {
