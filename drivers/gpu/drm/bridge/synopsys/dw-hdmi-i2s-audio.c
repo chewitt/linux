@@ -12,6 +12,7 @@
 #include <drm/bridge/dw_hdmi.h>
 #include <drm/drm_crtc.h>
 
+#include <sound/asoundef.h>
 #include <sound/hdmi-codec.h>
 
 #include "dw-hdmi.h"
@@ -40,8 +41,14 @@ static int dw_hdmi_i2s_hw_params(struct device *dev, void *data,
 {
 	struct dw_hdmi_i2s_audio_data *audio = data;
 	struct dw_hdmi *hdmi = audio->hdmi;
+	bool iec958 = fmt->bit_fmt == SNDRV_PCM_FORMAT_IEC958_SUBFRAME_LE;
+	bool non_pcm = iec958 &&
+		       (hparms->iec.status[0] & IEC958_AES0_NONAUDIO);
+	bool hbr = non_pcm && hparms->channels == 8 &&
+		   hparms->sample_rate == 192000;
 	u8 conf0 = 0;
 	u8 conf1 = 0;
+	u8 conf2 = 0;
 	u8 inputclkfs = 0;
 
 	/* it cares I2S only */
@@ -57,27 +64,47 @@ static int dw_hdmi_i2s_hw_params(struct device *dev, void *data,
 	inputclkfs	= HDMI_AUD_INPUTCLKFS_64FS;
 	conf0		= (HDMI_AUD_CONF0_I2S_SELECT | HDMI_AUD_CONF0_I2S_EN0);
 
-	/* Enable the required i2s lanes */
-	switch (hparms->channels) {
-	case 7 ... 8:
-		conf0 |= HDMI_AUD_CONF0_I2S_EN3;
-		fallthrough;
-	case 5 ... 6:
-		conf0 |= HDMI_AUD_CONF0_I2S_EN2;
-		fallthrough;
-	case 3 ... 4:
-		conf0 |= HDMI_AUD_CONF0_I2S_EN1;
-		/* Fall-thru */
+	if (hbr) {
+		/* HBR is split over all four I2S input lanes. */
+		conf0 |= HDMI_AUD_CONF0_I2S_EN1 |
+			 HDMI_AUD_CONF0_I2S_EN2 |
+			 HDMI_AUD_CONF0_I2S_EN3;
+	} else {
+		/* Enable the required I2S lanes. */
+		switch (hparms->channels) {
+		case 7 ... 8:
+			conf0 |= HDMI_AUD_CONF0_I2S_EN3;
+			fallthrough;
+		case 5 ... 6:
+			conf0 |= HDMI_AUD_CONF0_I2S_EN2;
+			fallthrough;
+		case 3 ... 4:
+			conf0 |= HDMI_AUD_CONF0_I2S_EN1;
+		}
 	}
 
-	switch (hparms->sample_width) {
-	case 16:
-		conf1 = HDMI_AUD_CONF1_WIDTH_16;
-		break;
-	case 24:
-	case 32:
-		conf1 = HDMI_AUD_CONF1_WIDTH_24;
-		break;
+	if (iec958) {
+		/* BPCUV followed by a 16-bit IEC 61937 payload. */
+		conf1 = HDMI_AUD_CONF1_WIDTH_21;
+		conf2 = 0;
+		if (hbr)
+			conf2 = HDMI_AUD_CONF2_HBR;
+		else if (non_pcm)
+			conf2 = HDMI_AUD_CONF2_NLPCM;
+	} else {
+		/* PCUV insertion was added in DWC HDMI 2.10a. */
+		if (hdmi_read(audio, HDMI_DESIGN_ID) >= 0x21)
+			conf2 = HDMI_AUD_CONF2_INSERT_PCUV;
+
+		switch (hparms->sample_width) {
+		case 16:
+			conf1 = HDMI_AUD_CONF1_WIDTH_16;
+			break;
+		case 24:
+		case 32:
+			conf1 = HDMI_AUD_CONF1_WIDTH_24;
+			break;
+		}
 	}
 
 	switch (fmt->fmt) {
@@ -109,6 +136,7 @@ static int dw_hdmi_i2s_hw_params(struct device *dev, void *data,
 	hdmi_write(audio, inputclkfs, HDMI_AUD_INPUTCLKFS);
 	hdmi_write(audio, conf0, HDMI_AUD_CONF0);
 	hdmi_write(audio, conf1, HDMI_AUD_CONF1);
+	hdmi_write(audio, conf2, HDMI_AUD_CONF2);
 
 	return 0;
 }
