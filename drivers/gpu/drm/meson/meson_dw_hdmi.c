@@ -280,9 +280,17 @@ static void meson_hdmi_phy_setup_mode(struct meson_dw_hdmi *dw_hdmi,
 {
 	struct meson_drm *priv = dw_hdmi->priv;
 	unsigned int pixel_clock = mode->clock;
+	unsigned long tmds_clock;
 
 	/* For 420, pixel clock is half unlike venc clock */
 	if (mode_is_420) pixel_clock /= 2;
+
+	tmds_clock = dw_hdmi_get_tmds_clock(dw_hdmi->hdmi);
+	if (tmds_clock)
+		pixel_clock = tmds_clock;
+
+	DRM_DEBUG_DRIVER("band select: mode %dkHz 420=%d tmds=%lukHz -> key=%ukHz\n",
+			 mode->clock, mode_is_420, tmds_clock, pixel_clock);
 
 	if (dw_hdmi_is_compatible(dw_hdmi, "amlogic,meson-gxl-dw-hdmi") ||
 	    dw_hdmi_is_compatible(dw_hdmi, "amlogic,meson-gxm-dw-hdmi")) {
@@ -363,10 +371,14 @@ static int dw_hdmi_phy_init(struct dw_hdmi *hdmi, void *data,
 	struct meson_drm *priv = dw_hdmi->priv;
 	unsigned int wr_clk =
 		readl_relaxed(priv->io_base + _REG(VPU_HDMI_SETTING));
+	unsigned long tmds_clock = dw_hdmi_get_tmds_clock(hdmi);
 	bool mode_is_420 = false;
 
+	if (!tmds_clock)
+		tmds_clock = mode->clock;
+
 	DRM_DEBUG_DRIVER("\"%s\" div%d\n", mode->name,
-			 mode->clock > 340000 ? 40 : 10);
+			 tmds_clock > 340000 ? 40 : 10);
 
 	if (drm_mode_is_420_only(display, mode) ||
 	    (!is_hdmi2_sink && drm_mode_is_420_also(display, mode)) ||
@@ -374,7 +386,7 @@ static int dw_hdmi_phy_init(struct dw_hdmi *hdmi, void *data,
 		mode_is_420 = true;
 
 	/* TMDS pattern setup */
-	if (mode->clock > 340000 && !mode_is_420) {
+	if (tmds_clock > 340000) {
 		dw_hdmi->data->top_write(dw_hdmi, HDMITX_TOP_TMDS_CLK_PTTN_01,
 				  0);
 		dw_hdmi->data->top_write(dw_hdmi, HDMITX_TOP_TMDS_CLK_PTTN_23,
