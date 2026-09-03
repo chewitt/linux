@@ -12,6 +12,7 @@
 #include <drm/bridge/dw_hdmi.h>
 #include <drm/drm_crtc.h>
 
+#include <sound/asoundef.h>
 #include <sound/hdmi-codec.h>
 
 #include "dw-hdmi.h"
@@ -42,6 +43,7 @@ static int dw_hdmi_i2s_hw_params(struct device *dev, void *data,
 	struct dw_hdmi *hdmi = audio->hdmi;
 	u8 conf0 = 0;
 	u8 conf1 = 0;
+	u8 conf2 = 0;
 	u8 inputclkfs = 0;
 
 	/* it cares I2S only */
@@ -101,6 +103,16 @@ static int dw_hdmi_i2s_hw_params(struct device *dev, void *data,
 		return -EINVAL;
 	}
 
+	/*
+	 * An IEC61937 (compressed) stream is carried over the I2S lanes as
+	 * ordinary linear samples; what tells the sink not to treat them as
+	 * audio is the non-PCM bit, which this controller drives from
+	 * AUD_CONF2 rather than from the stream.  dw-hdmi-gp-audio.c already
+	 * derives it the same way for the GP path.
+	 */
+	if (hparms->iec.status[0] & IEC958_AES0_NONAUDIO)
+		conf2 |= HDMI_AUD_CONF2_NLPCM;
+
 	dw_hdmi_set_sample_rate(hdmi, hparms->sample_rate);
 	dw_hdmi_set_channel_status(hdmi, hparms->iec.status);
 	dw_hdmi_set_channel_count(hdmi, hparms->channels);
@@ -109,6 +121,8 @@ static int dw_hdmi_i2s_hw_params(struct device *dev, void *data,
 	hdmi_write(audio, inputclkfs, HDMI_AUD_INPUTCLKFS);
 	hdmi_write(audio, conf0, HDMI_AUD_CONF0);
 	hdmi_write(audio, conf1, HDMI_AUD_CONF1);
+	/* written unconditionally so a passthrough->PCM switch clears NLPCM */
+	hdmi_write(audio, conf2, HDMI_AUD_CONF2);
 
 	return 0;
 }
