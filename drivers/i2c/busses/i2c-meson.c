@@ -5,7 +5,9 @@
  * Copyright (C) 2014 Beniamino Galvani <b.galvani@gmail.com>
  */
 
+#include <linux/acpi.h>
 #include <linux/bitfield.h>
+#include <linux/clk-provider.h>
 #include <linux/clk.h>
 #include <linux/completion.h>
 #include <linux/i2c.h>
@@ -16,6 +18,7 @@
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/platform_device.h>
+#include <linux/property.h>
 #include <linux/types.h>
 
 /* Meson I2C register map */
@@ -472,13 +475,47 @@ static int meson_i2c_probe(struct platform_device *pdev)
 	spin_lock_init(&i2c->lock);
 	init_completion(&i2c->done);
 
+	/*
+	 * of_device_get_match_data() returns NULL when probing through ACPI
+	 * PRP0001 (dev->of_node is NULL), and the driver would then dereference
+	 * i2c->data.  device_get_match_data() handles both firmware types.
+	 */
 	i2c->data = (const struct meson_i2c_data *)
-		of_device_get_match_data(&pdev->dev);
+		device_get_match_data(&pdev->dev);
+	if (!i2c->data)
+		return dev_err_probe(&pdev->dev, -ENODEV, "no match data\n");
 
 	i2c->clk = devm_clk_get(&pdev->dev, NULL);
 	if (IS_ERR(i2c->clk)) {
-		dev_err(&pdev->dev, "can't get device clock\n");
-		return PTR_ERR(i2c->clk);
+		struct clk_hw *hw;
+		u32 rate = 166666666;	/* clk81 on G12A/G12B */
+
+		if (!has_acpi_companion(&pdev->dev)) {
+			dev_err(&pdev->dev, "can't get device clock\n");
+			return PTR_ERR(i2c->clk);
+		}
+
+		/*
+		 * ACPI has no clock provider.  Only the RATE is ever used - to
+		 * pick the SCL divider in meson_i2c_set_clk_div() - and the
+		 * gate itself is already enabled by firmware (every bit of
+		 * HHI_GCLK_MPEG0 reads set), so a fixed-rate clock makes the
+		 * whole rate path work unchanged.
+		 *
+		 * 166666666 Hz is clk81, confirmed on this SoC by measurement
+		 * rather than assumption: a DT boot programs PWM_AO_D with
+		 * clk_sel=1 and 208 counts for a 1250 ns period, i.e. 166.4 MHz.
+		 * Firmware may override via the "clkin-frequency" property.
+		 */
+		device_property_read_u32(&pdev->dev, "clkin-frequency", &rate);
+
+		hw = devm_clk_hw_register_fixed_rate(&pdev->dev,
+						     dev_name(&pdev->dev),
+						     NULL, 0, rate);
+		if (IS_ERR(hw))
+			return dev_err_probe(&pdev->dev, PTR_ERR(hw),
+					     "Failed to register i2c clock\n");
+		i2c->clk = hw->clk;
 	}
 
 	i2c->regs = devm_platform_ioremap_resource(pdev, 0);
@@ -507,6 +544,15 @@ static int meson_i2c_probe(struct platform_device *pdev)
 	i2c->adap.algo = &meson_i2c_algorithm;
 	i2c->adap.dev.parent = &pdev->dev;
 	i2c->adap.dev.of_node = np;
+	/*
+	 * Give the adapter its ACPI companion as well.  i2c_acpi_register_devices()
+	 * opens with has_acpi_companion(&adap->dev) and returns early otherwise,
+	 * so without this no I2C slave described in the DSDT is ever enumerated -
+	 * the adapter appears, the bus works, and the children are silently
+	 * ignored.  of_node above is the DeviceTree equivalent.
+	 */
+	if (has_acpi_companion(&pdev->dev))
+		ACPI_COMPANION_SET(&i2c->adap.dev, ACPI_COMPANION(&pdev->dev));
 	i2c->adap.algo_data = i2c;
 
 	/*
