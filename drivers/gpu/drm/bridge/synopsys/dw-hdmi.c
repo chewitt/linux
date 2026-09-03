@@ -24,6 +24,7 @@
 #include <linux/spinlock.h>
 
 #include <media/cec-notifier.h>
+#include <sound/asoundef.h>
 
 #include <linux/media-bus-format.h>
 #include <linux/videodev2.h>
@@ -636,14 +637,30 @@ static unsigned int hdmi_compute_n(unsigned int freq, unsigned long pixel_clk)
  * (for S/PDIF interface this information comes from the stream).
  */
 void dw_hdmi_set_channel_status(struct dw_hdmi *hdmi,
-				u8 *channel_status)
+				u8 *channel_status, bool hbr)
 {
+	u8 cs3 = channel_status[3];
+	u8 cs4 = channel_status[4];
+
+	/*
+	 * An HBR stream is carried at four times the nominal sample rate, so
+	 * the channel status must declare 768 kHz and stop claiming a known
+	 * original sample rate -- otherwise the sink sizes its buffers for
+	 * whatever userspace opened the PCM at.  dw-hdmi-qp applies the same
+	 * fixup; do it here rather than in the caller so every interface that
+	 * feeds this function gets it.
+	 */
+	if (hbr) {
+		cs3 = (cs3 & 0xf0) | IEC958_AES3_CON_FS_768000;
+		cs4 = (cs4 & 0x0f) | IEC958_AES4_CON_ORIGFS_NOTID;
+	}
+
 	/*
 	 * Set channel status register for frequency and word length.
 	 * Use default values for other registers.
 	 */
-	hdmi_writeb(hdmi, channel_status[3], HDMI_FC_AUDSCHNLS7);
-	hdmi_writeb(hdmi, channel_status[4], HDMI_FC_AUDSCHNLS8);
+	hdmi_writeb(hdmi, cs3, HDMI_FC_AUDSCHNLS7);
+	hdmi_writeb(hdmi, cs4, HDMI_FC_AUDSCHNLS8);
 }
 EXPORT_SYMBOL_GPL(dw_hdmi_set_channel_status);
 
