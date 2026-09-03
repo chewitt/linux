@@ -1795,6 +1795,10 @@ static void hdmi_config_AVI(struct dw_hdmi *hdmi,
 			HDMI_EXTENDED_COLORIMETRY_XV_YCC_601;
 	}
 
+	if (connector->state &&
+	    connector->state->colorspace != DRM_MODE_COLORIMETRY_DEFAULT)
+		drm_hdmi_avi_infoframe_colorimetry(&frame, connector->state);
+
 	/*
 	 * The Designware IP uses a different byte format from standard
 	 * AVI info frames, though generally the bits are in the correct
