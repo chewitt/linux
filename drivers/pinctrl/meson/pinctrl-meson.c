@@ -602,9 +602,27 @@ static int meson_gpio_get(struct gpio_chip *chip, unsigned gpio)
 	return !!(val & BIT(bit));
 }
 
+static int meson_acpi_add_pin_ranges(struct gpio_chip *chip)
+{
+	struct meson_pinctrl *pc = gpiochip_get_data(chip);
+
+	/*
+	 * Under DT this 1:1 range comes from the gpio-ranges property of
+	 * the gpio-controller node.  Without a range in place
+	 * gpiochip_generic_request() returns before pinctrl_gpio_request(),
+	 * and a requested line would keep whatever mux function the
+	 * bootloader left instead of being switched to GPIO.
+	 */
+	return gpiochip_add_pin_range(chip, dev_name(pc->dev), 0, 0,
+				      pc->data->num_pins);
+}
+
 static int meson_gpiolib_register(struct meson_pinctrl *pc)
 {
 	int ret;
+
+	if (!pc->dev->of_node)
+		pc->chip.add_pin_ranges = meson_acpi_add_pin_ranges;
 
 	pc->chip.label = pc->data->name;
 	pc->chip.parent = pc->dev;
@@ -660,6 +678,82 @@ static struct regmap *meson_map_resource(struct meson_pinctrl *pc,
 		return ERR_PTR(-ENOMEM);
 
 	return devm_regmap_init_mmio(pc->dev, base, &meson_regmap_config);
+}
+
+static struct regmap *meson_map_resource_acpi(struct meson_pinctrl *pc,
+					      const char *name)
+{
+	struct platform_device *pdev = to_platform_device(pc->dev);
+	struct resource *res;
+	void __iomem *base;
+	int i;
+
+	i = device_property_match_string(pc->dev, "reg-names", name);
+	if (i < 0)
+		return NULL;
+
+	res = platform_get_resource(pdev, IORESOURCE_MEM, i);
+	if (!res)
+		return NULL;
+
+	/*
+	 * Mapped without claiming: firmware may assign single registers
+	 * inside these windows to other devices too (on G12 the AO mux
+	 * window contains the VDDCPU PWM pad mux register, which the
+	 * firmware also lists in the cpufreq device's resources), so
+	 * request_mem_region() would fail for whichever driver probes
+	 * second.  The drivers RMW disjoint registers inside the window.
+	 */
+	base = devm_ioremap(pc->dev, res->start, resource_size(res));
+	if (!base)
+		return ERR_PTR(-ENOMEM);
+
+	meson_regmap_config.max_register = resource_size(res) - 4;
+	meson_regmap_config.name = devm_kasprintf(pc->dev, GFP_KERNEL, "%s-%s",
+						  dev_name(pc->dev), name);
+	if (!meson_regmap_config.name)
+		return ERR_PTR(-ENOMEM);
+
+	return devm_regmap_init_mmio(pc->dev, base, &meson_regmap_config);
+}
+
+/*
+ * ACPI has no child gpio-controller node: the register windows sit in the
+ * device's own _CRS, and a "reg-names" _DSD string array names them the
+ * same way the DT child node's reg-names property does.
+ */
+static int meson_pinctrl_parse_acpi(struct meson_pinctrl *pc)
+{
+	pc->fwnode = dev_fwnode(pc->dev);
+
+	pc->reg_mux = meson_map_resource_acpi(pc, "mux");
+	if (IS_ERR_OR_NULL(pc->reg_mux)) {
+		dev_err(pc->dev, "mux registers not found\n");
+		return pc->reg_mux ? PTR_ERR(pc->reg_mux) : -ENOENT;
+	}
+
+	pc->reg_gpio = meson_map_resource_acpi(pc, "gpio");
+	if (IS_ERR_OR_NULL(pc->reg_gpio)) {
+		dev_err(pc->dev, "gpio registers not found\n");
+		return pc->reg_gpio ? PTR_ERR(pc->reg_gpio) : -ENOENT;
+	}
+
+	pc->reg_pull = meson_map_resource_acpi(pc, "pull");
+	if (IS_ERR(pc->reg_pull))
+		pc->reg_pull = NULL;
+
+	pc->reg_pullen = meson_map_resource_acpi(pc, "pull-enable");
+	if (IS_ERR(pc->reg_pullen))
+		pc->reg_pullen = NULL;
+
+	pc->reg_ds = meson_map_resource_acpi(pc, "ds");
+	if (IS_ERR(pc->reg_ds))
+		pc->reg_ds = NULL;
+
+	if (pc->data->parse_dt)
+		return pc->data->parse_dt(pc);
+
+	return 0;
 }
 
 static int meson_pinctrl_parse_dt(struct meson_pinctrl *pc)
@@ -744,9 +838,14 @@ int meson_pinctrl_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	pc->dev = dev;
-	pc->data = (struct meson_pinctrl_data *) of_device_get_match_data(dev);
+	pc->data = (struct meson_pinctrl_data *) device_get_match_data(dev);
+	if (!pc->data)
+		return -ENODEV;
 
-	ret = meson_pinctrl_parse_dt(pc);
+	if (dev->of_node)
+		ret = meson_pinctrl_parse_dt(pc);
+	else
+		ret = meson_pinctrl_parse_acpi(pc);
 	if (ret)
 		return ret;
 
