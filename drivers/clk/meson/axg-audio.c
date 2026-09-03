@@ -7,10 +7,12 @@
 #include <linux/auxiliary_bus.h>
 #include <linux/clk.h>
 #include <linux/clk-provider.h>
+#include <linux/clkdev.h>
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/platform_device.h>
+#include <linux/property.h>
 #include <linux/regmap.h>
 #include <linux/reset.h>
 #include <linux/slab.h>
@@ -1323,6 +1325,121 @@ struct audioclk_data {
 	unsigned int max_register;
 };
 
+/*
+ * ACPI (PRP0001) support.  Without an of_node there is no clock provider
+ * to hang consumer references on, so the controller registers clkdev
+ * lookups instead:
+ *
+ *  - The master clock inputs ("mst_inN") normally come from the main SoC
+ *    clock controller, which has no ACPI description.  Firmware programs
+ *    and enables the source PLLs at fixed rates and states each rate as
+ *    an "amlogic,mst-inN-rate" _DSD property; every stated input becomes
+ *    a fixed-rate clock resolved through the clk core's clkdev fallback
+ *    for parent fw_names (con_id "mst_inN", dev_id = this controller).
+ *
+ *  - Consumer clock references (DT "clocks"/"clock-names") become clkdev
+ *    entries against each consumer device's actual name, found by
+ *    scanning the platform bus for the consumer compatible (PRP0001
+ *    device names are enumeration-order dependent - never hardcoded).
+ *    Only the HDMI playback path is registered: frddr, tdm-iface and
+ *    tdmout, all instance A - the set the VIM3 firmware describes.
+ */
+struct axg_audio_acpi_lookup {
+	const char *compatible;
+	const char *con_id;
+	unsigned int clkid;
+};
+
+static const struct axg_audio_acpi_lookup axg_audio_acpi_lookups[] = {
+	{ "amlogic,g12a-frddr",    NULL,        AUD_CLKID_FRDDR_A },
+	{ "amlogic,axg-tdm-iface", "mclk",      AUD_CLKID_MST_A_MCLK },
+	{ "amlogic,axg-tdm-iface", "sclk",      AUD_CLKID_MST_A_SCLK },
+	{ "amlogic,axg-tdm-iface", "lrclk",     AUD_CLKID_MST_A_LRCLK },
+	{ "amlogic,g12a-tdmout",   "pclk",      AUD_CLKID_TDMOUT_A },
+	{ "amlogic,g12a-tdmout",   "sclk",      AUD_CLKID_TDMOUT_A_SCLK },
+	{ "amlogic,g12a-tdmout",   "sclk_sel",  AUD_CLKID_TDMOUT_A_SCLK_SEL },
+	{ "amlogic,g12a-tdmout",   "lrclk",     AUD_CLKID_TDMOUT_A_LRCLK },
+	{ "amlogic,g12a-tdmout",   "lrclk_sel", AUD_CLKID_TDMOUT_A_LRCLK },
+};
+
+static int axg_audio_acpi_match_compatible(struct device *dev, const void *data)
+{
+	return fwnode_property_match_string(dev_fwnode(dev), "compatible",
+					    data) >= 0;
+}
+
+static int axg_audio_acpi_add_lookups(struct device *dev,
+				      const struct audioclk_data *data)
+{
+	const struct axg_audio_acpi_lookup *l;
+	struct device *consumer;
+	struct clk_hw *hw;
+	struct clk *arb_clk;
+	char propname[32];
+	char clkname[32];
+	u32 rate;
+	int i, ret;
+
+	for (i = 0; i < 8; i++) {
+		snprintf(propname, sizeof(propname), "amlogic,mst-in%d-rate", i);
+		if (device_property_read_u32(dev, propname, &rate))
+			continue;
+
+		snprintf(clkname, sizeof(clkname), "aud_acpi_mst_in%d", i);
+		hw = devm_clk_hw_register_fixed_rate(dev, clkname, NULL, 0,
+						     rate);
+		if (IS_ERR(hw))
+			return PTR_ERR(hw);
+
+		snprintf(propname, sizeof(propname), "mst_in%d", i);
+		ret = devm_clk_hw_register_clkdev(dev, hw, propname,
+						  dev_name(dev));
+		if (ret)
+			return ret;
+	}
+
+	/*
+	 * The DDR arbiter's clock is normally held enabled by the OF-only
+	 * arbiter reset driver, which cannot bind here.  Without any
+	 * consumer clk_disable_unused() would gate it and every FIFO
+	 * would stall silently on its first DDR fetch, so the controller
+	 * keeps it enabled itself for as long as it is bound.
+	 */
+	ret = devm_clk_hw_register_clkdev(dev,
+					  data->hw_clks.hws[AUD_CLKID_DDR_ARB],
+					  "acpi_ddr_arb", dev_name(dev));
+	if (ret)
+		return ret;
+
+	arb_clk = devm_clk_get_enabled(dev, "acpi_ddr_arb");
+	if (IS_ERR(arb_clk))
+		return PTR_ERR(arb_clk);
+
+	for (i = 0; i < ARRAY_SIZE(axg_audio_acpi_lookups); i++) {
+		l = &axg_audio_acpi_lookups[i];
+
+		if (l->clkid >= data->hw_clks.num || !data->hw_clks.hws[l->clkid])
+			continue;
+
+		consumer = bus_find_device(&platform_bus_type, NULL,
+					   l->compatible,
+					   axg_audio_acpi_match_compatible);
+		if (!consumer) {
+			dev_warn(dev, "no consumer for %s, skipping %s lookup\n",
+				 l->compatible, l->con_id ? l->con_id : "pclk");
+			continue;
+		}
+
+		ret = devm_clk_hw_register_clkdev(dev, data->hw_clks.hws[l->clkid],
+						  l->con_id, dev_name(consumer));
+		put_device(consumer);
+		if (ret)
+			return ret;
+	}
+
+	return 0;
+}
+
 static int axg_audio_clkc_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
@@ -1334,7 +1451,7 @@ static int axg_audio_clkc_probe(struct platform_device *pdev)
 	struct clk *clk;
 	int ret, i;
 
-	data = of_device_get_match_data(dev);
+	data = device_get_match_data(dev);
 	if (!data)
 		return -EINVAL;
 
@@ -1349,12 +1466,25 @@ static int axg_audio_clkc_probe(struct platform_device *pdev)
 		return PTR_ERR(map);
 	}
 
-	/* Get the mandatory peripheral clock */
-	clk = devm_clk_get_enabled(dev, "pclk");
-	if (IS_ERR(clk))
-		return PTR_ERR(clk);
+	if (dev->of_node) {
+		/* Get the mandatory peripheral clock */
+		clk = devm_clk_get_enabled(dev, "pclk");
+		if (IS_ERR(clk))
+			return PTR_ERR(clk);
+	}
+	/*
+	 * Under ACPI the pclk gate belongs to the undescribed main clock
+	 * controller; firmware opens it at boot and nothing else manages
+	 * it (see the firmware HHI ownership table).
+	 */
 
-	ret = device_reset(dev);
+	/*
+	 * Under ACPI the reset is an AML _RST method.  __device_reset()
+	 * evaluates it but then still insists on an OF/lookup reset control
+	 * for the non-optional variant, which cannot exist here - the
+	 * optional variant evaluates _RST and correctly stops there.
+	 */
+	ret = dev->of_node ? device_reset(dev) : device_reset_optional(dev);
 	if (ret) {
 		dev_err_probe(dev, ret, "failed to reset device\n");
 		return ret;
@@ -1377,6 +1507,15 @@ static int axg_audio_clkc_probe(struct platform_device *pdev)
 			return ret;
 		}
 	}
+
+	if (!dev->of_node)
+		/*
+		 * No provider to register without an of_node; consumers
+		 * resolve through clkdev instead.  The auxiliary reset
+		 * device is skipped too: its only ACPI-mode consumer
+		 * (tohdmitx) is reset through an AML _RST method.
+		 */
+		return axg_audio_acpi_add_lookups(dev, data);
 
 	ret = devm_of_clk_add_hw_provider(dev, meson_clk_hw_get, (void *)&data->hw_clks);
 	if (ret)
