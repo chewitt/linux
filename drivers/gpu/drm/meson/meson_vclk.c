@@ -558,6 +558,11 @@ static void meson_hdmi_pll_set_params(struct meson_drm *priv, unsigned int m,
 			}
 			regmap_write(priv->hhi, HHI_HDMI_PLL_CNTL6, 0x39272000);
 			regmap_write(priv->hhi, HHI_HDMI_PLL_CNTL7, 0x55540000);
+		} else if (m == 0x9a || m == 0xb9) {
+			regmap_write(priv->hhi, HHI_HDMI_PLL_CNTL4, 0x6a685c00);
+			regmap_write(priv->hhi, HHI_HDMI_PLL_CNTL5, 0x43231290);
+			regmap_write(priv->hhi, HHI_HDMI_PLL_CNTL6, 0x29272000);
+			regmap_write(priv->hhi, HHI_HDMI_PLL_CNTL7, 0x56540028);
 		} else {
 			regmap_write(priv->hhi, HHI_HDMI_PLL_CNTL4, 0x0a691c00);
 			regmap_write(priv->hhi, HHI_HDMI_PLL_CNTL5, 0x33771290);
@@ -894,6 +899,14 @@ static void meson_vclk_set(struct meson_drm *priv,
 		case 4320000000:
 			m = vic_alternate_clock ? 0xb3 : 0xb4;
 			frac = vic_alternate_clock ? 0x1a3ee : 0;
+			break;
+		case 3712500000:
+			m = 0x9a;
+			frac = vic_alternate_clock ? 0x110e1 : 0x16000;
+			break;
+		case 4455000000:
+			m = 0xb9;
+			frac = vic_alternate_clock ? 0xe113 : 0x14000;
 			break;
 		case 5940000000:
 			m = 0xf7;
