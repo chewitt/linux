@@ -340,9 +340,21 @@ static void vdec_vb2_buf_queue(struct vb2_buffer *vb)
 
 	v4l2_m2m_buf_queue(m2m_ctx, vbuf);
 
+	/*
+	 * Only MPEG1/2 may take this path.  The parser below looks for the
+	 * MPEG1/2 sequence header 00 00 01 B3 - but MPEG-4 Part 2 uses that
+	 * very start code for group_of_vop, whose following bytes are a time
+	 * code, not a size.  Parsing it yields a nonsense resolution, the
+	 * canvases are then built for that size, and the microcode decodes a
+	 * full-size picture straight past the end of them: a wild DMA that
+	 * wedges the DDR controller.  Gate on the codec, not on the absence
+	 * of a resume op.
+	 */
 	if (vb->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE &&
 	    !sess->fmt_out->codec_ops->resume &&
-	    !sess->init_src_change_done)
+	    !sess->init_src_change_done &&
+	    (sess->fmt_out->pixfmt == V4L2_PIX_FMT_MPEG1 ||
+	     sess->fmt_out->pixfmt == V4L2_PIX_FMT_MPEG2))
 		vdec_init_src_change(sess, vb);
 
 	if (!sess->streamon_out)
