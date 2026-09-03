@@ -185,14 +185,21 @@ void arch_efi_call_virt_setup(void)
 	}
 
 	/*
+	 * This must be done before uaccess_ttbr0_enable(): kernel_neon_begin()
+	 * ends with a preemption point, and when PAN is emulated by switching
+	 * TTBR0_EL1, a voluntary reschedule taken after the EFI mm has been
+	 * installed into TTBR0_EL1 resumes with another task's TTBR0_EL1, as
+	 * only a return from exception restores the register.
+	 */
+	__efi_fpsimd_begin();
+
+	/*
 	 * Enable access to the valid TTBR0_EL1 and invoke the errata
 	 * workaround directly since there is no return from exception when
 	 * invoking the EFI run-time services.
 	 */
 	uaccess_ttbr0_enable();
 	post_ttbr_update_workaround();
-
-	__efi_fpsimd_begin();
 }
 
 void arch_efi_call_virt_teardown(void)
