@@ -14,52 +14,151 @@
 #define MMU_MAP_SIZE 0x4800
 
 /*
- * Generational deferred-free: a body buffer parked here is NEVER
- * handed to a new session (writing into a buffer the VD1 plane still
- * scans corrupts the picture and can hang the display's FBC
- * decompressor - a fatal DMC wedge).  gen[0] holds the most recently
- * stopped session(s); it rotates to gen[1] - and gen[1] is freed -
- * only once a LATER session has delivered at least one frame, which
- * proves the parked frames are off-screen.  A session that dies
- * without delivering anything parks alongside gen[0].
+ * Pooled chunk allocator for MMU-mode compressed bodies.
+ *
+ * In MMU mode the hardware reaches body pages only through the frame
+ * page map, so the body needs no contiguity: it is assembled from
+ * fixed-size chunks.  That removes the 16 MiB-contiguous allocation a
+ * 4K 10-bit frame used to need - the single biggest source of CMA
+ * pressure - and makes chunks fungible between sessions regardless of
+ * resolution or bit depth.
+ *
+ * Display safety is unchanged and still generational: a chunk released
+ * by a session is NEVER handed straight back out, because the VD1
+ * plane may still be scanning that frame (writing into it corrupts the
+ * picture and can hang the display's FBC decompressor - a fatal DMC
+ * wedge).  park[0] holds the most recently stopped session; it rotates
+ * to park[1], and only park[1] returns to the free list, once a LATER
+ * session has delivered a frame and thus proved the parked frames are
+ * off-screen.
  */
-struct fbc_gen {
-	u32 buf_size;
-	u32 count;
-	void *vaddr[MAX_REF_PIC_NUM];
-	dma_addr_t paddr[MAX_REF_PIC_NUM];
+#define FBC_CHUNK_PAGES	256u
+#define FBC_CHUNK_SIZE	(FBC_CHUNK_PAGES << PAGE_SHIFT)	/* 1 MiB */
+
+struct fbc_chunk {
+	struct list_head list;
+	void *vaddr;
+	dma_addr_t paddr;
 };
 
 static struct {
 	/* protects all fields; sessions are serialized but drain isn't */
 	struct mutex lock;
 	struct device *dev;
-	struct fbc_gen gen[2];
+	struct list_head free;
+	struct list_head park[2];
+	u32 nr_total;
 } fbc_pool = {
-	.lock = __MUTEX_INITIALIZER(fbc_pool.lock),
+	.lock  = __MUTEX_INITIALIZER(fbc_pool.lock),
+	.free  = LIST_HEAD_INIT(fbc_pool.free),
+	.park  = { LIST_HEAD_INIT(fbc_pool.park[0]),
+		   LIST_HEAD_INIT(fbc_pool.park[1]) },
 };
 
-static void fbc_gen_free_locked(struct fbc_gen *g)
+static void fbc_chunks_release_locked(struct list_head *h)
 {
-	u32 i;
+	struct fbc_chunk *c, *n;
 
-	for (i = 0; i < g->count; i++)
-		dma_free_coherent(fbc_pool.dev, g->buf_size,
-				  g->vaddr[i], g->paddr[i]);
-	g->count = 0;
-	g->buf_size = 0;
+	list_for_each_entry_safe(c, n, h, list) {
+		list_del(&c->list);
+		dma_free_coherent(fbc_pool.dev, FBC_CHUNK_SIZE,
+				  c->vaddr, c->paddr);
+		kfree(c);
+		fbc_pool.nr_total--;
+	}
 }
 
 void codec_hevc_fbc_pool_drain(void)
 {
 	mutex_lock(&fbc_pool.lock);
 	if (fbc_pool.dev) {
-		fbc_gen_free_locked(&fbc_pool.gen[0]);
-		fbc_gen_free_locked(&fbc_pool.gen[1]);
+		fbc_chunks_release_locked(&fbc_pool.free);
+		fbc_chunks_release_locked(&fbc_pool.park[0]);
+		fbc_chunks_release_locked(&fbc_pool.park[1]);
 	}
 	mutex_unlock(&fbc_pool.lock);
 }
 EXPORT_SYMBOL_GPL(codec_hevc_fbc_pool_drain);
+
+/* Take a chunk from the free list, or make a new one.  Pool lock held. */
+static struct fbc_chunk *fbc_chunk_get_locked(struct device *dev)
+{
+	struct fbc_chunk *c;
+
+	if (!list_empty(&fbc_pool.free)) {
+		c = list_first_entry(&fbc_pool.free, struct fbc_chunk, list);
+		list_del(&c->list);
+		return c;
+	}
+
+	c = kzalloc(sizeof(*c), GFP_KERNEL);
+	if (!c)
+		return NULL;
+
+	c->vaddr = dma_alloc_coherent(dev, FBC_CHUNK_SIZE, &c->paddr,
+				      GFP_KERNEL);
+	if (!c->vaddr) {
+		kfree(c);
+		return NULL;
+	}
+
+	fbc_pool.nr_total++;
+	return c;
+}
+
+/*
+ * Same, but under memory pressure fall back on the parked generations.
+ * Failing the session outright is worse than the residual risk of
+ * reusing frames that are almost certainly off-screen by now - this is
+ * the last resort before -ENOMEM.  Pool lock held.
+ */
+static struct fbc_chunk *fbc_chunk_get_pressure_locked(struct device *dev)
+{
+	struct fbc_chunk *c = fbc_chunk_get_locked(dev);
+
+	if (c)
+		return c;
+
+	if (list_empty(&fbc_pool.park[0]) && list_empty(&fbc_pool.park[1]))
+		return NULL;
+
+	list_splice_tail_init(&fbc_pool.park[1], &fbc_pool.free);
+	list_splice_tail_init(&fbc_pool.park[0], &fbc_pool.free);
+	dev_warn_once(dev, "CMA pressure: recycled parked FBC chunks\n");
+
+	return fbc_chunk_get_locked(dev);
+}
+
+/* Move every chunk this session holds onto @dst.  Pool lock held. */
+static void fbc_chunks_park_locked(struct codec_hevc_common *comm,
+				   struct list_head *dst)
+{
+	u32 i, j;
+
+	for (i = 0; i < MAX_REF_PIC_NUM; ++i) {
+		if (!comm->fbc_chunks[i])
+			continue;
+
+		for (j = 0; j < comm->fbc_nr_chunks; ++j)
+			if (comm->fbc_chunks[i][j])
+				list_add_tail(&comm->fbc_chunks[i][j]->list,
+					      dst);
+
+		kfree(comm->fbc_chunks[i]);
+		comm->fbc_chunks[i] = NULL;
+	}
+
+	comm->fbc_nr_chunks = 0;
+}
+
+dma_addr_t codec_hevc_fbc_body_addr(struct codec_hevc_common *comm, u32 idx)
+{
+	if (comm->fbc_chunks[idx] && comm->fbc_chunks[idx][0])
+		return comm->fbc_chunks[idx][0]->paddr;
+
+	return comm->fbc_buffer_paddr[idx];
+}
+EXPORT_SYMBOL_GPL(codec_hevc_fbc_body_addr);
 
 const u16 vdec_hevc_parser_cmd[] = {
 	0x0401,	0x8401,	0x0800,	0x0402,
@@ -266,42 +365,44 @@ void codec_hevc_free_fbc_buffers(struct amvdec_session *sess,
 
 	mutex_lock(&fbc_pool.lock);
 	fbc_pool.dev = dev;
+
 	if (sess->sequence_cap == 0) {
 		/*
-		 * This session never delivered a frame: nothing of it
-		 * can be on screen, free its buffers immediately.  The
-		 * still-displayed generation (if any) stays parked.
+		 * This session never delivered a frame: nothing of it can be
+		 * on screen, so its chunks are immediately reusable.  The
+		 * still-displayed generations (if any) stay parked.
 		 */
-		for (i = 0; i < MAX_REF_PIC_NUM; ++i) {
-			if (!comm->fbc_buffer_vaddr[i])
-				continue;
-			dma_free_coherent(dev, comm->fbc_buffer_size,
-					  comm->fbc_buffer_vaddr[i],
-					  comm->fbc_buffer_paddr[i]);
-			comm->fbc_buffer_vaddr[i] = NULL;
-		}
+		fbc_chunks_park_locked(comm, &fbc_pool.free);
 	} else {
 		/*
-		 * This session's frames took the screen, so whatever
-		 * gen[0] holds is off-plane now: age it out and park
-		 * the current buffers as the new gen[0].
+		 * This session's frames took the screen, so whatever park[0]
+		 * holds is off-plane now: age it out and park the current
+		 * chunks as the new generation.
 		 */
-		fbc_gen_free_locked(&fbc_pool.gen[1]);
-		fbc_pool.gen[1] = fbc_pool.gen[0];
-		memset(&fbc_pool.gen[0], 0, sizeof(fbc_pool.gen[0]));
-		fbc_pool.gen[0].buf_size = comm->fbc_buffer_size;
-		for (i = 0; i < MAX_REF_PIC_NUM; ++i) {
-			if (!comm->fbc_buffer_vaddr[i])
-				continue;
-			fbc_pool.gen[0].vaddr[fbc_pool.gen[0].count] =
-				comm->fbc_buffer_vaddr[i];
-			fbc_pool.gen[0].paddr[fbc_pool.gen[0].count] =
-				comm->fbc_buffer_paddr[i];
-			fbc_pool.gen[0].count++;
-			comm->fbc_buffer_vaddr[i] = NULL;
-		}
+		list_splice_tail_init(&fbc_pool.park[1], &fbc_pool.free);
+		list_splice_tail_init(&fbc_pool.park[0], &fbc_pool.park[1]);
+		fbc_chunks_park_locked(comm, &fbc_pool.park[0]);
 	}
+
+	/*
+	 * Anything now on the free list is neither in use nor parked for
+	 * the display, so hand it back to the allocator rather than
+	 * squatting on it: CMA is shared, and a pool that keeps its
+	 * high-water mark starves every other consumer (a 4K H.264 session
+	 * needs ~288 MB of its own and fails STREAMON without it).
+	 */
+	fbc_chunks_release_locked(&fbc_pool.free);
 	mutex_unlock(&fbc_pool.lock);
+
+	/* Non-MMU FBC bodies are contiguous and privately owned */
+	for (i = 0; i < MAX_REF_PIC_NUM; ++i) {
+		if (!comm->fbc_buffer_vaddr[i])
+			continue;
+		dma_free_coherent(dev, comm->fbc_buffer_size,
+				  comm->fbc_buffer_vaddr[i],
+				  comm->fbc_buffer_paddr[i]);
+		comm->fbc_buffer_vaddr[i] = NULL;
+	}
 
 	if (comm->mmu_map_vaddr) {
 		dma_free_coherent(dev, MMU_MAP_SIZE,
@@ -321,79 +422,107 @@ static int codec_hevc_alloc_fbc_buffers(struct amvdec_session *sess,
 	struct v4l2_m2m_buffer *buf;
 	u32 use_mmu;
 	u32 am21_size;
+	u32 nr_chunks;
 	const u32 revision = sess->core->platform->revision;
 	const u32 is_10bit = sess->bitdepth == 10 ? 1 : 0;
 	int ret;
 
-	use_mmu = codec_hevc_use_mmu(revision, sess->pixfmt_cap,
-				     is_10bit);
+	use_mmu = codec_hevc_use_mmu(revision, sess->pixfmt_cap, is_10bit);
 
-	am21_size = amvdec_amfbc_size(sess->width, sess->height,
-				      is_10bit, use_mmu);
+	am21_size = amvdec_amfbc_size(sess->width, sess->height, is_10bit,
+				      use_mmu);
 	comm->fbc_buffer_size = am21_size;
 
 	/*
-	 * ALWAYS allocate fresh body buffers.  Parked generations are
-	 * never reused - the display may still be scanning them, and
-	 * decoding into a scanned-out buffer corrupts the picture and
-	 * can hang the display FBC decompressor (fatal DMC wedge).
-	 *
-	 * A NEW session starting is proof that gen[1] (two sessions
-	 * old) is off every screen - free it here so parked memory is
+	 * A NEW session starting is proof that the older parked generation
+	 * is off every screen - recycle it here so parked memory stays
 	 * bounded to a single generation.
 	 */
 	mutex_lock(&fbc_pool.lock);
-	if (fbc_pool.dev)
-		fbc_gen_free_locked(&fbc_pool.gen[1]);
+	fbc_pool.dev = dev;
+	list_splice_tail_init(&fbc_pool.park[1], &fbc_pool.free);
 	mutex_unlock(&fbc_pool.lock);
+
+	if (!use_mmu) {
+		/* Contiguous body, allocated per index and privately owned */
+		v4l2_m2m_for_each_dst_buf(sess->m2m_ctx, buf) {
+			u32 idx = buf->vb.vb2_buf.index;
+			dma_addr_t paddr;
+			void *vaddr;
+
+			if (comm->fbc_buffer_vaddr[idx])
+				continue;
+
+			vaddr = dma_alloc_coherent(dev, am21_size, &paddr,
+						   GFP_KERNEL);
+			if (!vaddr) {
+				codec_hevc_free_fbc_buffers(sess, comm);
+				return -ENOMEM;
+			}
+
+			comm->fbc_buffer_vaddr[idx] = vaddr;
+			comm->fbc_buffer_paddr[idx] = paddr;
+		}
+
+		return 0;
+	}
+
+	/*
+	 * MMU mode: the body is described page by page in the frame map, so
+	 * assemble it from pool chunks - no large contiguous range needed.
+	 */
+	nr_chunks = DIV_ROUND_UP(amvdec_amfbc_body_size(sess->width,
+							sess->height,
+							is_10bit, use_mmu),
+				 FBC_CHUNK_SIZE);
+	if (comm->fbc_nr_chunks && comm->fbc_nr_chunks != nr_chunks) {
+		/* Geometry changed under us - drop what we hold and re-take */
+		mutex_lock(&fbc_pool.lock);
+		fbc_chunks_park_locked(comm, &fbc_pool.free);
+		mutex_unlock(&fbc_pool.lock);
+	}
+	comm->fbc_nr_chunks = nr_chunks;
 
 	v4l2_m2m_for_each_dst_buf(sess->m2m_ctx, buf) {
 		u32 idx = buf->vb.vb2_buf.index;
-		dma_addr_t paddr;
-		void *vaddr;
+		u32 i;
 
 		/*
-		 * Per-index idempotency: recovery re-runs and staged
-		 * buffer negotiation (players may grow the CAPTURE
-		 * queue after the first resolution event) must
-		 * allocate exactly the missing bodies - an
-		 * all-or-nothing guard left grown buffers bodyless
-		 * (table entries pointing nowhere = confetti frames).
+		 * Per-index idempotency: recovery re-runs and staged buffer
+		 * negotiation (players may grow the CAPTURE queue after the
+		 * first resolution event) must fill in exactly the missing
+		 * bodies - an all-or-nothing guard left grown buffers
+		 * bodyless (map entries pointing nowhere = confetti frames).
 		 */
-		if (comm->fbc_buffer_vaddr[idx])
+		if (comm->fbc_chunks[idx])
 			continue;
 
-		vaddr = dma_alloc_coherent(dev, am21_size, &paddr,
-					   GFP_KERNEL);
-		if (!vaddr) {
-			/*
-			 * CMA can be too fragmented for another pool
-			 * while a parked generation pins scattered
-			 * ranges.  Emergency-drain the parking and
-			 * retry: under memory pressure, freeing the
-			 * (probably off-screen) previous generation
-			 * beats failing the session.
-			 */
-			mutex_lock(&fbc_pool.lock);
-			fbc_gen_free_locked(&fbc_pool.gen[1]);
-			fbc_gen_free_locked(&fbc_pool.gen[0]);
-			mutex_unlock(&fbc_pool.lock);
-			dev_warn_once(dev,
-				      "CMA pressure: drained parked FBC generations\n");
-			vaddr = dma_alloc_coherent(dev, am21_size, &paddr,
-						   GFP_KERNEL);
-		}
-		if (!vaddr) {
+		comm->fbc_chunks[idx] = kcalloc(nr_chunks,
+						sizeof(*comm->fbc_chunks[idx]),
+						GFP_KERNEL);
+		if (!comm->fbc_chunks[idx]) {
 			codec_hevc_free_fbc_buffers(sess, comm);
 			return -ENOMEM;
 		}
 
-		comm->fbc_buffer_vaddr[idx] = vaddr;
-		comm->fbc_buffer_paddr[idx] = paddr;
+		mutex_lock(&fbc_pool.lock);
+		for (i = 0; i < nr_chunks; ++i) {
+			comm->fbc_chunks[idx][i] =
+				fbc_chunk_get_pressure_locked(dev);
+			if (!comm->fbc_chunks[idx][i])
+				break;
+		}
+		mutex_unlock(&fbc_pool.lock);
+
+		if (i < nr_chunks) {
+			dev_err(dev, "Failed to assemble FBC body %u (%u/%u chunks)\n",
+				idx, i, nr_chunks);
+			codec_hevc_free_fbc_buffers(sess, comm);
+			return -ENOMEM;
+		}
 	}
 
-	if (codec_hevc_use_mmu(revision, sess->pixfmt_cap, is_10bit) &&
-	    codec_hevc_use_downsample(sess->pixfmt_cap, is_10bit)) {
+	if (codec_hevc_use_downsample(sess->pixfmt_cap, is_10bit)) {
 		ret = codec_hevc_alloc_mmu_headers(sess, comm);
 		if (ret) {
 			codec_hevc_free_fbc_buffers(sess, comm);
@@ -446,23 +575,27 @@ void codec_hevc_fill_mmu_map(struct amvdec_session *sess,
 			     u32 is_10bit)
 {
 	u32 use_mmu;
-	u32 size;
+	u32 body_size;
 	u32 nb_pages;
 	u32 *mmu_map = comm->mmu_map_vaddr;
-	u32 first_page;
 	u32 i;
 
 	use_mmu = codec_hevc_use_mmu(sess->core->platform->revision,
 				     sess->pixfmt_cap, is_10bit);
 
-	size = amvdec_amfbc_size(sess->width, sess->height, is_10bit,
-				 use_mmu);
+	/*
+	 * Only the compressed body is mapped; the header lives in its own
+	 * buffer (the vb2 plane in AM21C mode, a private allocation when
+	 * downsampling).  This matches the vendor's page count.
+	 */
+	body_size = amvdec_amfbc_body_size(sess->width, sess->height,
+					   is_10bit, use_mmu);
+	nb_pages = DIV_ROUND_UP(body_size, PAGE_SIZE);
 
-	nb_pages = size / PAGE_SIZE;
 	if (nb_pages > MMU_MAP_SIZE / sizeof(u32)) {
 		/*
 		 * The map covers up to 4608 4K pages (18 MiB of FBC body);
-		 * 4Kx2K 10-bit needs 4096.  Anything bigger cannot be
+		 * 4Kx2K 10-bit needs 4080.  Anything bigger cannot be
 		 * described - clamp so the hardware at least stays inside
 		 * the buffers we own.
 		 */
@@ -472,8 +605,20 @@ void codec_hevc_fill_mmu_map(struct amvdec_session *sess,
 		nb_pages = MMU_MAP_SIZE / sizeof(u32);
 	}
 
-	first_page = comm->fbc_buffer_paddr[vb->index] >> PAGE_SHIFT;
-	for (i = 0; i < nb_pages; ++i)
-		mmu_map[i] = first_page + i;
+	if (comm->fbc_chunks[vb->index]) {
+		for (i = 0; i < nb_pages; ++i) {
+			struct fbc_chunk *c =
+				comm->fbc_chunks[vb->index][i / FBC_CHUNK_PAGES];
+
+			mmu_map[i] = (c->paddr >> PAGE_SHIFT) +
+				     (i % FBC_CHUNK_PAGES);
+		}
+	} else {
+		u32 first_page =
+			comm->fbc_buffer_paddr[vb->index] >> PAGE_SHIFT;
+
+		for (i = 0; i < nb_pages; ++i)
+			mmu_map[i] = first_page + i;
+	}
 }
 EXPORT_SYMBOL_GPL(codec_hevc_fill_mmu_map);
