@@ -592,12 +592,24 @@ codec_hevc_setup_workspace(struct amvdec_session *sess,
 		amvdec_write_dos(core, HEVC_SAO_MMU_VH1_ADDR,
 				 wkaddr + MMU_VBH_OFFSET + (MMU_VBH_SIZE / 2));
 
-		if (revision >= VDEC_REVISION_G12A)
-			amvdec_write_dos(core, HEVC_ASSIST_MMU_MAP_ADDR,
-					 hevc->common.mmu_map_paddr);
-		else
-			amvdec_write_dos(core, H265_MMU_MAP_BUFFER,
-					 hevc->common.mmu_map_paddr);
+		/*
+		 * The frame MMU map is allocated by codec_hevc_setup_buffers(),
+		 * which cannot run before the capture queue is negotiated.
+		 * With a compressed capture format (AM21C) the pixel format
+		 * alone selects MMU mode, so this runs at session start with
+		 * no map allocated yet - and programming 0 points the hardware
+		 * at physical page 0.  Only header parsing happens before
+		 * resume(), which reprograms these registers after allocating,
+		 * so leave them alone until there is a map to point at.
+		 */
+		if (hevc->common.mmu_map_paddr) {
+			if (revision >= VDEC_REVISION_G12A)
+				amvdec_write_dos(core, HEVC_ASSIST_MMU_MAP_ADDR,
+						 hevc->common.mmu_map_paddr);
+			else
+				amvdec_write_dos(core, H265_MMU_MAP_BUFFER,
+						 hevc->common.mmu_map_paddr);
+		}
 	} else if (revision < VDEC_REVISION_G12A) {
 		amvdec_write_dos(core, HEVC_STREAM_SWAP_BUFFER,
 				 wkaddr + SWAP_BUF_OFFSET);
