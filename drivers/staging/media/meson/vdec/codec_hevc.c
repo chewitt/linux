@@ -12,10 +12,19 @@
 #include "hevc_regs.h"
 #include "vdec_helpers.h"
 #include "codec_hevc_common.h"
+#include "vdec_hevc.h"
 
 /* HEVC reg mapping */
 #define HEVC_DEC_STATUS_REG	HEVC_ASSIST_SCRATCH_0
 	#define HEVC_ACTION_DONE	0xff
+
+/* In-session stall recovery states/tunables */
+#define STALL_IDLE		0
+#define STALL_ARMED		1
+#define STALL_PROCESSING	2
+#define STALL_DISABLED		3
+#define STALL_TIMEOUT_MS	200
+#define STALL_GRACE_MS		10
 #define HEVC_RPM_BUFFER		HEVC_ASSIST_SCRATCH_1
 #define HEVC_SHORT_TERM_RPS	HEVC_ASSIST_SCRATCH_2
 #define HEVC_VPS_BUFFER		HEVC_ASSIST_SCRATCH_3
@@ -246,6 +255,18 @@ struct codec_hevc {
 	 */
 	u32 seen_irap;
 
+	/*
+	 * In-session stall recovery (vendor decode-timeout protocol).
+	 * The watchdog runs only while the firmware owes us an
+	 * interrupt: armed at every MCPU kick, disarmed at IRQ entry.
+	 */
+	struct amvdec_session *sess;
+	struct delayed_work stall_work;
+	atomic_t stall_state;
+	u32 stall_lcu;
+	u32 stall_ticks;
+	u32 stall_recoveries;
+
 	/* Common part of the HEVC decoder */
 	struct codec_hevc_common common;
 
@@ -290,6 +311,8 @@ struct codec_hevc {
 	/* Whether we detected the bitstream as 10-bit */
 	int is_10bit;
 };
+
+static void codec_hevc_stall_arm(struct codec_hevc *hevc);
 
 static u32 codec_hevc_num_pending_bufs(struct amvdec_session *sess)
 {
@@ -520,6 +543,8 @@ static void codec_hevc_show_frames(struct amvdec_session *sess)
 
 		if (hevc->col_frame == tmp)
 			hevc->col_frame = NULL;
+		if (hevc->cur_frame == tmp)
+			hevc->cur_frame = NULL;
 		list_del(&tmp->list);
 		kfree(tmp);
 	}
@@ -590,24 +615,18 @@ codec_hevc_setup_workspace(struct amvdec_session *sess,
 	amvdec_write_dos(core, LMEM_DUMP_ADR, wkaddr + LMEM_OFFSET);
 }
 
-static int codec_hevc_start(struct amvdec_session *sess)
+/*
+ * Pure hardware (re-)initialisation: every register write a fresh or
+ * just-reset HEVC core needs before the firmware may run, given that
+ * all buffers (workspace, aux) are already allocated.  Used by
+ * session start and by in-session stall recovery.
+ */
+static void codec_hevc_hw_init(struct amvdec_session *sess)
 {
 	struct amvdec_core *core = sess->core;
-	struct codec_hevc *hevc;
+	struct codec_hevc *hevc = sess->priv;
 	u32 val;
 	int i;
-	int ret;
-
-	hevc = kzalloc(sizeof(*hevc), GFP_KERNEL);
-	if (!hevc)
-		return -ENOMEM;
-
-	INIT_LIST_HEAD(&hevc->ref_frames_list);
-	hevc->curr_poc = INVALID_POC;
-
-	ret = codec_hevc_alloc_workspace(core, hevc);
-	if (ret)
-		goto free_hevc;
 
 	codec_hevc_setup_workspace(sess, hevc);
 
@@ -662,19 +681,48 @@ static int codec_hevc_start(struct amvdec_session *sess)
 	amvdec_write_dos(core, HEVC_DECODE_MODE, DECODE_MODE_SINGLE);
 	amvdec_write_dos(core, HEVC_DECODE_MODE2, 0);
 
+	amvdec_write_dos(core, HEVC_AUX_ADR, hevc->aux_paddr);
+	amvdec_write_dos(core, HEVC_AUX_DATA_SIZE,
+			 (((SIZE_AUX) >> 4) << 16) | 0);
+}
+
+static void codec_hevc_stall_work(struct work_struct *work);
+
+static int codec_hevc_start(struct amvdec_session *sess)
+{
+	struct amvdec_core *core = sess->core;
+	struct codec_hevc *hevc;
+	int ret;
+
+	hevc = kzalloc(sizeof(*hevc), GFP_KERNEL);
+	if (!hevc)
+		return -ENOMEM;
+
+	INIT_LIST_HEAD(&hevc->ref_frames_list);
+	hevc->curr_poc = INVALID_POC;
+	hevc->sess = sess;
+	INIT_DELAYED_WORK(&hevc->stall_work, codec_hevc_stall_work);
+	atomic_set(&hevc->stall_state, STALL_IDLE);
+
+	ret = codec_hevc_alloc_workspace(core, hevc);
+	if (ret)
+		goto free_hevc;
+
 	/* AUX buffers */
 	hevc->aux_vaddr = dma_alloc_coherent(core->dev, SIZE_AUX,
 					     &hevc->aux_paddr, GFP_KERNEL);
 	if (!hevc->aux_vaddr) {
+		dma_free_coherent(core->dev, SIZE_WORKSPACE,
+				  hevc->workspace_vaddr,
+				  hevc->workspace_paddr);
 		ret = -ENOMEM;
 		goto free_hevc;
 	}
 
-	amvdec_write_dos(core, HEVC_AUX_ADR, hevc->aux_paddr);
-	amvdec_write_dos(core, HEVC_AUX_DATA_SIZE,
-			 (((SIZE_AUX) >> 4) << 16) | 0);
 	mutex_init(&hevc->lock);
 	sess->priv = hevc;
+
+	codec_hevc_hw_init(sess);
 
 	return 0;
 
@@ -697,6 +745,8 @@ static void codec_hevc_flush_output(struct amvdec_session *sess)
 	list_for_each_entry_safe(tmp, n, &hevc->ref_frames_list, list) {
 		if (hevc->col_frame == tmp)
 			hevc->col_frame = NULL;
+		if (hevc->cur_frame == tmp)
+			hevc->cur_frame = NULL;
 		list_del(&tmp->list);
 		kfree(tmp);
 	}
@@ -707,6 +757,8 @@ static int codec_hevc_stop(struct amvdec_session *sess)
 	struct codec_hevc *hevc = sess->priv;
 	struct amvdec_core *core = sess->core;
 
+	atomic_set(&hevc->stall_state, STALL_DISABLED);
+	cancel_delayed_work_sync(&hevc->stall_work);
 	mutex_lock(&hevc->lock);
 	codec_hevc_flush_output(sess);
 
@@ -1221,7 +1273,6 @@ static void codec_hevc_set_ref_list(struct amvdec_session *sess,
 				ref_frame = cur_frame;
 		}
 
-
 		if (codec_hevc_use_fbc(sess->pixfmt_cap, hevc->is_10bit)) {
 			buf_id_y = ref_frame->vbuf->vb2_buf.index;
 			buf_id_uv = buf_id_y;
@@ -1373,8 +1424,155 @@ static int codec_hevc_skip_slice(struct amvdec_session *sess)
 	amvdec_clear_dos_bits(core, HEVC_WAIT_FLAG, BIT(1));
 	amvdec_write_dos(core, HEVC_DEC_STATUS_REG, HEVC_ACTION_DONE);
 	amvdec_write_dos(core, HEVC_MCPU_INTR_REQ, AMRISC_MAIN_REQ);
+	codec_hevc_stall_arm(sess->priv);
 
 	return 0;
+}
+
+/* (Re)arm the stall watchdog: the firmware now owes us an interrupt */
+static void codec_hevc_stall_arm(struct codec_hevc *hevc)
+{
+	if (atomic_read(&hevc->stall_state) == STALL_DISABLED)
+		return;
+	hevc->stall_lcu = 0xffffffff;
+	hevc->stall_ticks = 0;
+	atomic_set(&hevc->stall_state, STALL_ARMED);
+	mod_delayed_work(system_wq, &hevc->stall_work,
+			 msecs_to_jiffies(STALL_TIMEOUT_MS));
+}
+
+/*
+ * In-session stall recovery (vendor decode-timeout protocol): halt
+ * the processors with full DMA/write drains, preserve the stream
+ * position across a hard core reset, drop the poisoned in-flight
+ * frame, re-init the protocol registers, and send the firmware back
+ * into NAL search at the same stream position.  The client never
+ * sees an error - playback continues at the next keyframe.
+ * Called with hevc->lock held.
+ */
+static void codec_hevc_stall_recover(struct amvdec_session *sess)
+{
+	struct codec_hevc *hevc = sess->priv;
+	struct amvdec_core *core = sess->core;
+	u32 s_start, s_end, s_rd, s_wr, s_ctrl, s_fifo, s_shift;
+	int i;
+
+	/* Halt the firmware processors and drain their DMA + writes */
+	amvdec_write_dos(core, HEVC_MPSR, 0);
+	amvdec_write_dos(core, HEVC_CPSR, 0);
+	for (i = 0; i < 1000; i++) {
+		if (!(amvdec_read_dos(core, HEVC_IMEM_DMA_CTRL) & 0x8000))
+			break;
+		udelay(10);
+	}
+
+	/* The core reset wipes parser state - preserve stream position */
+	s_start = amvdec_read_dos(core, HEVC_STREAM_START_ADDR);
+	s_end	= amvdec_read_dos(core, HEVC_STREAM_END_ADDR);
+	s_rd	= amvdec_read_dos(core, HEVC_STREAM_RD_PTR);
+	s_wr	= amvdec_read_dos(core, HEVC_STREAM_WR_PTR);
+	s_ctrl	= amvdec_read_dos(core, HEVC_STREAM_CONTROL);
+	s_fifo	= amvdec_read_dos(core, HEVC_STREAM_FIFO_CTL);
+	s_shift = amvdec_read_dos(core, HEVC_SHIFT_BYTE_COUNT);
+
+	vdec_hevc_quiesce_reset(core);
+
+	amvdec_write_dos(core, HEVC_STREAM_START_ADDR, s_start);
+	amvdec_write_dos(core, HEVC_STREAM_END_ADDR, s_end);
+	amvdec_write_dos(core, HEVC_STREAM_RD_PTR, s_rd);
+	amvdec_write_dos(core, HEVC_STREAM_WR_PTR, s_wr);
+	amvdec_write_dos(core, HEVC_STREAM_FIFO_CTL, s_fifo);
+	amvdec_write_dos(core, HEVC_STREAM_CONTROL, s_ctrl);
+	amvdec_write_dos(core, HEVC_SHIFT_BYTE_COUNT, s_shift);
+
+	/* Drop the poisoned in-flight frame, recycle its buffer */
+	if (hevc->cur_frame) {
+		struct hevc_frame *f = hevc->cur_frame;
+
+		if (hevc->col_frame == f)
+			hevc->col_frame = NULL;
+		list_del(&f->list);
+		hevc->frames_num--;
+		v4l2_m2m_buf_queue(sess->m2m_ctx, f->vbuf);
+		kfree(f);
+		hevc->cur_frame = NULL;
+	}
+
+	/* Re-init protocol + buffer tables (no reallocation) */
+	codec_hevc_hw_init(sess);
+	codec_hevc_setup_buffers(sess, &hevc->common, hevc->is_10bit);
+	codec_hevc_setup_workspace(sess, hevc);
+	codec_hevc_setup_decode_head(sess, hevc->is_10bit);
+
+	/* Firmware IMEM survives the targeted reset: revector + run */
+	amvdec_write_dos(core, HEVC_DEC_STATUS_REG, HEVC_ACTION_DONE);
+	amvdec_write_dos(core, DOS_SW_RESET3, BIT(12) | BIT(11));
+	amvdec_write_dos(core, DOS_SW_RESET3, 0);
+	amvdec_read_dos(core, DOS_SW_RESET3);
+	amvdec_write_dos(core, HEVC_MPSR, 1);
+
+	hevc->stall_recoveries++;
+}
+
+static void codec_hevc_stall_work(struct work_struct *work)
+{
+	struct codec_hevc *hevc = container_of(to_delayed_work(work),
+					       struct codec_hevc,
+					       stall_work);
+	struct amvdec_session *sess = hevc->sess;
+	struct amvdec_core *core = sess->core;
+	u32 status, lcu;
+
+	if (atomic_read(&hevc->stall_state) != STALL_ARMED)
+		return;
+
+	status = amvdec_read_dos(core, HEVC_DEC_STATUS_REG);
+
+	/*
+	 * Benign states: 0x8/0xa = the driver owes the next action;
+	 * ACTION_DONE/0 = firmware idle in NAL search, waiting for
+	 * more stream data (starvation is not a stall).
+	 */
+	if (status == HEVC_SLICE_SEGMENT_DONE ||
+	    status == HEVC_DECPIC_DATA_DONE ||
+	    status == HEVC_ACTION_DONE ||
+	    status == 0) {
+		mod_delayed_work(system_wq, &hevc->stall_work,
+				 msecs_to_jiffies(STALL_TIMEOUT_MS));
+		return;
+	}
+
+	/* CABAC slice-data decode gets an LCU-progress grace protocol */
+	if (status == HEVC_CODED_SLICE_SEGMENT_DAT) {
+		lcu = amvdec_read_dos(core, HEVC_PARSER_LCU_START) & 0xffffff;
+		if (lcu != hevc->stall_lcu) {
+			hevc->stall_lcu = lcu;
+			hevc->stall_ticks = 0;
+			mod_delayed_work(system_wq, &hevc->stall_work,
+					 msecs_to_jiffies(STALL_TIMEOUT_MS));
+			return;
+		}
+		if (++hevc->stall_ticks < 2) {
+			mod_delayed_work(system_wq, &hevc->stall_work,
+					 msecs_to_jiffies(STALL_GRACE_MS));
+			return;
+		}
+	}
+
+	/* Claim the stall - a late IRQ from here on is discarded */
+	if (atomic_cmpxchg(&hevc->stall_state, STALL_ARMED,
+			   STALL_PROCESSING) != STALL_ARMED)
+		return;
+
+	mutex_lock(&hevc->lock);
+	dev_warn(core->dev,
+		 "decode stall (status=%08x lcu=%06x) - recovering in place\n",
+		 status, amvdec_read_dos(core, HEVC_PARSER_LCU_START));
+	codec_hevc_stall_recover(sess);
+	mutex_unlock(&hevc->lock);
+
+	atomic_set(&hevc->stall_state, STALL_IDLE);
+	codec_hevc_stall_arm(hevc);
 }
 
 static int codec_hevc_process_segment(struct amvdec_session *sess)
@@ -1422,7 +1620,6 @@ static int codec_hevc_process_segment(struct amvdec_session *sess)
 		hevc->cur_frame->cur_slice_idx++;
 	}
 
-
 	codec_hevc_update_frame_refs(sess, hevc->cur_frame);
 	codec_hevc_update_col_frame(hevc);
 	codec_hevc_update_ldc_flag(hevc);
@@ -1442,6 +1639,7 @@ static int codec_hevc_process_segment(struct amvdec_session *sess)
 
 	/* Interrupt the firmware's processor */
 	amvdec_write_dos(core, HEVC_MCPU_INTR_REQ, AMRISC_MAIN_REQ);
+	codec_hevc_stall_arm(hevc);
 
 	return 0;
 }
@@ -1585,6 +1783,17 @@ unlock:
 
 static irqreturn_t codec_hevc_isr(struct amvdec_session *sess)
 {
+	struct codec_hevc *hevc = sess->priv;
+
+	if (hevc) {
+		/* Disarm the stall watchdog; discard a late IRQ if the
+		 * recovery already claimed this run of the firmware.
+		 */
+		if (atomic_cmpxchg(&hevc->stall_state, STALL_ARMED,
+				   STALL_IDLE) == STALL_PROCESSING)
+			return IRQ_HANDLED;
+	}
+
 	return IRQ_WAKE_THREAD;
 }
 
