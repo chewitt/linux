@@ -953,12 +953,35 @@ static int vdec_close(struct file *file)
 	return 0;
 }
 
+static __poll_t vdec_fop_poll(struct file *file, poll_table *wait)
+{
+	struct amvdec_session *sess =
+		container_of(file->private_data, struct amvdec_session, fh);
+	__poll_t ret = v4l2_m2m_fop_poll(file, wait);
+
+	/*
+	 * Until the CAPTURE queue has streamed for the first time, an
+	 * empty-queues state is the normal "waiting for the initial
+	 * source-change event" phase of a stateful decoder: the OUTPUT
+	 * buffers holding the header have been consumed by the esparser
+	 * while the firmware is still parsing.  The m2m poll helper
+	 * reports that transient state as EPOLLERR, which userspace
+	 * (GStreamer) treats as fatal - whether the window is hit is a
+	 * race against the parser, failing sessions at random.  Mask the
+	 * spurious error until capture streams.
+	 */
+	if (!sess->streamon_cap && (ret & EPOLLERR))
+		ret &= ~EPOLLERR;
+
+	return ret;
+}
+
 static const struct v4l2_file_operations vdec_fops = {
 	.owner = THIS_MODULE,
 	.open = vdec_open,
 	.release = vdec_close,
 	.unlocked_ioctl = video_ioctl2,
-	.poll = v4l2_m2m_fop_poll,
+	.poll = vdec_fop_poll,
 	.mmap = v4l2_m2m_fop_mmap,
 };
 
@@ -966,7 +989,6 @@ static irqreturn_t vdec_isr(int irq, void *data)
 {
 	struct amvdec_core *core = data;
 	struct amvdec_session *sess = core->cur_sess;
-
 	sess->last_irq_jiffies = get_jiffies_64();
 
 	return sess->fmt_out->codec_ops->isr(sess);
