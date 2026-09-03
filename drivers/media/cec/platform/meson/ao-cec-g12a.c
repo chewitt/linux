@@ -17,6 +17,7 @@
 #include <linux/of.h>
 #include <linux/of_platform.h>
 #include <linux/platform_device.h>
+#include <linux/property.h>
 #include <linux/types.h>
 #include <linux/interrupt.h>
 #include <linux/reset.h>
@@ -629,6 +630,35 @@ static const struct cec_adap_ops meson_ao_cec_g12a_ops = {
 	.adap_transmit = meson_ao_cec_g12a_transmit,
 };
 
+/*
+ * ACPI: DT names the HDMI transmitter with an "hdmi-phandle" phandle,
+ * which cec_notifier_parse_hdmi_phandle() can only resolve from an
+ * of_node.  Firmware states the same fact as a _DSD device reference
+ * under the same property name; resolve it to the dw-hdmi platform
+ * device.  Like the core helper, the returned pointer is ONLY a key
+ * into the cec_notifiers list (never dereferenced), so the reference
+ * is dropped before returning.  The provider side (the meson HDMI
+ * encoder) registers its notifier against the same device - pointer
+ * identity is the notifier contract.
+ */
+static struct device *meson_ao_cec_g12a_acpi_hdmi_dev(struct device *dev)
+{
+	struct fwnode_handle *fwnode;
+	struct device *hdmi_dev;
+
+	fwnode = fwnode_find_reference(dev_fwnode(dev), "hdmi-phandle", 0);
+	if (IS_ERR(fwnode))
+		return ERR_PTR(-ENODEV);
+
+	hdmi_dev = bus_find_device_by_fwnode(&platform_bus_type, fwnode);
+	fwnode_handle_put(fwnode);
+	if (!hdmi_dev)
+		return ERR_PTR(-EPROBE_DEFER);
+
+	put_device(hdmi_dev);
+	return hdmi_dev;
+}
+
 static int meson_ao_cec_g12a_probe(struct platform_device *pdev)
 {
 	struct meson_ao_cec_g12a_device *ao_cec;
@@ -636,7 +666,10 @@ static int meson_ao_cec_g12a_probe(struct platform_device *pdev)
 	void __iomem *base;
 	int ret, irq;
 
-	hdmi_dev = cec_notifier_parse_hdmi_phandle(&pdev->dev);
+	if (pdev->dev.of_node)
+		hdmi_dev = cec_notifier_parse_hdmi_phandle(&pdev->dev);
+	else
+		hdmi_dev = meson_ao_cec_g12a_acpi_hdmi_dev(&pdev->dev);
 	if (IS_ERR(hdmi_dev))
 		return PTR_ERR(hdmi_dev);
 
@@ -644,7 +677,7 @@ static int meson_ao_cec_g12a_probe(struct platform_device *pdev)
 	if (!ao_cec)
 		return -ENOMEM;
 
-	ao_cec->data = of_device_get_match_data(&pdev->dev);
+	ao_cec->data = device_get_match_data(&pdev->dev);
 	if (!ao_cec->data) {
 		dev_err(&pdev->dev, "failed to get match data\n");
 		return -ENODEV;
@@ -693,11 +726,40 @@ static int meson_ao_cec_g12a_probe(struct platform_device *pdev)
 		goto out_probe_adapter;
 	}
 
-	ao_cec->oscin = devm_clk_get(&pdev->dev, "oscin");
-	if (IS_ERR(ao_cec->oscin)) {
-		dev_err(&pdev->dev, "oscin clock request failed\n");
-		ret = PTR_ERR(ao_cec->oscin);
-		goto out_probe_adapter;
+	if (pdev->dev.of_node) {
+		ao_cec->oscin = devm_clk_get(&pdev->dev, "oscin");
+		if (IS_ERR(ao_cec->oscin)) {
+			dev_err(&pdev->dev, "oscin clock request failed\n");
+			ret = PTR_ERR(ao_cec->oscin);
+			goto out_probe_adapter;
+		}
+	} else {
+		/*
+		 * ACPI: DT's oscin is CLKID_AO_CTS_OSCIN - a READ-ONLY
+		 * gate on the 24 MHz xtal that Linux never toggles even
+		 * in DT mode - and the AO clock controller has no ACPI
+		 * port.  A fixed-rate stand-in loses nothing; the rate
+		 * is a firmware _DSD fact.  The driver's own dual-divider
+		 * (registered by meson_ao_cec_g12a_setup_clk over this
+		 * device's OWN register window) hangs off it by name.
+		 */
+		struct clk_hw *hw;
+		u32 rate = 24000000;
+
+		device_property_read_u32(&pdev->dev, "oscin-frequency",
+					 &rate);
+
+		hw = devm_clk_hw_register_fixed_rate(&pdev->dev,
+				devm_kasprintf(&pdev->dev, GFP_KERNEL,
+					       "%s#oscin",
+					       dev_name(&pdev->dev)),
+				NULL, 0, rate);
+		if (IS_ERR(hw)) {
+			ret = PTR_ERR(hw);
+			goto out_probe_adapter;
+		}
+
+		ao_cec->oscin = hw->clk;
 	}
 
 	ret = meson_ao_cec_g12a_setup_clk(ao_cec);
