@@ -273,7 +273,21 @@ int amvdec_set_canvases(struct amvdec_session *sess,
 	int i = 0;
 	int ret;
 
+	for (i = 0; i < ARRAY_SIZE(sess->vb2_idx_to_fw_idx); ++i)
+		sess->vb2_idx_to_fw_idx[i] = VB2_IDX_UNMAPPED;
+	i = 0;
+
 	v4l2_m2m_for_each_dst_buf(sess->m2m_ctx, buf) {
+		u32 vb2_idx = buf->vb.vb2_buf.index;
+
+		if (i >= ARRAY_SIZE(sess->fw_idx_to_vb2_idx) ||
+		    vb2_idx >= ARRAY_SIZE(sess->vb2_idx_to_fw_idx)) {
+			dev_err(sess->core->dev,
+				"Too many CAPTURE buffers to map (fw %d, vb2 %u)\n",
+				i, vb2_idx);
+			return -EINVAL;
+		}
+
 		if (!reg_base[reg_base_cur])
 			return -EINVAL;
 
@@ -304,7 +318,9 @@ int amvdec_set_canvases(struct amvdec_session *sess,
 			reg_num_cur = 0;
 		}
 
-		sess->fw_idx_to_vb2_idx[i++] = buf->vb.vb2_buf.index;
+		sess->fw_idx_to_vb2_idx[i] = vb2_idx;
+		sess->vb2_idx_to_fw_idx[vb2_idx] = i;
+		i++;
 	}
 
 	return 0;
