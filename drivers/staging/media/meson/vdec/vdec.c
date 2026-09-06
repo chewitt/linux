@@ -69,10 +69,39 @@ static int vdec_recycle_thread(void *data)
 	while (!kthread_should_stop()) {
 		mutex_lock(&sess->bufs_recycle_lock);
 		list_for_each_entry_safe(tmp, n, &sess->bufs_recycle, list) {
+			u32 vb2_idx = tmp->vb->index;
+			u32 fw_idx;
+
 			if (!codec_ops->can_recycle(core))
 				break;
 
-			codec_ops->recycle(core, tmp->vb->index);
+			/*
+			 * The firmware addresses CAPTURE buffers by the canvas
+			 * slot it was given in amvdec_set_canvases(), not by
+			 * the vb2 index.  Those two spaces are only the same
+			 * while the buffers happen to have been queued in
+			 * index order, which is true on a first play and not
+			 * after a seek - userspace returns buffers in whatever
+			 * order the renderer lets go of them.
+			 *
+			 * Handing the firmware a vb2 index then frees the
+			 * wrong slot: it writes the next frame into a buffer
+			 * the display is still scanning out (visible
+			 * corruption), while the slot that really was free is
+			 * never returned, so the firmware runs out and starts
+			 * reusing buffers userspace still owns.
+			 */
+			fw_idx = vb2_idx < ARRAY_SIZE(sess->vb2_idx_to_fw_idx) ?
+				 sess->vb2_idx_to_fw_idx[vb2_idx] :
+				 VB2_IDX_UNMAPPED;
+			if (fw_idx == VB2_IDX_UNMAPPED) {
+				/* Never given to the firmware: nothing to free */
+				list_del(&tmp->list);
+				kfree(tmp);
+				continue;
+			}
+
+			codec_ops->recycle(core, fw_idx);
 			list_del(&tmp->list);
 			kfree(tmp);
 		}

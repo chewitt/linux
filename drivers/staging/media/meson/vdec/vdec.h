@@ -190,6 +190,9 @@ enum amvdec_status {
 	STATUS_NEEDS_RESUME,
 };
 
+/* No firmware buffer index is mapped to this vb2 buffer */
+#define VB2_IDX_UNMAPPED	U32_MAX
+
 /**
  * struct amvdec_session - decoding session parameters
  *
@@ -238,6 +241,9 @@ enum amvdec_status {
  * @last_offset: tracks last offset of vififo
  * @wrap_count: number of times the vififo wrapped around
  * @fw_idx_to_vb2_idx: firmware buffer index to vb2 buffer index
+ * @vb2_idx_to_fw_idx: vb2 buffer index to firmware buffer index, the
+ *	inverse of @fw_idx_to_vb2_idx.  VB2_IDX_UNMAPPED for a buffer the
+ *	firmware was never given a canvas for.
  * @status: current decoding status
  * @priv: codec private data
  */
@@ -296,6 +302,7 @@ struct amvdec_session {
 	u32 last_offset;
 	u32 wrap_count;
 	u32 fw_idx_to_vb2_idx[32];
+	u32 vb2_idx_to_fw_idx[32];
 
 	enum amvdec_status status;
 	void *priv;
