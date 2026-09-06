@@ -1734,12 +1734,28 @@ static int codec_hevc_stall_recover(struct amvdec_session *sess)
 	codec_hevc_setup_workspace(sess, hevc);
 	codec_hevc_setup_decode_head(sess, hevc->is_10bit);
 
-	/* Firmware IMEM survives the targeted reset: revector + run */
-	amvdec_write_dos(core, HEVC_DEC_STATUS_REG, HEVC_ACTION_DONE);
+	/*
+	 * Firmware IMEM survives the targeted reset: revector + run,
+	 * in exactly the order and with exactly the register state a cold
+	 * start uses (vdec_hevc_start(): codec start, then this reset pair,
+	 * then MPSR).  codec_hevc_hw_init() above has already left
+	 * HEVC_DEC_STATUS_REG at 0 and HEVC_WAIT_FLAG at 1, which is the
+	 * state the firmware expects to come up in: nothing pending from
+	 * the host, go and search for a picture.
+	 *
+	 * Do not write ACTION_DONE here.  That value is a reply to an
+	 * interrupt the firmware has raised, and it is consumed only when
+	 * the host also kicks HEVC_MCPU_INTR_REQ - see
+	 * codec_hevc_skip_slice(), which does both.  After a reset there is
+	 * no raised interrupt to reply to, so the firmware started running
+	 * and never looked at the register again.
+	 */
 	amvdec_write_dos(core, DOS_SW_RESET3, BIT(12) | BIT(11));
 	amvdec_write_dos(core, DOS_SW_RESET3, 0);
 	amvdec_read_dos(core, DOS_SW_RESET3);
 	amvdec_write_dos(core, HEVC_MPSR, 1);
+	/* Let the firmware settle, as the cold start does */
+	usleep_range(10, 20);
 
 	/*
 	 * The firmware is back in NAL search at the same stream position,
