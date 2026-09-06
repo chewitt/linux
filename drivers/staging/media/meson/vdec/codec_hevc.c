@@ -1592,17 +1592,40 @@ static void codec_hevc_stall_work(struct work_struct *work)
 	status = amvdec_read_dos(core, HEVC_DEC_STATUS_REG);
 
 	/*
-	 * Benign states: 0x8/0xa = the driver owes the next action;
-	 * ACTION_DONE/0 = firmware idle in NAL search, waiting for
-	 * more stream data (starvation is not a stall).
+	 * 0x8/0xa mean the driver owes the next action, and it is about to
+	 * take it from the threaded ISR - never a stall.
 	 */
 	if (status == HEVC_SLICE_SEGMENT_DONE ||
-	    status == HEVC_DECPIC_DATA_DONE ||
-	    status == HEVC_ACTION_DONE ||
-	    status == 0) {
+	    status == HEVC_DECPIC_DATA_DONE) {
 		mod_delayed_work(system_dfl_wq, &hevc->stall_work,
 				 msecs_to_jiffies(STALL_TIMEOUT_MS));
 		return;
+	}
+
+	/*
+	 * ACTION_DONE/0 means the firmware is idle in NAL search. That is
+	 * starvation - and not a stall - only while there is nothing queued
+	 * for it to find. With source buffers sitting in the ESPARSER it has
+	 * work and is not doing it, which is a wedge.
+	 *
+	 * This matters because codec_hevc_skip_slice() parks the status at
+	 * ACTION_DONE and kicks the firmware, and that is the path taken for
+	 * every slice skipped while resynchronising to an IRAP. If the
+	 * firmware stops answering the kick, the driver waits for an
+	 * interrupt that never arrives while the watchdog re-arms forever,
+	 * and playback stops with no diagnostic at all - userspace just sees
+	 * EAGAIN from every dequeue.
+	 *
+	 * Observed on a stream carrying one malformed frame: status pinned
+	 * at 0xFF and the vdec interrupt count frozen for as long as it was
+	 * watched, with input still queued.
+	 */
+	if (status == HEVC_ACTION_DONE || status == 0) {
+		if (!atomic_read(&sess->esparser_queued_bufs)) {
+			mod_delayed_work(system_dfl_wq, &hevc->stall_work,
+					 msecs_to_jiffies(STALL_TIMEOUT_MS));
+			return;
+		}
 	}
 
 	/*
