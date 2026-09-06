@@ -264,6 +264,7 @@ struct codec_hevc {
 	struct delayed_work stall_work;
 	atomic_t stall_state;
 	u32 stall_lcu;
+	u32 stall_status;
 	u32 stall_ticks;
 	u32 stall_recoveries;
 
@@ -1462,6 +1463,7 @@ static void codec_hevc_stall_arm(struct codec_hevc *hevc)
 	if (atomic_read(&hevc->stall_state) == STALL_DISABLED)
 		return;
 	hevc->stall_lcu = 0xffffffff;
+	hevc->stall_status = 0xffffffff;
 	hevc->stall_ticks = 0;
 	atomic_set(&hevc->stall_state, STALL_ARMED);
 	mod_delayed_work(system_wq, &hevc->stall_work,
@@ -1569,21 +1571,39 @@ static void codec_hevc_stall_work(struct work_struct *work)
 		return;
 	}
 
-	/* CABAC slice-data decode gets an LCU-progress grace protocol */
-	if (status == HEVC_CODED_SLICE_SEGMENT_DAT) {
-		lcu = amvdec_read_dos(core, HEVC_PARSER_LCU_START) & 0xffffff;
-		if (lcu != hevc->stall_lcu) {
-			hevc->stall_lcu = lcu;
-			hevc->stall_ticks = 0;
-			mod_delayed_work(system_wq, &hevc->stall_work,
-					 msecs_to_jiffies(STALL_TIMEOUT_MS));
-			return;
-		}
-		if (++hevc->stall_ticks < 2) {
-			mod_delayed_work(system_wq, &hevc->stall_work,
-					 msecs_to_jiffies(STALL_GRACE_MS));
-			return;
-		}
+	/*
+	 * Everything else is one of the firmware's in-flight states - NAL
+	 * header parse (VPS/SPS/PPS/SEI/slice segment), slice decode, NAL
+	 * search.  They are all perfectly normal, and this poll runs
+	 * asynchronously to the decode, so landing on one says nothing on
+	 * its own.  A stall is by definition an absence of progress over
+	 * time, so never claim one from a single observation: require the
+	 * status AND the LCU counter to be unchanged across consecutive
+	 * samples first.
+	 *
+	 * Getting this wrong is expensive rather than merely noisy.  A
+	 * false stall runs the recovery, which drops the in-flight frame;
+	 * every later frame that referenced it then misses
+	 * ("Couldn't find ref. frame N") and gets a substitute, so a
+	 * healthy stream visibly corrupts until the next IRAP.  Observed
+	 * on a 127s 4K HDR stream, where a single sample of state 0x4
+	 * (HEVC_NAL_UNIT_CODED_SLICE_SEGMENT) triggered recovery and 32
+	 * reference misses immediately after.
+	 */
+	lcu = amvdec_read_dos(core, HEVC_PARSER_LCU_START) & 0xffffff;
+	if (lcu != hevc->stall_lcu || status != hevc->stall_status) {
+		hevc->stall_lcu = lcu;
+		hevc->stall_status = status;
+		hevc->stall_ticks = 0;
+		mod_delayed_work(system_wq, &hevc->stall_work,
+				 msecs_to_jiffies(STALL_TIMEOUT_MS));
+		return;
+	}
+
+	if (++hevc->stall_ticks < 3) {
+		mod_delayed_work(system_wq, &hevc->stall_work,
+				 msecs_to_jiffies(STALL_GRACE_MS));
+		return;
 	}
 
 	/* Claim the stall - a late IRQ from here on is discarded */
