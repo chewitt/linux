@@ -2140,9 +2140,6 @@ static irqreturn_t codec_vp9_threaded_isr(struct amvdec_session *sess)
 
 	codec_vp9_fetch_rpm(sess);
 	if (codec_vp9_process_rpm(vp9)) {
-		amvdec_src_change(sess, vp9->width, vp9->height, 16,
-				  vp9->is_10bit ? 10 : 8);
-
 		/* No frame is actually processed */
 		vp9->cur_frame = NULL;
 
@@ -2153,7 +2150,18 @@ static irqreturn_t codec_vp9_threaded_isr(struct amvdec_session *sess)
 		if (vp9->frames_num)
 			codec_vp9_save_refs(vp9);
 
-		goto unlock;
+		/*
+		 * amvdec_src_change() calls ->resume() directly when the
+		 * capture queue already suits the new format, and
+		 * codec_vp9_resume() takes vp9->lock - which this thread is
+		 * holding.  Drop it first: the pending frame has been shown
+		 * and the refs saved, so there is nothing left here that the
+		 * lock protects.
+		 */
+		mutex_unlock(&vp9->lock);
+		amvdec_src_change(sess, vp9->width, vp9->height, 16,
+				  vp9->is_10bit ? 10 : 8);
+		return IRQ_HANDLED;
 	}
 
 	codec_vp9_process_lf(vp9);
