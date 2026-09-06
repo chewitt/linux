@@ -551,24 +551,30 @@ void amvdec_src_change(struct amvdec_session *sess, u32 width,
 
 	v4l2_ctrl_s_ctrl(sess->ctrl_min_buf_capture, dpb_size);
 
-	sess->bitdepth = bitdepth;
-
 	/*
-	 * Check if the capture queue is already configured well for our
-	 * usecase. If so, keep decoding with it.
+	 * If the capture queue is already configured for exactly this
+	 * stream - same geometry, same bit depth, enough buffers, still
+	 * streaming - keep decoding with it and tell userspace nothing.
+	 * Every client that honours SOURCE_CHANGE stops the CAPTURE queue
+	 * in response, and ffmpeg's v4l2m2m additionally reallocates every
+	 * capture buffer for this driver (FF_V4L2_QUIRK_REINIT_ALWAYS), so
+	 * an event for a change that did not happen costs a full 4K buffer
+	 * set each time.  VP9 re-announces its geometry on every seek.
 	 */
 	if (sess->streamon_cap &&
 	    sess->width == width &&
 	    sess->height == height &&
+	    sess->bitdepth == bitdepth &&
 	    dpb_size <= sess->num_dst_bufs) {
 		sess->fmt_out->codec_ops->resume(sess);
-	} else {
-		sess->status = STATUS_NEEDS_RESUME;
-		sess->changed_format = 0;
+		return;
 	}
 
+	sess->bitdepth = bitdepth;
 	sess->width = width;
 	sess->height = height;
+	sess->status = STATUS_NEEDS_RESUME;
+	sess->changed_format = 0;
 
 	dev_dbg(sess->core->dev, "Res. changed (%ux%u), DPB %u, bitdepth %u\n",
 		width, height, dpb_size, bitdepth);
