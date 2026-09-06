@@ -150,12 +150,33 @@ static struct fbc_chunk *fbc_chunk_get_pressure_locked(struct device *dev)
 	if (c)
 		return c;
 
-	if (list_empty(&fbc_pool.park[0]) && list_empty(&fbc_pool.park[1]))
+	/*
+	 * Only the aged-out generation may be recycled.
+	 *
+	 * park[0] is what the session that just stopped was displaying, and
+	 * the CAPTURE buffers it backs can still be on screen - that is the
+	 * entire reason it is parked instead of freed.  Handing those chunks
+	 * to a new session lets its firmware DMA into memory the display is
+	 * scanning out and, worse, leaves them on the pool's free list, where
+	 * the next codec_hevc_free_fbc_buffers() dma_free_coherent()s them
+	 * while they are still referenced.  Those pages go back to CMA live,
+	 * and the damage surfaces later in whatever the allocator hands them
+	 * to next - a BUG in set_buddy_order()/is_free_buddy_page() reached
+	 * from an unrelated process's write path.
+	 *
+	 * park[1] has already been displaced by a newer generation, and is
+	 * exactly what free_fbc_buffers() releases on the next session stop,
+	 * so reusing it here matches that lifetime.
+	 *
+	 * If that is not enough, fail: a clean -ENOMEM is a far better
+	 * outcome than corrupting memory this driver does not own.
+	 */
+	if (list_empty(&fbc_pool.park[1]))
 		return NULL;
 
 	list_splice_tail_init(&fbc_pool.park[1], &fbc_pool.free);
-	list_splice_tail_init(&fbc_pool.park[0], &fbc_pool.free);
-	dev_warn_once(dev, "CMA pressure: recycled parked FBC chunks\n");
+	dev_warn_once(dev,
+		      "CMA pressure: recycled the aged-out FBC generation\n");
 
 	return fbc_chunk_get_locked(dev);
 }
