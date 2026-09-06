@@ -388,6 +388,17 @@ static void codec_hevc_update_frame_refs(struct amvdec_session *sess,
 		else
 			cidx = i % total_num;
 
+		/*
+		 * list_entry_l0[] is a bitstream field that the hardware RPM
+		 * hands over unvalidated, and ref_picset0/1 are 16-entry
+		 * arrays on the kernel stack.  H.265 requires the entry to
+		 * index the current reference picture set; a stream that
+		 * says otherwise would read hundreds of kilobytes past them.
+		 * Fall back to the unmodified order rather than trusting it.
+		 */
+		if (cidx >= total_num)
+			cidx = i % total_num;
+
 		frame->ref_poc_list[0][frame->cur_slice_idx][i] =
 			cidx >= num_neg ? ref_picset1[cidx - num_neg] :
 			ref_picset0[cidx];
@@ -404,6 +415,10 @@ static void codec_hevc_update_frame_refs(struct amvdec_session *sess,
 				cidx = mod_list[num_ref_idx_l0_active + i];
 			else
 				cidx = mod_list[i];
+
+			/* see the l0 loop */
+			if (cidx >= total_num)
+				cidx = i % total_num;
 
 			frame->ref_poc_list[1][frame->cur_slice_idx][i] =
 				(cidx >= num_pos) ? ref_picset0[cidx - num_pos]
