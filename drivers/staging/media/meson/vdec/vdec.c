@@ -415,9 +415,26 @@ static int vdec_start_streaming(struct vb2_queue *q, unsigned int count)
 	if (!codec_ops->resume && !sess->streamon_cap)
 		return 0;
 
+	/*
+	 * Resume when the CAPTURE queue comes back up, whatever userspace
+	 * did with its buffers in between.
+	 *
+	 * This also required changed_format, which is set from queue_setup()
+	 * - so the decoder only ever resumed for a client that had gone all
+	 * the way round REQBUFS again.  The stateful decoder interface does
+	 * not ask for that: after a source change a client may keep the
+	 * buffers it has if they still fit, and simply STREAMON.  Kodi does
+	 * exactly that on a seek, so the decoder stayed in NEEDS_RESUME for
+	 * good - firmware parked on the first slice segment of the new
+	 * position, one interrupt taken and never another, while the player
+	 * ran its clock on at 1x over a picture that had stopped.  It reads
+	 * as a hardware wedge and is a handshake the driver invented.
+	 *
+	 * codec_ops->resume() reprograms the buffer registers from whatever
+	 * is on the CAPTURE queue now, so it does not need the REQBUFS.
+	 */
 	if (sess->status == STATUS_NEEDS_RESUME &&
-	    q->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE &&
-	    sess->changed_format) {
+	    q->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) {
 		codec_ops->resume(sess);
 		sess->status = STATUS_RUNNING;
 		return 0;
