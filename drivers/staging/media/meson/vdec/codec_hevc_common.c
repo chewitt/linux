@@ -35,6 +35,10 @@
 #define FBC_CHUNK_PAGES	256u
 #define FBC_CHUNK_SIZE	(FBC_CHUNK_PAGES << PAGE_SHIFT)	/* 1 MiB */
 
+static unsigned int
+codec_hevc_capture_buffers(struct amvdec_session *sess,
+			   struct vb2_buffer *bufs[MAX_REF_PIC_NUM]);
+
 struct fbc_chunk {
 	struct list_head list;
 	void *vaddr;
@@ -305,37 +309,67 @@ static void codec_hevc_setup_buffers_gxl(struct amvdec_session *sess,
 					 int is_10bit)
 {
 	struct amvdec_core *core = sess->core;
-	struct v4l2_m2m_buffer *buf;
+	struct vb2_buffer *bufs[MAX_REF_PIC_NUM];
 	u32 pixfmt_cap = sess->pixfmt_cap;
 	const u32 revision = core->platform->revision;
+	const bool fbc = codec_hevc_use_fbc(pixfmt_cap, is_10bit);
+	dma_addr_t fill_y = 0, fill_uv = 0;
+	unsigned int idx, n;
 	int i;
+
+	/*
+	 * The ANC2AXI table auto-increments from slot 0, and the reference
+	 * lists address it by vb2_buf.index (index*2 / index*2+1 for the
+	 * two-plane formats).  So it must be written densely, one slot per
+	 * index, exactly as the vendor driver does over MAX_REF_PIC_NUM -
+	 * not one slot per queued buffer in queue order, which scrambles
+	 * every slot after the first buffer that happens to be absent.
+	 *
+	 * A slot with no buffer behind it is never referenced by a correct
+	 * decode; point it at a real buffer anyway so that a corrupt
+	 * reference reads valid memory instead of address zero.
+	 */
+	n = codec_hevc_capture_buffers(sess, bufs);
+	if (!n)
+		return;
 
 	amvdec_write_dos(core, HEVCD_MPP_ANC2AXI_TBL_CONF_ADDR,
 			 BIT(2) | BIT(1));
 
-	v4l2_m2m_for_each_dst_buf(sess->m2m_ctx, buf) {
-		struct vb2_buffer *vb = &buf->vb.vb2_buf;
-		dma_addr_t buf_y_paddr = 0;
-		dma_addr_t buf_uv_paddr = 0;
-		u32 idx = vb->index;
+	for (idx = 0; idx < n; idx++) {
+		struct vb2_buffer *vb = bufs[idx];
+		dma_addr_t buf_y_paddr, buf_uv_paddr = 0;
 
-		if (codec_hevc_use_downsample(pixfmt_cap, is_10bit)) {
-			if (codec_hevc_use_mmu(revision, pixfmt_cap, is_10bit))
-				buf_y_paddr = comm->mmu_header_paddr[idx];
-			else
-				buf_y_paddr = comm->fbc_buffer_paddr[idx];
-		} else {
-			buf_y_paddr = vb2_dma_contig_plane_dma_addr(vb, 0);
+		if (vb) {
+			if (codec_hevc_use_downsample(pixfmt_cap, is_10bit)) {
+				if (codec_hevc_use_mmu(revision, pixfmt_cap,
+						       is_10bit))
+					buf_y_paddr = comm->mmu_header_paddr[idx];
+				else
+					buf_y_paddr = comm->fbc_buffer_paddr[idx];
+			} else {
+				buf_y_paddr = vb2_dma_contig_plane_dma_addr(vb, 0);
+			}
+			if (!fbc)
+				buf_uv_paddr =
+					vb2_dma_contig_plane_dma_addr(vb, 1);
+
+			if (!fill_y && buf_y_paddr) {
+				fill_y = buf_y_paddr;
+				fill_uv = buf_uv_paddr;
+			}
+		}
+
+		if (!vb || !buf_y_paddr) {
+			buf_y_paddr = fill_y;
+			buf_uv_paddr = fill_uv;
 		}
 
 		amvdec_write_dos(core, HEVCD_MPP_ANC2AXI_TBL_DATA,
 				 buf_y_paddr >> 5);
-
-		if (!codec_hevc_use_fbc(pixfmt_cap, is_10bit)) {
-			buf_uv_paddr = vb2_dma_contig_plane_dma_addr(vb, 1);
+		if (!fbc)
 			amvdec_write_dos(core, HEVCD_MPP_ANC2AXI_TBL_DATA,
 					 buf_uv_paddr >> 5);
-		}
 	}
 
 	amvdec_write_dos(core, HEVCD_MPP_ANC2AXI_TBL_CONF_ADDR, 1);
@@ -361,17 +395,80 @@ void codec_hevc_free_mmu_headers(struct amvdec_session *sess,
 }
 EXPORT_SYMBOL_GPL(codec_hevc_free_mmu_headers);
 
+/*
+ * Collect the session's CAPTURE buffers, by index.
+ *
+ * Everything that programs a per-buffer resource - FBC bodies, MMU
+ * headers, the ANC2AXI canvas table - used to walk only the buffers
+ * QUEUED to the driver at that moment.  The canvas table is indexed by
+ * vb2_buf.index (the HEVC and VP9 reference lists write
+ * ref->vbuf->vb2_buf.index as the canvas id), so a walk over a queue
+ * with a gap in it lands every later buffer in the wrong slot.  The
+ * old rule that every buffer be queued before streaming hid that; a
+ * zero-copy client that keeps frames on the display across a seek
+ * breaks it, and then either deadlocks (if start is refused) or
+ * decodes against scrambled references (if it is not).
+ *
+ * An MMAP buffer has a valid DMA address from allocation, queued or
+ * not, so take every allocated buffer.  An imported DMABUF is mapped
+ * only while queued, so for those keep the queued-only walk.
+ *
+ * Fills bufs[] by index (NULL for an index with no buffer) and returns
+ * one past the highest index present, or 0 if there are none.
+ */
+static unsigned int
+codec_hevc_capture_buffers(struct amvdec_session *sess,
+			   struct vb2_buffer *bufs[MAX_REF_PIC_NUM])
+{
+	struct vb2_queue *q = v4l2_m2m_get_dst_vq(sess->m2m_ctx);
+	struct v4l2_m2m_buffer *buf;
+	unsigned int n = 0;
+	unsigned int i;
+
+	memset(bufs, 0, sizeof(*bufs) * MAX_REF_PIC_NUM);
+
+	if (q->memory == VB2_MEMORY_MMAP) {
+		for (i = 0; i < MAX_REF_PIC_NUM; i++) {
+			struct vb2_buffer *vb = vb2_get_buffer(q, i);
+
+			if (!vb)
+				continue;
+			bufs[i] = vb;
+			n = i + 1;
+		}
+		return n;
+	}
+
+	v4l2_m2m_for_each_dst_buf(sess->m2m_ctx, buf) {
+		struct vb2_buffer *vb = &buf->vb.vb2_buf;
+
+		if (vb->index >= MAX_REF_PIC_NUM)
+			continue;
+		bufs[vb->index] = vb;
+		if (vb->index + 1 > n)
+			n = vb->index + 1;
+	}
+	return n;
+}
+
 static int codec_hevc_alloc_mmu_headers(struct amvdec_session *sess,
 					struct codec_hevc_common *comm)
 {
 	struct device *dev = sess->core->dev;
-	struct v4l2_m2m_buffer *buf;
+	struct vb2_buffer *bufs[MAX_REF_PIC_NUM];
+	unsigned int idx, n;
 
-	v4l2_m2m_for_each_dst_buf(sess->m2m_ctx, buf) {
-		u32 idx = buf->vb.vb2_buf.index;
+	n = codec_hevc_capture_buffers(sess, bufs);
+	for (idx = 0; idx < n; idx++) {
 		dma_addr_t paddr;
-		void *vaddr = dma_alloc_coherent(dev, MMU_COMPRESS_HEADER_SIZE,
-						 &paddr, GFP_KERNEL);
+		void *vaddr;
+
+		/* Per-index: resume() runs more than once per session */
+		if (!bufs[idx] || comm->mmu_header_vaddr[idx])
+			continue;
+
+		vaddr = dma_alloc_coherent(dev, MMU_COMPRESS_HEADER_SIZE,
+					   &paddr, GFP_KERNEL);
 		if (!vaddr) {
 			codec_hevc_free_mmu_headers(sess, comm);
 			return -ENOMEM;
@@ -446,7 +543,8 @@ static int codec_hevc_alloc_fbc_buffers(struct amvdec_session *sess,
 					struct codec_hevc_common *comm)
 {
 	struct device *dev = sess->core->dev;
-	struct v4l2_m2m_buffer *buf;
+	struct vb2_buffer *bufs[MAX_REF_PIC_NUM];
+	unsigned int idx, n;
 	u32 use_mmu;
 	u32 am21_size;
 	u32 nr_chunks;
@@ -470,14 +568,15 @@ static int codec_hevc_alloc_fbc_buffers(struct amvdec_session *sess,
 	list_splice_tail_init(&fbc_pool.park[1], &fbc_pool.free);
 	mutex_unlock(&fbc_pool.lock);
 
+	n = codec_hevc_capture_buffers(sess, bufs);
+
 	if (!use_mmu) {
 		/* Contiguous body, allocated per index and privately owned */
-		v4l2_m2m_for_each_dst_buf(sess->m2m_ctx, buf) {
-			u32 idx = buf->vb.vb2_buf.index;
+		for (idx = 0; idx < n; idx++) {
 			dma_addr_t paddr;
 			void *vaddr;
 
-			if (comm->fbc_buffer_vaddr[idx])
+			if (!bufs[idx] || comm->fbc_buffer_vaddr[idx])
 				continue;
 
 			vaddr = dma_alloc_coherent(dev, am21_size, &paddr,
@@ -510,9 +609,11 @@ static int codec_hevc_alloc_fbc_buffers(struct amvdec_session *sess,
 	}
 	comm->fbc_nr_chunks = nr_chunks;
 
-	v4l2_m2m_for_each_dst_buf(sess->m2m_ctx, buf) {
-		u32 idx = buf->vb.vb2_buf.index;
+	for (idx = 0; idx < n; idx++) {
 		u32 i;
+
+		if (!bufs[idx])
+			continue;
 
 		/*
 		 * Per-index idempotency: recovery re-runs and staged buffer
@@ -595,6 +696,53 @@ int codec_hevc_setup_buffers(struct amvdec_session *sess,
 	return 0;
 }
 EXPORT_SYMBOL_GPL(codec_hevc_setup_buffers);
+
+static bool codec_hevc_frame_buffer_backed(struct amvdec_session *sess,
+					   struct codec_hevc_common *comm,
+					   u32 idx, int is_10bit)
+{
+	const u32 revision = sess->core->platform->revision;
+	const u32 pixfmt = sess->pixfmt_cap;
+
+	if (!codec_hevc_use_fbc(pixfmt, is_10bit))
+		return true;	/* plain NV12: the vb2 planes are the frame */
+
+	if (codec_hevc_use_downsample(pixfmt, is_10bit) &&
+	    codec_hevc_use_mmu(revision, pixfmt, is_10bit) &&
+	    !comm->mmu_header_paddr[idx])
+		return false;
+
+	return codec_hevc_fbc_body_addr(comm, idx) != 0;
+}
+
+int codec_hevc_ensure_frame_buffer(struct amvdec_session *sess,
+				   struct codec_hevc_common *comm,
+				   struct vb2_buffer *vb, int is_10bit)
+{
+	u32 idx = vb->index;
+
+	if (idx >= MAX_REF_PIC_NUM)
+		return -EINVAL;
+
+	if (codec_hevc_frame_buffer_backed(sess, comm, idx, is_10bit))
+		return 0;
+
+	/*
+	 * A buffer that was not allocated when the session was set up -
+	 * queued late, or added with CREATE_BUFS.  Setup is per-index
+	 * idempotent, so run it again for the ones that are missing.
+	 */
+	if (codec_hevc_setup_buffers(sess, comm, is_10bit) ||
+	    !codec_hevc_frame_buffer_backed(sess, comm, idx, is_10bit)) {
+		dev_err_ratelimited(sess->core->dev,
+				    "CAPTURE buffer %u has no FBC backing - dropping frame\n",
+				    idx);
+		return -ENOMEM;
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(codec_hevc_ensure_frame_buffer);
 
 void codec_hevc_fill_mmu_map(struct amvdec_session *sess,
 			     struct codec_hevc_common *comm,

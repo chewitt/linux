@@ -1016,6 +1016,19 @@ codec_hevc_prepare_new_frame(struct amvdec_session *sess)
 	vbuf = v4l2_m2m_dst_buf_remove(sess->m2m_ctx);
 	if (!vbuf) {
 		dev_err(sess->core->dev, "No dst buffer available\n");
+		kfree(new_frame);
+		return NULL;
+	}
+
+	/*
+	 * Never decode into a buffer the decode head has nothing to point
+	 * at: the fallback address for an unbacked index is zero, and the
+	 * hardware would write the frame over physical memory 0.
+	 */
+	if (codec_hevc_ensure_frame_buffer(sess, &hevc->common,
+					   &vbuf->vb2_buf, hevc->is_10bit)) {
+		v4l2_m2m_buf_queue(sess->m2m_ctx, vbuf);
+		kfree(new_frame);
 		return NULL;
 	}
 

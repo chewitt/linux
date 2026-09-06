@@ -188,13 +188,28 @@ static void process_num_buffers(struct vb2_queue *q,
 	if (buffers_total > fmt_out->max_buffers)
 		*num_buffers = fmt_out->max_buffers - q_num_bufs;
 
-	/* We need to program the complete CAPTURE buffer list
-	 * in registers during start_streaming, and the firmwares
-	 * are free to choose any of them to write frames to. As such,
-	 * we need all of them to be queued into the driver
-	 */
 	sess->num_dst_bufs = q_num_bufs + *num_buffers;
-	q->min_queued_buffers = max(fmt_out->min_buffers, sess->num_dst_bufs);
+
+	/*
+	 * Codecs without a resume op program the complete CAPTURE buffer
+	 * list into registers once, in start_streaming(), and the firmware
+	 * may write a frame into any of them - so every buffer must be
+	 * queued before the stream can start.
+	 *
+	 * Codecs with a resume op program buffers per frame and set their
+	 * tables up from every ALLOCATED buffer (codec_hevc_setup_buffers),
+	 * so they can start with the interface minimum.  Demanding every
+	 * buffer here deadlocked seeks with a zero-copy client: Kodi keeps
+	 * two CAPTURE buffers on the display across a seek and re-queues
+	 * the other eighteen, so vb2 accepted STREAMON but never called
+	 * start_streaming() - the decoder sat in NEEDS_RESUME for good
+	 * while the player's clock ran on over a frozen picture.
+	 */
+	if (fmt_out->codec_ops->resume)
+		q->min_queued_buffers = fmt_out->min_buffers;
+	else
+		q->min_queued_buffers = max(fmt_out->min_buffers,
+					    sess->num_dst_bufs);
 }
 
 static int vdec_queue_setup(struct vb2_queue *q, unsigned int *num_buffers,
