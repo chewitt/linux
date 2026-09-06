@@ -1466,7 +1466,7 @@ static void codec_hevc_stall_arm(struct codec_hevc *hevc)
 	hevc->stall_status = 0xffffffff;
 	hevc->stall_ticks = 0;
 	atomic_set(&hevc->stall_state, STALL_ARMED);
-	mod_delayed_work(system_wq, &hevc->stall_work,
+	mod_delayed_work(system_dfl_wq, &hevc->stall_work,
 			 msecs_to_jiffies(STALL_TIMEOUT_MS));
 }
 
@@ -1585,7 +1585,7 @@ static void codec_hevc_stall_work(struct work_struct *work)
 	    status == HEVC_DECPIC_DATA_DONE ||
 	    status == HEVC_ACTION_DONE ||
 	    status == 0) {
-		mod_delayed_work(system_wq, &hevc->stall_work,
+		mod_delayed_work(system_dfl_wq, &hevc->stall_work,
 				 msecs_to_jiffies(STALL_TIMEOUT_MS));
 		return;
 	}
@@ -1614,13 +1614,13 @@ static void codec_hevc_stall_work(struct work_struct *work)
 		hevc->stall_lcu = lcu;
 		hevc->stall_status = status;
 		hevc->stall_ticks = 0;
-		mod_delayed_work(system_wq, &hevc->stall_work,
+		mod_delayed_work(system_dfl_wq, &hevc->stall_work,
 				 msecs_to_jiffies(STALL_TIMEOUT_MS));
 		return;
 	}
 
 	if (++hevc->stall_ticks < 3) {
-		mod_delayed_work(system_wq, &hevc->stall_work,
+		mod_delayed_work(system_dfl_wq, &hevc->stall_work,
 				 msecs_to_jiffies(STALL_GRACE_MS));
 		return;
 	}
