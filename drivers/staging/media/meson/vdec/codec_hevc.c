@@ -1514,6 +1514,25 @@ static void codec_hevc_stall_recover(struct amvdec_session *sess)
 	amvdec_write_dos(core, HEVC_STREAM_CONTROL, s_ctrl);
 	amvdec_write_dos(core, HEVC_SHIFT_BYTE_COUNT, s_shift);
 
+	/*
+	 * Resynchronise at the next IRAP rather than resuming mid-GOP.
+	 *
+	 * The frame dropped below is a reference for everything that
+	 * follows it until the next keyframe.  Carrying on decodes those
+	 * frames against a reference that no longer exists: each one fails
+	 * its lookup ("Couldn't find ref. frame N"), takes a substitute,
+	 * and is reconstructed from the wrong pixels - seconds of visible
+	 * corruption for one bad frame, which is worse than showing
+	 * nothing.
+	 *
+	 * codec_hevc_process_segment() already skips slices while
+	 * seen_irap is clear, which is how a session that starts mid-GOP
+	 * finds its feet.  Clearing it here reuses exactly that path: the
+	 * decoder idles until the next IRAP and then resumes cleanly, with
+	 * no substituted references programmed into the MC engine at all.
+	 */
+	hevc->seen_irap = 0;
+
 	/* Drop the poisoned in-flight frame, recycle its buffer */
 	if (hevc->cur_frame) {
 		struct hevc_frame *f = hevc->cur_frame;
