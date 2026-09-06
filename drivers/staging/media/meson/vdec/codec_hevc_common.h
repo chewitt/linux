@@ -70,6 +70,7 @@ static inline int codec_hevc_use_mmu(u32 revision, u32 pixfmt, int is_10bit)
 void codec_hevc_setup_decode_head(struct amvdec_session *sess, int is_10bit);
 
 void codec_hevc_fbc_pool_drain(void);
+void codec_hevc_fbc_pool_reclaim(void);
 
 /* Base address of a frame's compressed body, whichever backing is in use */
 dma_addr_t codec_hevc_fbc_body_addr(struct codec_hevc_common *comm, u32 idx);

@@ -216,6 +216,9 @@ enum amvdec_status {
  * @streamon_out: stream on flag for output queue
  * @sequence_cap: capture sequence counter
  * @sequence_out: output sequence counter
+ * @resyncing: the codec is discarding input until the next keyframe, so it
+ *	will not produce a CAPTURE buffer for a while and the ESPARSER
+ *	backpressure credit below must not be applied to it
  * @should_stop: flag set if userspace signaled EOS via command
  *		 or empty buffer
  * @keyframe_found: flag set once a keyframe has been parsed
@@ -267,6 +270,8 @@ struct amvdec_session {
 
 	unsigned int streamon_cap, streamon_out;
 	unsigned int sequence_cap, sequence_out;
+	unsigned int resyncing;
+
 	unsigned int should_stop;
 	unsigned int keyframe_found;
 	unsigned int num_dst_bufs;
