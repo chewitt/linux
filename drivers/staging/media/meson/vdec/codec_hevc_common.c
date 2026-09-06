@@ -607,8 +607,34 @@ void codec_hevc_fill_mmu_map(struct amvdec_session *sess,
 
 	if (comm->fbc_chunks[vb->index]) {
 		for (i = 0; i < nb_pages; ++i) {
-			struct fbc_chunk *c =
-				comm->fbc_chunks[vb->index][i / FBC_CHUNK_PAGES];
+			u32 ci = i / FBC_CHUNK_PAGES;
+			struct fbc_chunk *c;
+
+			/*
+			 * nb_pages and fbc_nr_chunks are derived from the
+			 * session geometry at two different times.  If they
+			 * ever disagree, this walks off the chunk array and
+			 * programs whatever it finds as a page frame number -
+			 * and the decoder then DMAs into that physical
+			 * address.  The damage lands in whatever owns that
+			 * memory, arbitrarily far from this driver, so fail
+			 * the frame instead.
+			 */
+			if (ci >= comm->fbc_nr_chunks) {
+				dev_err_ratelimited(sess->core->dev,
+					"FBC chunk %u >= %u (nb_pages %u, buf %u) - refusing to map\n",
+					ci, comm->fbc_nr_chunks, nb_pages,
+					vb->index);
+				break;
+			}
+
+			c = comm->fbc_chunks[vb->index][ci];
+			if (!c) {
+				dev_err_ratelimited(sess->core->dev,
+					"FBC chunk %u of buffer %u is NULL - refusing to map\n",
+					ci, vb->index);
+				break;
+			}
 
 			mmu_map[i] = (c->paddr >> PAGE_SHIFT) +
 				     (i % FBC_CHUNK_PAGES);
