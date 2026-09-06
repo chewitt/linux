@@ -68,6 +68,33 @@ static void fbc_chunks_release_locked(struct list_head *h)
 	}
 }
 
+/*
+ * Return everything the pool is not actually using to CMA.
+ *
+ * Holding chunks between sessions saves re-allocating them, but they are
+ * 1 MiB pieces, and a session does not start with chunks: it starts with
+ * a single contiguous ~8 MiB workspace.  A pool sitting on hundreds of
+ * megabytes of 1 MiB holes leaves CMA with no run long enough for it, and
+ * codec_hevc_start() fails with -ENOMEM.  Seeking is where this bites,
+ * because a seek tears the session down and builds a new one while the
+ * outgoing generation is still parked - the decoder simply never came
+ * back, and the player kept its clock running over the last picture.
+ *
+ * Chunks are cheap to re-take from CMA and this only ever runs between
+ * sessions, so give the memory back and let the next session shape it.
+ * park[0] is left alone: those bodies may still be on a screen.
+ */
+void codec_hevc_fbc_pool_reclaim(void)
+{
+	mutex_lock(&fbc_pool.lock);
+	if (fbc_pool.dev) {
+		fbc_chunks_release_locked(&fbc_pool.free);
+		fbc_chunks_release_locked(&fbc_pool.park[1]);
+	}
+	mutex_unlock(&fbc_pool.lock);
+}
+EXPORT_SYMBOL_GPL(codec_hevc_fbc_pool_reclaim);
+
 void codec_hevc_fbc_pool_drain(void)
 {
 	mutex_lock(&fbc_pool.lock);

@@ -10,4 +10,6 @@
 
 extern struct amvdec_codec_ops codec_hevc_ops;
 
+void codec_hevc_workspace_release(void);
+
 #endif

@@ -331,7 +331,29 @@ esparser_queue(struct amvdec_session *sess, struct vb2_v4l2_buffer *vbuf)
 		num_dst_bufs += v4l2_m2m_num_dst_bufs_ready(sess->m2m_ctx);
 		num_dst_bufs = num_dst_bufs > 3 ? num_dst_bufs - 3 : 0;
 
-		if (esparser_vififo_get_free_space(sess) < payload_size ||
+		if (esparser_vififo_get_free_space(sess) < payload_size)
+			return -EAGAIN;
+
+		/*
+		 * The credit above is returned by amvdec_dst_buf_done(), so
+		 * it is only ever repaid by a decoded frame.  A codec that
+		 * is resynchronising - discarding every slice until the next
+		 * keyframe, after a decode error or a seek - produces no
+		 * frame at all, and a keyframe can be a whole GOP away.  It
+		 * would spend its last credit, stop being fed, and so never
+		 * reach the keyframe that would pay the credit back: input
+		 * queued, firmware idle in NAL search, nothing to break the
+		 * tie.  Observed as playback dying a few seconds after one
+		 * malformed frame, with the vdec interrupt count frozen and
+		 * userspace collecting EAGAIN forever.
+		 *
+		 * Skipping the credit while resyncing is safe precisely
+		 * because of what resyncing is: the decoder holds no
+		 * reference and takes no CAPTURE buffer, so there is no
+		 * CAPTURE shortage to protect against.  The vififo check
+		 * above still bounds how much input can be in flight.
+		 */
+		if (!sess->resyncing &&
 		    atomic_read(&sess->esparser_queued_bufs) >= num_dst_bufs)
 			return -EAGAIN;
 

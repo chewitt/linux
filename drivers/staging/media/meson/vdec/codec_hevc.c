@@ -265,6 +265,7 @@ struct codec_hevc {
 	atomic_t stall_state;
 	u32 stall_lcu;
 	u32 stall_status;
+	u32 stall_shift;
 	u32 stall_ticks;
 	u32 stall_recoveries;
 
@@ -311,9 +312,34 @@ struct codec_hevc {
 
 	/* Whether we detected the bitstream as 10-bit */
 	int is_10bit;
+
+	/* The workspace is borrowed from the module cache, not owned */
+	bool ws_cached;
 };
 
 static void codec_hevc_stall_arm(struct codec_hevc *hevc);
+
+/*
+ * Enter or leave IRAP resynchronisation.
+ *
+ * While resyncing the decoder discards every slice it is handed and
+ * produces no CAPTURE buffer.  The ESPARSER's backpressure credit is
+ * repaid only by a decoded frame, so left alone it would stop feeding
+ * long before the next keyframe arrived, and the search for that
+ * keyframe would starve.  This flag tells the ESPARSER to keep feeding.
+ *
+ * Kicking the queue work is left to the callers that are on a live
+ * decode path: codec_hevc_stop() reaches this through
+ * codec_hevc_flush_output() while the queues are being torn down, and
+ * must not hand the ESPARSER any more work on the way out.
+ */
+static void codec_hevc_set_resync(struct amvdec_session *sess, bool on)
+{
+	struct codec_hevc *hevc = sess->priv;
+
+	hevc->seen_irap = !on;
+	sess->resyncing = on;
+}
 
 static u32 codec_hevc_num_pending_bufs(struct amvdec_session *sess)
 {
@@ -566,10 +592,59 @@ static void codec_hevc_show_frames(struct amvdec_session *sess)
 	}
 }
 
+/*
+ * The decoder's scratch workspace: a single contiguous ~8 MiB buffer, the
+ * same size for every session, and the first thing a starting session asks
+ * CMA for.
+ *
+ * Allocating it per session made a seek a coin toss.  A seek stops one
+ * session and starts the next straight after, while a 4K HDR stream has
+ * CMA down to its last few tens of megabytes in scattered holes: there is
+ * plenty free and no run of 8 MiB left in it, so codec_hevc_start() fails
+ * with -ENOMEM and the decoder never comes back.  Nothing downstream
+ * notices - the firmware sits on the first slice segment of the new
+ * position and the player's clock runs on over a picture that has stopped,
+ * which reads as a hardware wedge and is not one.
+ *
+ * Only one session at a time drives this core, so hold the buffer on the
+ * module and lend it out.  A second concurrent session still gets its own.
+ */
+static struct {
+	struct mutex lock;
+	struct device *dev;
+	void *vaddr;
+	dma_addr_t paddr;
+	bool busy;
+} hevc_ws = {
+	.lock = __MUTEX_INITIALIZER(hevc_ws.lock),
+};
+
 static int codec_hevc_alloc_workspace(struct amvdec_core *core,
 				      struct codec_hevc *hevc)
 {
-	/* Allocate some memory for the HEVC decoder's state */
+	mutex_lock(&hevc_ws.lock);
+
+	if (!hevc_ws.vaddr) {
+		hevc_ws.vaddr = dma_alloc_coherent(core->dev, SIZE_WORKSPACE,
+						   &hevc_ws.paddr, GFP_KERNEL);
+		if (hevc_ws.vaddr)
+			hevc_ws.dev = core->dev;
+	}
+
+	if (hevc_ws.vaddr && !hevc_ws.busy) {
+		/* Hand it over as if freshly allocated */
+		memset(hevc_ws.vaddr, 0, SIZE_WORKSPACE);
+		hevc_ws.busy = true;
+		hevc->workspace_vaddr = hevc_ws.vaddr;
+		hevc->workspace_paddr = hevc_ws.paddr;
+		hevc->ws_cached = true;
+		mutex_unlock(&hevc_ws.lock);
+		return 0;
+	}
+
+	mutex_unlock(&hevc_ws.lock);
+
+	/* Lent out already, or there was nothing to lend */
 	hevc->workspace_vaddr = dma_alloc_coherent(core->dev, SIZE_WORKSPACE,
 						   &hevc->workspace_paddr,
 						   GFP_KERNEL);
@@ -578,6 +653,38 @@ static int codec_hevc_alloc_workspace(struct amvdec_core *core,
 
 	return 0;
 }
+
+static void codec_hevc_put_workspace(struct amvdec_core *core,
+				     struct codec_hevc *hevc)
+{
+	if (!hevc->workspace_vaddr)
+		return;
+
+	if (hevc->ws_cached) {
+		mutex_lock(&hevc_ws.lock);
+		hevc_ws.busy = false;
+		mutex_unlock(&hevc_ws.lock);
+	} else {
+		dma_free_coherent(core->dev, SIZE_WORKSPACE,
+				  hevc->workspace_vaddr, hevc->workspace_paddr);
+	}
+
+	hevc->workspace_vaddr = NULL;
+	hevc->ws_cached = false;
+}
+
+/* Module teardown: give the lent buffer back to CMA */
+void codec_hevc_workspace_release(void)
+{
+	mutex_lock(&hevc_ws.lock);
+	if (hevc_ws.vaddr && !hevc_ws.busy) {
+		dma_free_coherent(hevc_ws.dev, SIZE_WORKSPACE,
+				  hevc_ws.vaddr, hevc_ws.paddr);
+		hevc_ws.vaddr = NULL;
+	}
+	mutex_unlock(&hevc_ws.lock);
+}
+EXPORT_SYMBOL_GPL(codec_hevc_workspace_release);
 
 /*
  * Program the workspace buffer addresses.  Split from the allocation
@@ -732,7 +839,26 @@ static int codec_hevc_start(struct amvdec_session *sess)
 	INIT_DELAYED_WORK(&hevc->stall_work, codec_hevc_stall_work);
 	atomic_set(&hevc->stall_state, STALL_IDLE);
 
+	/*
+	 * The workspace is a single contiguous ~8 MiB buffer and it is the
+	 * first thing a session asks CMA for.  A previous session's pool can
+	 * still be holding CMA in 1 MiB chunks at this point - always, on a
+	 * seek, which stops one session and starts the next back to back -
+	 * leaving no run long enough.  Hand that memory back first.
+	 */
+	codec_hevc_fbc_pool_reclaim();
+
 	ret = codec_hevc_alloc_workspace(core, hevc);
+	if (ret) {
+		/*
+		 * Still nothing.  The only memory left to reclaim is the
+		 * parked generation, which is kept back because it may still
+		 * be on a screen - but a brief artefact on a frame that is
+		 * being replaced anyway beats failing the session outright.
+		 */
+		codec_hevc_fbc_pool_drain();
+		ret = codec_hevc_alloc_workspace(core, hevc);
+	}
 	if (ret)
 		goto free_hevc;
 
@@ -740,9 +866,7 @@ static int codec_hevc_start(struct amvdec_session *sess)
 	hevc->aux_vaddr = dma_alloc_coherent(core->dev, SIZE_AUX,
 					     &hevc->aux_paddr, GFP_KERNEL);
 	if (!hevc->aux_vaddr) {
-		dma_free_coherent(core->dev, SIZE_WORKSPACE,
-				  hevc->workspace_vaddr,
-				  hevc->workspace_paddr);
+		codec_hevc_put_workspace(core, hevc);
 		ret = -ENOMEM;
 		goto free_hevc;
 	}
@@ -791,7 +915,7 @@ static void codec_hevc_flush_output(struct amvdec_session *sess)
 	 * path reconstructed pictures from whatever was nearest - so seeking
 	 * around a stream corrupted it even when no frame in it was damaged.
 	 */
-	hevc->seen_irap = 0;
+	codec_hevc_set_resync(sess, true);
 	hevc->curr_poc = INVALID_POC;
 }
 
@@ -805,17 +929,27 @@ static int codec_hevc_stop(struct amvdec_session *sess)
 	mutex_lock(&hevc->lock);
 	codec_hevc_flush_output(sess);
 
-	if (hevc->workspace_vaddr)
-		dma_free_coherent(core->dev, SIZE_WORKSPACE,
-				  hevc->workspace_vaddr,
-				  hevc->workspace_paddr);
+	codec_hevc_put_workspace(core, hevc);
 
 	if (hevc->aux_vaddr)
 		dma_free_coherent(core->dev, SIZE_AUX,
 				  hevc->aux_vaddr, hevc->aux_paddr);
 
 	codec_hevc_free_fbc_buffers(sess, &hevc->common);
+	sess->resyncing = 0;
 	mutex_unlock(&hevc->lock);
+
+	/*
+	 * Give the pool's memory back now rather than at the next session's
+	 * start.  What happens in between is userspace re-negotiating its
+	 * CAPTURE buffers, and on a 4K HDR stream those are ~8 MiB each and
+	 * come from the same CMA area: holding hundreds of megabytes of
+	 * 1 MiB chunks through that window makes the allocation it needs
+	 * fail, and a client that cannot get its buffers never streams the
+	 * queue back on - which strands the decoder waiting for a resume
+	 * that will not come.
+	 */
+	codec_hevc_fbc_pool_reclaim();
 	mutex_destroy(&hevc->lock);
 
 	return 0;
@@ -1469,6 +1603,15 @@ static int codec_hevc_skip_slice(struct amvdec_session *sess)
 	amvdec_write_dos(core, HEVC_MCPU_INTR_REQ, AMRISC_MAIN_REQ);
 	codec_hevc_stall_arm(sess->priv);
 
+	/*
+	 * Skipping consumes stream without producing a frame, so nothing
+	 * else will ever refill the vififo: amvdec_dst_buf_done() and a
+	 * CAPTURE qbuf are the only other things that run the queue work,
+	 * and neither happens while the decoder is discarding input.  Each
+	 * skipped slice is the natural refill point.
+	 */
+	schedule_work(&sess->esparser_queue_work);
+
 	return 0;
 }
 
@@ -1479,6 +1622,7 @@ static void codec_hevc_stall_arm(struct codec_hevc *hevc)
 		return;
 	hevc->stall_lcu = 0xffffffff;
 	hevc->stall_status = 0xffffffff;
+	hevc->stall_shift = 0xffffffff;
 	hevc->stall_ticks = 0;
 	atomic_set(&hevc->stall_state, STALL_ARMED);
 	mod_delayed_work(system_dfl_wq, &hevc->stall_work,
@@ -1494,7 +1638,7 @@ static void codec_hevc_stall_arm(struct codec_hevc *hevc)
  * sees an error - playback continues at the next keyframe.
  * Called with hevc->lock held.
  */
-static void codec_hevc_stall_recover(struct amvdec_session *sess)
+static int codec_hevc_stall_recover(struct amvdec_session *sess)
 {
 	struct codec_hevc *hevc = sess->priv;
 	struct amvdec_core *core = sess->core;
@@ -1546,7 +1690,7 @@ static void codec_hevc_stall_recover(struct amvdec_session *sess)
 	 * decoder idles until the next IRAP and then resumes cleanly, with
 	 * no substituted references programmed into the MC engine at all.
 	 */
-	hevc->seen_irap = 0;
+	codec_hevc_set_resync(sess, true);
 
 	/* Drop the poisoned in-flight frame, recycle its buffer */
 	if (hevc->cur_frame) {
@@ -1563,7 +1707,30 @@ static void codec_hevc_stall_recover(struct amvdec_session *sess)
 
 	/* Re-init protocol + buffer tables (no reallocation) */
 	codec_hevc_hw_init(sess);
-	codec_hevc_setup_buffers(sess, &hevc->common, hevc->is_10bit);
+
+	/*
+	 * Nothing should be allocated here - every body is kept per CAPTURE
+	 * index and reused - but the call can still fail, and its error path
+	 * frees every FBC buffer the session owns before returning.  Ignoring
+	 * that return programmed the decode head with addresses that had just
+	 * been handed back, and started the firmware on them: a decoder that
+	 * either dies where it stands or paints whatever now lives in that
+	 * memory onto the screen.
+	 *
+	 * 4K HDR10 runs with the CMA pool close to full, so this is a real
+	 * outcome rather than a theoretical one.  There is no way back from
+	 * it in-session, so fail the session cleanly instead: the firmware is
+	 * already halted above and stays halted, and vb2_queue_error() tells
+	 * userspace to tear the decoder down and open a new one.
+	 */
+	if (codec_hevc_setup_buffers(sess, &hevc->common, hevc->is_10bit)) {
+		dev_err(core->dev,
+			"stall recovery lost the frame buffers - failing the session\n");
+		hevc->stall_recoveries++;
+		amvdec_abort(sess);
+		return -ENOMEM;
+	}
+
 	codec_hevc_setup_workspace(sess, hevc);
 	codec_hevc_setup_decode_head(sess, hevc->is_10bit);
 
@@ -1574,7 +1741,18 @@ static void codec_hevc_stall_recover(struct amvdec_session *sess)
 	amvdec_read_dos(core, DOS_SW_RESET3);
 	amvdec_write_dos(core, HEVC_MPSR, 1);
 
+	/*
+	 * The firmware is back in NAL search at the same stream position,
+	 * but the vififo holds only whatever was left unconsumed when it
+	 * stopped, and the ESPARSER gave up feeding several seconds ago.
+	 * Without this the firmware has nothing to search and never
+	 * delivers the next slice, so nothing ever kicks the queue again.
+	 */
+	schedule_work(&sess->esparser_queue_work);
+
 	hevc->stall_recoveries++;
+
+	return 0;
 }
 
 static void codec_hevc_stall_work(struct work_struct *work)
@@ -1584,7 +1762,8 @@ static void codec_hevc_stall_work(struct work_struct *work)
 					       stall_work);
 	struct amvdec_session *sess = hevc->sess;
 	struct amvdec_core *core = sess->core;
-	u32 status, lcu;
+	u32 status, lcu, shift;
+	int ret;
 
 	if (atomic_read(&hevc->stall_state) != STALL_ARMED)
 		return;
@@ -1592,71 +1771,71 @@ static void codec_hevc_stall_work(struct work_struct *work)
 	status = amvdec_read_dos(core, HEVC_DEC_STATUS_REG);
 
 	/*
-	 * 0x8/0xa mean the driver owes the next action, and it is about to
-	 * take it from the threaded ISR - never a stall.
+	 * No status is exempt from the check below.
+	 *
+	 * The previous rule here trusted two of them: 0x8/0xa mean the
+	 * driver owes the firmware the next action and is about to take it
+	 * from the threaded ISR, so they were re-armed on sight.  That is
+	 * true for the instant after the interrupt and false for everything
+	 * after it, and it made the one failure it should have caught
+	 * invisible: if that handshake is ever dropped, the status stays at
+	 * 0x8 forever, the watchdog re-arms forever, and the decoder is dead
+	 * with nothing logged.  Seen after seeking onto a malformed frame -
+	 * status pinned at 0x8, the vdec interrupt count moving by 1 in nine
+	 * seconds, and Kodi's clock running on at 1x against a decoder that
+	 * had stopped.
+	 *
+	 * Exempting a status was only ever a way to keep the old oracle from
+	 * crying wolf.  Now that stream consumption is part of that oracle,
+	 * the general rule covers these two as well as any other.
 	 */
-	if (status == HEVC_SLICE_SEGMENT_DONE ||
-	    status == HEVC_DECPIC_DATA_DONE) {
-		mod_delayed_work(system_dfl_wq, &hevc->stall_work,
-				 msecs_to_jiffies(STALL_TIMEOUT_MS));
-		return;
-	}
 
 	/*
-	 * ACTION_DONE/0 means the firmware is idle in NAL search. That is
-	 * starvation - and not a stall - only while there is nothing queued
-	 * for it to find. With source buffers sitting in the ESPARSER it has
-	 * work and is not doing it, which is a wedge.
-	 *
-	 * This matters because codec_hevc_skip_slice() parks the status at
-	 * ACTION_DONE and kicks the firmware, and that is the path taken for
-	 * every slice skipped while resynchronising to an IRAP. If the
-	 * firmware stops answering the kick, the driver waits for an
-	 * interrupt that never arrives while the watchdog re-arms forever,
-	 * and playback stops with no diagnostic at all - userspace just sees
-	 * EAGAIN from every dequeue.
-	 *
-	 * Observed on a stream carrying one malformed frame: status pinned
-	 * at 0xFF and the vdec interrupt count frozen for as long as it was
-	 * watched, with input still queued.
-	 */
-	if (status == HEVC_ACTION_DONE || status == 0) {
-		if (!atomic_read(&sess->esparser_queued_bufs)) {
-			mod_delayed_work(system_dfl_wq, &hevc->stall_work,
-					 msecs_to_jiffies(STALL_TIMEOUT_MS));
-			return;
-		}
-	}
-
-	/*
-	 * Everything else is one of the firmware's in-flight states - NAL
-	 * header parse (VPS/SPS/PPS/SEI/slice segment), slice decode, NAL
-	 * search.  They are all perfectly normal, and this poll runs
-	 * asynchronously to the decode, so landing on one says nothing on
-	 * its own.  A stall is by definition an absence of progress over
-	 * time, so never claim one from a single observation: require the
-	 * status AND the LCU counter to be unchanged across consecutive
-	 * samples first.
-	 *
-	 * Getting this wrong is expensive rather than merely noisy.  A
-	 * false stall runs the recovery, which drops the in-flight frame;
-	 * every later frame that referenced it then misses
-	 * ("Couldn't find ref. frame N") and gets a substitute, so a
-	 * healthy stream visibly corrupts until the next IRAP.  Observed
-	 * on a 127s 4K HDR stream, where a single sample of state 0x4
-	 * (HEVC_NAL_UNIT_CODED_SLICE_SEGMENT) triggered recovery and 32
-	 * reference misses immediately after.
+	 * The LCU counter only moves while a picture is being decoded, so
+	 * it says nothing about a firmware that is legitimately busy doing
+	 * something else - notably chewing through a GOP of skipped slices
+	 * to resynchronise, which shows up as a long run of idle statuses
+	 * with input permanently queued.  HEVC_SHIFT_BYTE_COUNT is the
+	 * stream position the firmware has consumed to; while it advances
+	 * the decoder is making progress by definition.
 	 */
 	lcu = amvdec_read_dos(core, HEVC_PARSER_LCU_START) & 0xffffff;
-	if (lcu != hevc->stall_lcu || status != hevc->stall_status) {
+	shift = amvdec_read_dos(core, HEVC_SHIFT_BYTE_COUNT);
+	if (lcu != hevc->stall_lcu || status != hevc->stall_status ||
+	    shift != hevc->stall_shift) {
 		hevc->stall_lcu = lcu;
 		hevc->stall_status = status;
+		hevc->stall_shift = shift;
 		hevc->stall_ticks = 0;
 		mod_delayed_work(system_dfl_wq, &hevc->stall_work,
 				 msecs_to_jiffies(STALL_TIMEOUT_MS));
 		return;
 	}
 
+	/*
+	 * Nothing is moving.  That is only a stall if the decoder has work:
+	 * with the ESPARSER holding nothing for it, an idle firmware is
+	 * starved rather than wedged, and feeding it is userspace's job.
+	 * The watchdog runs only while the firmware owes us an interrupt
+	 * (the ISR disarms it), so a paused player cannot reach here with a
+	 * completed handshake and be reset out from under itself.
+	 */
+	if (!atomic_read(&sess->esparser_queued_bufs)) {
+		mod_delayed_work(system_dfl_wq, &hevc->stall_work,
+				 msecs_to_jiffies(STALL_TIMEOUT_MS));
+		return;
+	}
+
+	/*
+	 * Still never claim a stall from a single observation.  This poll
+	 * runs asynchronously to the decode, so landing on one unchanged
+	 * sample says little, and getting it wrong is expensive rather than
+	 * merely noisy: the recovery drops the in-flight frame, every later
+	 * frame that referenced it misses ("Couldn't find ref. frame N"),
+	 * and a healthy stream visibly corrupts until the next IRAP.
+	 * Observed on a 127s 4K HDR stream, where one sample of state 0x4
+	 * triggered recovery and 32 reference misses immediately after.
+	 */
 	if (++hevc->stall_ticks < 3) {
 		mod_delayed_work(system_dfl_wq, &hevc->stall_work,
 				 msecs_to_jiffies(STALL_GRACE_MS));
@@ -1672,8 +1851,14 @@ static void codec_hevc_stall_work(struct work_struct *work)
 	dev_warn(core->dev,
 		 "decode stall (status=%08x lcu=%06x) - recovering in place\n",
 		 status, amvdec_read_dos(core, HEVC_PARSER_LCU_START));
-	codec_hevc_stall_recover(sess);
+	ret = codec_hevc_stall_recover(sess);
 	mutex_unlock(&hevc->lock);
+
+	/* The session is being failed - leave the watchdog off */
+	if (ret) {
+		atomic_set(&hevc->stall_state, STALL_DISABLED);
+		return;
+	}
 
 	atomic_set(&hevc->stall_state, STALL_IDLE);
 	codec_hevc_stall_arm(hevc);
@@ -1696,7 +1881,7 @@ static int codec_hevc_process_segment(struct amvdec_session *sess)
 	if (!hevc->seen_irap) {
 		if (nal_type >= NAL_UNIT_CODED_SLICE_BLA &&
 		    nal_type <= NAL_UNIT_CODED_SLICE_CRA) {
-			hevc->seen_irap = 1;
+			codec_hevc_set_resync(sess, false);
 		} else {
 			dev_dbg(core->dev,
 				"skipping pre-IRAP slice (nal %u)\n",
