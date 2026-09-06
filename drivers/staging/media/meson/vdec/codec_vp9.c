@@ -1216,6 +1216,14 @@ static struct vp9_frame *codec_vp9_get_new_frame(struct amvdec_session *sess)
 		}
 	}
 
+	/* Same guard as HEVC: no frame into an unbacked CAPTURE buffer */
+	if (codec_hevc_ensure_frame_buffer(sess, &vp9->common,
+					   &vbuf->vb2_buf, vp9->is_10bit)) {
+		v4l2_m2m_buf_queue(sess->m2m_ctx, vbuf);
+		kfree(new_frame);
+		return NULL;
+	}
+
 	new_frame->vbuf = vbuf;
 	new_frame->index = vbuf->vb2_buf.index;
 	new_frame->intra_only = param->p.intra_only;

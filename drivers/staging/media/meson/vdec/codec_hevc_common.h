@@ -84,6 +84,16 @@ int codec_hevc_setup_buffers(struct amvdec_session *sess,
 			     struct codec_hevc_common *comm,
 			     int is_10bit);
 
+/*
+ * Make sure a CAPTURE buffer about to receive a frame has the per-buffer
+ * backing the decode head will be pointed at.  Returns 0, or -ENOMEM if it
+ * could not be provided - in which case the frame must be dropped rather
+ * than decoded into address zero.
+ */
+int codec_hevc_ensure_frame_buffer(struct amvdec_session *sess,
+				   struct codec_hevc_common *comm,
+				   struct vb2_buffer *vb, int is_10bit);
+
 void codec_hevc_fill_mmu_map(struct amvdec_session *sess,
 			     struct codec_hevc_common *comm,
 			     struct vb2_buffer *vb,
