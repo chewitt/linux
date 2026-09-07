@@ -161,6 +161,25 @@ static void vdec_poweroff(struct amvdec_session *sess)
 		codec_ops->drain(sess);
 
 	esparser_quiesce(sess->core);
+
+	/*
+	 * Nothing more will be decoded from here, so no further interrupt is
+	 * expected - but one can already be in flight, and everything below
+	 * frees memory an interrupt handler reads: the codec workspace in
+	 * ->stop(), then sess->priv itself in vdec_stop_streaming().
+	 *
+	 * Detach the session so a late or spurious interrupt finds nothing
+	 * (both handlers return IRQ_NONE on a NULL cur_sess), then wait for
+	 * any handler already running to leave.  Only after that is it safe
+	 * to free.
+	 *
+	 * This has to come after ->drain(), which still needs its interrupts.
+	 * Nothing holds a codec lock here, so synchronize_irq() cannot
+	 * deadlock against a handler waiting for one.
+	 */
+	sess->core->cur_sess = NULL;
+	synchronize_irq(sess->core->irq);
+
 	vdec_ops->stop(sess);
 	clk_disable_unprepare(sess->core->dos_clk);
 	clk_disable_unprepare(sess->core->dos_parser_clk);
@@ -1280,6 +1299,7 @@ static int vdec_probe(struct platform_device *pdev)
 		return PTR_ERR(core->vdec_hevc_clk);
 
 	irq = platform_get_irq_byname(pdev, "vdec");
+	core->irq = irq;
 	if (irq < 0)
 		return irq;
 

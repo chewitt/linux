@@ -103,6 +103,9 @@ struct amvdec_core {
 
 	struct amvdec_session *cur_sess;
 	struct mutex lock;
+
+	/* kept so teardown can wait an in-flight handler out */
+	int irq;
 };
 
 /**
