@@ -497,10 +497,7 @@ void esparser_quiesce(struct amvdec_core *core)
 	amvdec_write_parser(core, PARSER_INT_STATUS, 0xffff);
 	amvdec_write_parser(core, PARSER_VIDEO_HOLE, 0);
 
-	if (core->esparser_reset)
-		reset_control_reset(core->esparser_reset);
-	else if (core->esparser_reset_base)
-		writel(BIT(8), core->esparser_reset_base);
+	reset_control_reset(core->esparser_reset);
 }
 EXPORT_SYMBOL_GPL(esparser_quiesce);
 
