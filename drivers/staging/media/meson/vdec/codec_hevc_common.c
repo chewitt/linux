@@ -3,6 +3,9 @@
  * Copyright (C) 2018 Maxime Jourdan <mjourdan@baylibre.com>
  */
 
+#include <linux/dma-mapping.h>
+#include <linux/mm.h>
+
 #include <media/v4l2-mem2mem.h>
 #include <media/videobuf2-dma-contig.h>
 
@@ -17,11 +20,30 @@
  * Pooled chunk allocator for MMU-mode compressed bodies.
  *
  * In MMU mode the hardware reaches body pages only through the frame
- * page map, so the body needs no contiguity: it is assembled from
- * fixed-size chunks.  That removes the 16 MiB-contiguous allocation a
- * 4K 10-bit frame used to need - the single biggest source of CMA
- * pressure - and makes chunks fungible between sessions regardless of
- * resolution or bit depth.
+ * page map, so the body needs no contiguity at all: it is assembled
+ * from single pages, grouped into fixed-size chunks purely so the pool
+ * has a manageable unit of bookkeeping.  That removes the 16 MiB
+ * contiguous allocation a 4K 10-bit frame used to need, and makes
+ * chunks fungible between sessions regardless of resolution or depth.
+ *
+ * The pages come from dma_alloc_pages() one at a time.  A PAGE_SIZE
+ * request short-circuits dma_alloc_contiguous(), so it is served by the
+ * page allocator and never touches CMA - which is what takes ~256 MiB
+ * of a 4K 10-bit session out of the contended pool.  It is not
+ * alloc_pages(): dma_alloc_pages() applies the device's DMA mask (this
+ * one has the default 32-bit coherent mask) and retries from a lower
+ * zone, a check raw page allocation would skip.
+ *
+ * The pages are CACHED, unlike the coherent range they replace, and
+ * nothing in this driver ever reads or writes a body through the CPU -
+ * only the decoder and the display do, at the point of coherency.  So
+ * the cache is handled exactly twice: invalidate after allocation, to
+ * drop the dirty lines dma_alloc_pages() leaves behind when it zeroes
+ * the page (they would otherwise write back over decoded data), and
+ * invalidate again before the page goes back to the allocator, so no
+ * speculatively-loaded stale line outlives it.  Chunks moving through
+ * the pool need no maintenance in between, because no CPU access
+ * happens in between.
  *
  * Display safety is unchanged and still generational: a chunk released
  * by a session is NEVER handed straight back out, because the VD1
@@ -41,8 +63,8 @@ codec_hevc_capture_buffers(struct amvdec_session *sess,
 
 struct fbc_chunk {
 	struct list_head list;
-	void *vaddr;
-	dma_addr_t paddr;
+	struct page **pages;	/* FBC_CHUNK_PAGES single pages */
+	dma_addr_t  *dma;	/* their bus addresses, in the same order */
 };
 
 static struct {
@@ -59,15 +81,38 @@ static struct {
 		   LIST_HEAD_INIT(fbc_pool.park[1]) },
 };
 
+static void fbc_chunk_free(struct device *dev, struct fbc_chunk *c)
+{
+	u32 i;
+
+	if (c->pages) {
+		for (i = 0; i < FBC_CHUNK_PAGES; ++i) {
+			if (!c->pages[i])
+				continue;
+			/*
+			 * The decoder wrote this page without going through
+			 * the cache; drop anything the CPU may have pulled in
+			 * speculatively before the page is reused.
+			 */
+			dma_sync_single_for_cpu(dev, c->dma[i], PAGE_SIZE,
+						DMA_FROM_DEVICE);
+			dma_free_pages(dev, PAGE_SIZE, c->pages[i], c->dma[i],
+				       DMA_FROM_DEVICE);
+		}
+	}
+
+	kfree(c->pages);
+	kfree(c->dma);
+	kfree(c);
+}
+
 static void fbc_chunks_release_locked(struct list_head *h)
 {
 	struct fbc_chunk *c, *n;
 
 	list_for_each_entry_safe(c, n, h, list) {
 		list_del(&c->list);
-		dma_free_coherent(fbc_pool.dev, FBC_CHUNK_SIZE,
-				  c->vaddr, c->paddr);
-		kfree(c);
+		fbc_chunk_free(fbc_pool.dev, c);
 		fbc_pool.nr_total--;
 	}
 }
@@ -115,6 +160,7 @@ EXPORT_SYMBOL_GPL(codec_hevc_fbc_pool_drain);
 static struct fbc_chunk *fbc_chunk_get_locked(struct device *dev)
 {
 	struct fbc_chunk *c;
+	u32 i;
 
 	if (!list_empty(&fbc_pool.free)) {
 		c = list_first_entry(&fbc_pool.free, struct fbc_chunk, list);
@@ -126,22 +172,40 @@ static struct fbc_chunk *fbc_chunk_get_locked(struct device *dev)
 	if (!c)
 		return NULL;
 
-	/*
-	 * A failure here is handled: the caller fails the session with a
-	 * clean -ENOMEM.  Without __GFP_NOWARN, cma_alloc() dumps its entire
-	 * free-range map on every miss - one 4K session that cannot get its
-	 * ~256 chunks produced 200 such dumps, ~159 KB of dmesg, and at
-	 * 115200 baud that is ~14 s of console writes per failed session.
-	 */
-	c->vaddr = dma_alloc_coherent(dev, FBC_CHUNK_SIZE, &c->paddr,
-				      GFP_KERNEL | __GFP_NOWARN);
-	if (!c->vaddr) {
-		kfree(c);
-		return NULL;
+	c->pages = kcalloc(FBC_CHUNK_PAGES, sizeof(*c->pages), GFP_KERNEL);
+	c->dma   = kcalloc(FBC_CHUNK_PAGES, sizeof(*c->dma), GFP_KERNEL);
+	if (!c->pages || !c->dma)
+		goto err;
+
+	for (i = 0; i < FBC_CHUNK_PAGES; ++i) {
+		/*
+		 * __GFP_NORETRY, not bare GFP_KERNEL: an order-0 GFP_KERNEL
+		 * allocation does not fail, it reclaims and then invokes the
+		 * OOM killer.  A 4K session asks for ~65k of these, and a
+		 * decode that cannot get memory must fail cleanly - the
+		 * caller turns this into -ENOMEM - rather than kill the
+		 * player to make room for itself.  __GFP_NOWARN keeps a
+		 * handled failure off the console, as it did for the
+		 * cma_alloc() path this replaces.
+		 */
+		c->pages[i] = dma_alloc_pages(dev, PAGE_SIZE, &c->dma[i],
+					      DMA_FROM_DEVICE,
+					      GFP_KERNEL | __GFP_NORETRY |
+					      __GFP_NOWARN);
+		if (!c->pages[i])
+			goto err;
+
+		/* Drop the dirty lines left by the zeroing above */
+		dma_sync_single_for_device(dev, c->dma[i], PAGE_SIZE,
+					   DMA_FROM_DEVICE);
 	}
 
 	fbc_pool.nr_total++;
 	return c;
+
+err:
+	fbc_chunk_free(dev, c);
+	return NULL;
 }
 
 /*
@@ -212,8 +276,14 @@ static void fbc_chunks_park_locked(struct codec_hevc_common *comm,
 
 dma_addr_t codec_hevc_fbc_body_addr(struct codec_hevc_common *comm, u32 idx)
 {
+	/*
+	 * Vestigial in MMU mode - HEVCD_MPP_DECOMP_CTL2 is zeroed there and
+	 * the hardware walks the page map instead - but still programmed,
+	 * and codec_hevc_frame_buffer_backed() tests it for zero.  The
+	 * body's first page is the faithful answer.
+	 */
 	if (comm->fbc_chunks[idx] && comm->fbc_chunks[idx][0])
-		return comm->fbc_chunks[idx][0]->paddr;
+		return comm->fbc_chunks[idx][0]->dma[0];
 
 	return comm->fbc_buffer_paddr[idx];
 }
@@ -862,8 +932,7 @@ void codec_hevc_fill_mmu_map(struct amvdec_session *sess,
 				break;
 			}
 
-			mmu_map[i] = (c->paddr >> PAGE_SHIFT) +
-				     (i % FBC_CHUNK_PAGES);
+			mmu_map[i] = c->dma[i % FBC_CHUNK_PAGES] >> PAGE_SHIFT;
 		}
 	} else {
 		u32 first_page =
