@@ -633,7 +633,7 @@ static void meson_hdmi_pll_set_params(struct meson_drm *priv, unsigned int m,
 			}
 			regmap_write(priv->hhi, HHI_HDMI_PLL_CNTL6, 0x39272000);
 			regmap_write(priv->hhi, HHI_HDMI_PLL_CNTL7, 0x55540000);
-		} else if (m >= 0x9a) {
+		} else if (m == 0x9a || m == 0xb9) {
 			/*
 			 * 3.7125-4.455 GHz VCO band (the deep-color rates):
 			 * per the vendor hdmitx hw_g12a.c cases 3712500 and
