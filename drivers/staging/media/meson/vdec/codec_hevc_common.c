@@ -519,11 +519,33 @@ void codec_hevc_free_fbc_buffers(struct amvdec_session *sess,
 	mutex_lock(&fbc_pool.lock);
 	fbc_pool.dev = dev;
 
-	if (sess->sequence_cap == 0) {
+	if (sess->sequence_cap == 0 ||
+	    codec_hevc_use_downsample(sess->pixfmt_cap, sess->bitdepth == 10)) {
 		/*
-		 * This session never delivered a frame: nothing of it can be
-		 * on screen, so its chunks are immediately reusable.  The
-		 * still-displayed generations (if any) stay parked.
+		 * Immediately reusable, for one of two reasons.
+		 *
+		 * Either this session never delivered a frame, so nothing of
+		 * it can be on screen - or it is a downsampling session, and
+		 * then its compressed bodies were never on screen either.
+		 * Parking exists for AM21C, where the FBC body IS the surface
+		 * the VD1 overlay scans out.  In downsample mode the decoder
+		 * writes the body only for its own use and a second,
+		 * uncompressed NV12 copy for everyone else (HEVC_DBLK_CFGB
+		 * bit 8 vs bit 9), and it is the NV12 planes - ordinary vb2
+		 * buffers, owned by userspace - that reach the display.  The
+		 * body is private scratch and holding it back protects
+		 * nothing.
+		 *
+		 * It is not cheap scratch, either: one 4K Main10 generation
+		 * is ~358 MiB.  Measured on a VIM3 across a single session
+		 * that had already finished, with no decoder process left
+		 * alive, CmaFree 883 -> 525 MiB and the largest free run
+		 * 220 -> 60 MiB.  The next 4K session then starts starved and
+		 * fragmented: the same clip that scores 47.3 dB PSNR against
+		 * a software decode on a clean boot scores 20.0 dB when it
+		 * follows another 4K session.
+		 *
+		 * The still-displayed generations, if any, stay parked.
 		 */
 		fbc_chunks_park_locked(comm, &fbc_pool.free);
 	} else {
