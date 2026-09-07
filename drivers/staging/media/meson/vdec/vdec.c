@@ -1175,6 +1175,15 @@ static irqreturn_t vdec_isr(int irq, void *data)
 {
 	struct amvdec_core *core = data;
 	struct amvdec_session *sess = core->cur_sess;
+
+	/*
+	 * vdec_stop_streaming() clears cur_sess while the hardware may still
+	 * have an interrupt to raise - a late or spurious one then arrives
+	 * with no session at all.
+	 */
+	if (!sess)
+		return IRQ_NONE;
+
 	sess->last_irq_jiffies = get_jiffies_64();
 
 	return sess->fmt_out->codec_ops->isr(sess);
@@ -1184,6 +1193,9 @@ static irqreturn_t vdec_threaded_isr(int irq, void *data)
 {
 	struct amvdec_core *core = data;
 	struct amvdec_session *sess = core->cur_sess;
+
+	if (!sess)
+		return IRQ_NONE;
 
 	return sess->fmt_out->codec_ops->threaded_isr(sess);
 }
