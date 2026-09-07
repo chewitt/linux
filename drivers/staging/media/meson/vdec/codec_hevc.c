@@ -81,7 +81,6 @@
 #define DBLK_DATA2_SIZE	0x80000
 #define MMU_VBH_SIZE	0x5000
 #define MPRED_ABV_SIZE	0x8000
-#define MPRED_MV_SIZE	(MPRED_MV_BUF_SIZE * MAX_REF_PIC_NUM)
 #define RPM_BUF_SIZE	0x100
 #define LMEM_SIZE	0xA00
 
@@ -101,8 +100,20 @@
 #define DBLK_DATA2_OFFSET (DBLK_DATA_OFFSET + DBLK_DATA_SIZE)
 #define MMU_VBH_OFFSET   (DBLK_DATA2_OFFSET + DBLK_DATA2_SIZE)
 #define MPRED_ABV_OFFSET (MMU_VBH_OFFSET + MMU_VBH_SIZE)
-#define MPRED_MV_OFFSET  (MPRED_ABV_OFFSET + MPRED_ABV_SIZE)
-#define RPM_OFFSET       (MPRED_MV_OFFSET + MPRED_MV_SIZE)
+/*
+ * The per-frame motion-vector buffers are deliberately NOT in the workspace.
+ * They were 27 MiB of its 28.69 MiB - 94% - which is what made the workspace
+ * the hardest contiguous allocation this driver makes, and the one that fails
+ * first: the failures seen here are cma_alloc() returning -EBUSY, an
+ * isolation failure, i.e. fragmentation rather than exhaustion.
+ *
+ * Nothing required them to live there.  The hardware is given each frame's MV
+ * buffer address individually (HEVC_MPRED_MV_WR/RD_START_ADDR), so they need
+ * only be individually contiguous - not contiguous with each other, nor with
+ * the workspace.  Splitting them out leaves a 1.69 MiB workspace and turns
+ * one 28.69 MiB demand into MAX_REF_PIC_NUM demands of 1.125 MiB.
+ */
+#define RPM_OFFSET       (MPRED_ABV_OFFSET + MPRED_ABV_SIZE)
 #define LMEM_OFFSET      (RPM_OFFSET + RPM_BUF_SIZE)
 
 /* ISR decode status */
@@ -275,6 +286,15 @@ struct codec_hevc {
 	/* Buffer for the HEVC Workspace */
 	void      *workspace_vaddr;
 	dma_addr_t workspace_paddr;
+
+	/*
+	 * Per-frame motion-vector buffers, indexed by capture-buffer index.
+	 * Split out of the workspace; see the RPM_OFFSET comment above.  Their
+	 * lifetime follows the workspace's exactly, cached or private, so
+	 * ws_cached governs both.
+	 */
+	void      *mv_vaddr[MAX_REF_PIC_NUM];
+	dma_addr_t mv_paddr[MAX_REF_PIC_NUM];
 
 	/* AUX buffer */
 	void      *aux_vaddr;
@@ -614,10 +634,50 @@ static struct {
 	struct device *dev;
 	void *vaddr;
 	dma_addr_t paddr;
+	void *mv_vaddr[MAX_REF_PIC_NUM];
+	dma_addr_t mv_paddr[MAX_REF_PIC_NUM];
 	bool busy;
 } hevc_ws = {
 	.lock = __MUTEX_INITIALIZER(hevc_ws.lock),
 };
+
+static void codec_hevc_free_mv_set(struct device *dev, void **vaddr,
+				   dma_addr_t *paddr)
+{
+	int i;
+
+	for (i = 0; i < MAX_REF_PIC_NUM; ++i) {
+		if (!vaddr[i])
+			continue;
+
+		dma_free_coherent(dev, MPRED_MV_BUF_SIZE, vaddr[i], paddr[i]);
+		vaddr[i] = NULL;
+		paddr[i] = 0;
+	}
+}
+
+/*
+ * All MAX_REF_PIC_NUM of them, up front and all-or-nothing.
+ * codec_hevc_get_frame_mv_paddr() runs from the threaded ISR and hands an
+ * address straight to the hardware, so there is nowhere sane to fail later,
+ * and a missing buffer would mean programming a wild DMA target.
+ */
+static int codec_hevc_alloc_mv_set(struct device *dev, void **vaddr,
+				   dma_addr_t *paddr)
+{
+	int i;
+
+	for (i = 0; i < MAX_REF_PIC_NUM; ++i) {
+		vaddr[i] = dma_alloc_coherent(dev, MPRED_MV_BUF_SIZE,
+					      &paddr[i], GFP_KERNEL);
+		if (!vaddr[i]) {
+			codec_hevc_free_mv_set(dev, vaddr, paddr);
+			return -ENOMEM;
+		}
+	}
+
+	return 0;
+}
 
 static int codec_hevc_alloc_workspace(struct amvdec_core *core,
 				      struct codec_hevc *hevc)
@@ -627,8 +687,16 @@ static int codec_hevc_alloc_workspace(struct amvdec_core *core,
 	if (!hevc_ws.vaddr) {
 		hevc_ws.vaddr = dma_alloc_coherent(core->dev, SIZE_WORKSPACE,
 						   &hevc_ws.paddr, GFP_KERNEL);
-		if (hevc_ws.vaddr)
-			hevc_ws.dev = core->dev;
+		if (hevc_ws.vaddr) {
+			if (codec_hevc_alloc_mv_set(core->dev, hevc_ws.mv_vaddr,
+						    hevc_ws.mv_paddr)) {
+				dma_free_coherent(core->dev, SIZE_WORKSPACE,
+						  hevc_ws.vaddr, hevc_ws.paddr);
+				hevc_ws.vaddr = NULL;
+			} else {
+				hevc_ws.dev = core->dev;
+			}
+		}
 	}
 
 	if (hevc_ws.vaddr && !hevc_ws.busy) {
@@ -637,6 +705,8 @@ static int codec_hevc_alloc_workspace(struct amvdec_core *core,
 		hevc_ws.busy = true;
 		hevc->workspace_vaddr = hevc_ws.vaddr;
 		hevc->workspace_paddr = hevc_ws.paddr;
+		memcpy(hevc->mv_vaddr, hevc_ws.mv_vaddr, sizeof(hevc->mv_vaddr));
+		memcpy(hevc->mv_paddr, hevc_ws.mv_paddr, sizeof(hevc->mv_paddr));
 		hevc->ws_cached = true;
 		mutex_unlock(&hevc_ws.lock);
 		return 0;
@@ -650,6 +720,14 @@ static int codec_hevc_alloc_workspace(struct amvdec_core *core,
 						   GFP_KERNEL);
 	if (!hevc->workspace_vaddr)
 		return -ENOMEM;
+
+	if (codec_hevc_alloc_mv_set(core->dev, hevc->mv_vaddr,
+				    hevc->mv_paddr)) {
+		dma_free_coherent(core->dev, SIZE_WORKSPACE,
+				  hevc->workspace_vaddr, hevc->workspace_paddr);
+		hevc->workspace_vaddr = NULL;
+		return -ENOMEM;
+	}
 
 	return 0;
 }
@@ -667,8 +745,13 @@ static void codec_hevc_put_workspace(struct amvdec_core *core,
 	} else {
 		dma_free_coherent(core->dev, SIZE_WORKSPACE,
 				  hevc->workspace_vaddr, hevc->workspace_paddr);
+		codec_hevc_free_mv_set(core->dev, hevc->mv_vaddr,
+				       hevc->mv_paddr);
 	}
 
+	/* Cached or not, this session no longer refers to any of it. */
+	memset(hevc->mv_vaddr, 0, sizeof(hevc->mv_vaddr));
+	memset(hevc->mv_paddr, 0, sizeof(hevc->mv_paddr));
 	hevc->workspace_vaddr = NULL;
 	hevc->ws_cached = false;
 }
@@ -681,6 +764,8 @@ void codec_hevc_workspace_release(void)
 		dma_free_coherent(hevc_ws.dev, SIZE_WORKSPACE,
 				  hevc_ws.vaddr, hevc_ws.paddr);
 		hevc_ws.vaddr = NULL;
+		codec_hevc_free_mv_set(hevc_ws.dev, hevc_ws.mv_vaddr,
+				       hevc_ws.mv_paddr);
 	}
 	mutex_unlock(&hevc_ws.lock);
 }
@@ -1237,8 +1322,12 @@ codec_hevc_set_sao(struct amvdec_session *sess, struct hevc_frame *frame)
 static dma_addr_t codec_hevc_get_frame_mv_paddr(struct codec_hevc *hevc,
 						struct hevc_frame *frame)
 {
-	return hevc->workspace_paddr + MPRED_MV_OFFSET +
-		(frame->vbuf->vb2_buf.index * MPRED_MV_BUF_SIZE);
+	u32 idx = frame->vbuf->vb2_buf.index;
+
+	if (WARN_ON_ONCE(idx >= MAX_REF_PIC_NUM))
+		idx = 0;
+
+	return hevc->mv_paddr[idx];
 }
 
 static void
