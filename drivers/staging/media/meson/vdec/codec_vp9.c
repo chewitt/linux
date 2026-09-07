@@ -847,10 +847,12 @@ static int codec_vp9_stop(struct amvdec_session *sess)
 	struct codec_vp9 *vp9 = sess->priv;
 
 	mutex_lock(&vp9->lock);
-	if (vp9->workspace_vaddr)
+	if (vp9->workspace_vaddr) {
 		dma_free_coherent(core->dev, SIZE_WORKSPACE,
 				  vp9->workspace_vaddr,
 				  vp9->workspace_paddr);
+		vp9->workspace_vaddr = NULL;
+	}
 
 	codec_hevc_free_fbc_buffers(sess, &vp9->common);
 	mutex_unlock(&vp9->lock);
@@ -2123,6 +2125,14 @@ static irqreturn_t codec_vp9_threaded_isr(struct amvdec_session *sess)
 		return IRQ_HANDLED;
 
 	mutex_lock(&vp9->lock);
+	if (!vp9->workspace_vaddr) {
+		/*
+		 * codec_vp9_stop() ran while this interrupt was in flight and
+		 * took the lock first.  Everything below reads the workspace.
+		 */
+		goto unlock;
+	}
+
 	if (dec_status != VP9_HEAD_PARSER_DONE) {
 		dev_err(core->dev_dec, "Unrecognized dec_status: %08X\n",
 			dec_status);
