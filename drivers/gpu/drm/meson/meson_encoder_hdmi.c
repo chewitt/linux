@@ -65,14 +65,6 @@ static int meson_encoder_hdmi_attach(struct drm_bridge *bridge,
 				 &encoder_hdmi->bridge, flags);
 }
 
-static void meson_encoder_hdmi_detach(struct drm_bridge *bridge)
-{
-	struct meson_encoder_hdmi *encoder_hdmi = bridge_to_meson_encoder_hdmi(bridge);
-
-	cec_notifier_conn_unregister(encoder_hdmi->cec_notifier);
-	encoder_hdmi->cec_notifier = NULL;
-}
-
 /*
  * Bus-format classification.  The VENC->HDMI-TX bus is 3x10-bit
  * natively; what varies per format is the chroma layout and the wire
