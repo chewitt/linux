@@ -1015,6 +1015,15 @@ static int m2m_queue_init(void *priv, struct vb2_queue *src_vq,
 		return ret;
 
 	dst_vq->type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
+	/*
+	 * CAPTURE buffers are 4K-class contiguous CMA allocations (an NV12M
+	 * plane is 8 MiB) and a failed REQBUFS is reported to the client as a
+	 * plain -ENOMEM, which it handles.  Ask vb2 to allocate with
+	 * __GFP_NOWARN so the page allocator does not splat a WARNING with a
+	 * full stack trace, and cma_alloc() does not dump its free map, for
+	 * a condition the driver already handles gracefully.
+	 */
+	dst_vq->gfp_flags = __GFP_NOWARN;
 	dst_vq->io_modes = VB2_MMAP | VB2_DMABUF;
 	dst_vq->timestamp_flags = V4L2_BUF_FLAG_TIMESTAMP_COPY;
 	dst_vq->ops = &vdec_vb2_ops;

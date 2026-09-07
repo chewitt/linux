@@ -126,8 +126,15 @@ static struct fbc_chunk *fbc_chunk_get_locked(struct device *dev)
 	if (!c)
 		return NULL;
 
+	/*
+	 * A failure here is handled: the caller fails the session with a
+	 * clean -ENOMEM.  Without __GFP_NOWARN, cma_alloc() dumps its entire
+	 * free-range map on every miss - one 4K session that cannot get its
+	 * ~256 chunks produced 200 such dumps, ~159 KB of dmesg, and at
+	 * 115200 baud that is ~14 s of console writes per failed session.
+	 */
 	c->vaddr = dma_alloc_coherent(dev, FBC_CHUNK_SIZE, &c->paddr,
-				      GFP_KERNEL);
+				      GFP_KERNEL | __GFP_NOWARN);
 	if (!c->vaddr) {
 		kfree(c);
 		return NULL;
@@ -488,8 +495,9 @@ static int codec_hevc_alloc_mmu_headers(struct amvdec_session *sess,
 		if (!bufs[idx] || comm->mmu_header_vaddr[idx])
 			continue;
 
+		/* Handled: failure frees what was taken and returns -ENOMEM. */
 		vaddr = dma_alloc_coherent(dev, MMU_COMPRESS_HEADER_SIZE,
-					   &paddr, GFP_KERNEL);
+					   &paddr, GFP_KERNEL | __GFP_NOWARN);
 		if (!vaddr) {
 			codec_hevc_free_mmu_headers(sess, comm);
 			return -ENOMEM;
