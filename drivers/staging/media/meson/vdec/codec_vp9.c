@@ -760,6 +760,16 @@ static int codec_vp9_start(struct amvdec_session *sess)
 	if (!vp9)
 		return -ENOMEM;
 
+	/*
+	 * The workspace is a single contiguous SIZE_WORKSPACE allocation and
+	 * it is the first thing a session asks CMA for.  A previous session's
+	 * FBC chunk pool can still be holding CMA in 1 MiB chunks here -
+	 * always, on a seek, which stops one session and starts the next back
+	 * to back - leaving no run long enough.  Hand that memory back first,
+	 * exactly as codec_hevc_start() does.
+	 */
+	codec_hevc_fbc_pool_reclaim();
+
 	ret = codec_vp9_alloc_workspace(core, vp9);
 	if (ret)
 		goto free_vp9;
@@ -844,6 +854,22 @@ static int codec_vp9_stop(struct amvdec_session *sess)
 
 	codec_hevc_free_fbc_buffers(sess, &vp9->common);
 	mutex_unlock(&vp9->lock);
+
+	/*
+	 * codec_hevc_free_fbc_buffers() only returns this session's chunks to
+	 * the shared pool's free list - it does not give the pages back to
+	 * CMA.  Without this the pool keeps every chunk a VP9 session ever
+	 * used until an HEVC session happens to run or the driver is removed:
+	 * measured on a VIM3, one 4K Main-profile-2 session left 327 MiB of
+	 * CMA held with no decoder open at all, and the next session - any
+	 * codec - started that much short.  codec_hevc_stop() already does
+	 * this; VP9 was simply missed.
+	 *
+	 * reclaim() frees the free list and park[1] only.  park[0] is the
+	 * generation that may still be on screen and is deliberately left
+	 * alone (see the pooled-FBC parking rules).
+	 */
+	codec_hevc_fbc_pool_reclaim();
 
 	return 0;
 }
