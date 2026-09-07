@@ -73,7 +73,6 @@ enum FRAME_TYPE {
 #define COUNT_SIZE	0x3000
 #define MMU_VBH_SIZE	0x5000
 #define MPRED_ABV_SIZE	0x10000
-#define MPRED_MV_SIZE	(MPRED_MV_BUF_SIZE * MAX_REF_PIC_NUM)
 #define RPM_BUF_SIZE	0x100
 #define LMEM_SIZE	0x800
 
@@ -95,8 +94,16 @@ enum FRAME_TYPE {
 #define COUNT_OFFSET     (PROB_OFFSET + PROB_SIZE)
 #define MMU_VBH_OFFSET   (COUNT_OFFSET + COUNT_SIZE)
 #define MPRED_ABV_OFFSET (MMU_VBH_OFFSET + MMU_VBH_SIZE)
-#define MPRED_MV_OFFSET  (MPRED_ABV_OFFSET + MPRED_ABV_SIZE)
-#define RPM_OFFSET       (MPRED_MV_OFFSET + MPRED_MV_SIZE)
+/*
+ * The per-frame motion-vector buffers are deliberately NOT in the workspace,
+ * for the same reason as in codec_hevc.c: they were 27 MiB of its 28.62 MiB,
+ * which made the workspace the hardest contiguous allocation here and the one
+ * that fails first, to -EBUSY - an isolation failure, so fragmentation rather
+ * than exhaustion.  The hardware takes each frame's MV address individually
+ * (HEVC_MPRED_MV_WR/RD_START_ADDR), so they need only be individually
+ * contiguous.  Splitting them out leaves a 1.62 MiB workspace.
+ */
+#define RPM_OFFSET       (MPRED_ABV_OFFSET + MPRED_ABV_SIZE)
 #define LMEM_OFFSET      (RPM_OFFSET + RPM_BUF_SIZE)
 
 #define SIZE_WORKSPACE	ALIGN(LMEM_OFFSET + LMEM_SIZE, 64 * SZ_1K)
@@ -445,6 +452,14 @@ struct codec_vp9 {
 	void      *workspace_vaddr;
 	dma_addr_t workspace_paddr;
 
+	/*
+	 * Per-frame motion-vector buffers, indexed by capture-buffer index
+	 * (vp9_frame.index is the vb2 index).  Split out of the workspace;
+	 * see the RPM_OFFSET comment above.
+	 */
+	void      *mv_vaddr[MAX_REF_PIC_NUM];
+	dma_addr_t mv_paddr[MAX_REF_PIC_NUM];
+
 	/* Contains many information parsed from the bitstream */
 	union rpm_param rpm_param;
 
@@ -688,9 +703,27 @@ static u32 codec_vp9_num_pending_bufs(struct amvdec_session *sess)
 	return vp9->frames_num;
 }
 
+static void codec_vp9_free_mv_buffers(struct amvdec_core *core,
+				      struct codec_vp9 *vp9)
+{
+	int i;
+
+	for (i = 0; i < MAX_REF_PIC_NUM; ++i) {
+		if (!vp9->mv_vaddr[i])
+			continue;
+
+		dma_free_coherent(core->dev, MPRED_MV_BUF_SIZE,
+				  vp9->mv_vaddr[i], vp9->mv_paddr[i]);
+		vp9->mv_vaddr[i] = NULL;
+		vp9->mv_paddr[i] = 0;
+	}
+}
+
 static int codec_vp9_alloc_workspace(struct amvdec_core *core,
 				     struct codec_vp9 *vp9)
 {
+	int i;
+
 	/* Allocate some memory for the VP9 decoder's state */
 	vp9->workspace_vaddr = dma_alloc_coherent(core->dev, SIZE_WORKSPACE,
 						  &vp9->workspace_paddr,
@@ -698,6 +731,28 @@ static int codec_vp9_alloc_workspace(struct amvdec_core *core,
 	if (!vp9->workspace_vaddr) {
 		dev_err(core->dev, "Failed to allocate VP9 Workspace\n");
 		return -ENOMEM;
+	}
+
+	/*
+	 * All of them up front and all-or-nothing:
+	 * codec_vp9_get_frame_mv_paddr() is reached from the threaded ISR and
+	 * hands an address straight to the hardware, so there is nowhere sane
+	 * to fail later and a missing buffer would be a wild DMA target.
+	 */
+	for (i = 0; i < MAX_REF_PIC_NUM; ++i) {
+		vp9->mv_vaddr[i] = dma_alloc_coherent(core->dev,
+						      MPRED_MV_BUF_SIZE,
+						      &vp9->mv_paddr[i],
+						      GFP_KERNEL);
+		if (!vp9->mv_vaddr[i]) {
+			dev_err(core->dev, "Failed to allocate VP9 MV buffer\n");
+			codec_vp9_free_mv_buffers(core, vp9);
+			dma_free_coherent(core->dev, SIZE_WORKSPACE,
+					  vp9->workspace_vaddr,
+					  vp9->workspace_paddr);
+			vp9->workspace_vaddr = NULL;
+			return -ENOMEM;
+		}
 	}
 
 	return 0;
@@ -852,6 +907,13 @@ static int codec_vp9_stop(struct amvdec_session *sess)
 				  vp9->workspace_vaddr,
 				  vp9->workspace_paddr);
 		vp9->workspace_vaddr = NULL;
+		/*
+		 * Inside the same locked region, and only once
+		 * workspace_vaddr is NULL: the threaded ISR tests that under
+		 * this lock before touching either, so the MV buffers are
+		 * covered by the same guard.
+		 */
+		codec_vp9_free_mv_buffers(core, vp9);
 	}
 
 	codec_hevc_free_fbc_buffers(sess, &vp9->common);
@@ -999,8 +1061,12 @@ static void codec_vp9_set_sao(struct amvdec_session *sess,
 static dma_addr_t codec_vp9_get_frame_mv_paddr(struct codec_vp9 *vp9,
 					       struct vp9_frame *frame)
 {
-	return vp9->workspace_paddr + MPRED_MV_OFFSET +
-	       (frame->index * MPRED_MV_BUF_SIZE);
+	u32 idx = frame->index;
+
+	if (WARN_ON_ONCE(idx >= MAX_REF_PIC_NUM))
+		idx = 0;
+
+	return vp9->mv_paddr[idx];
 }
 
 static void codec_vp9_set_mpred_mv(struct amvdec_core *core,
@@ -2128,7 +2194,9 @@ static irqreturn_t codec_vp9_threaded_isr(struct amvdec_session *sess)
 	if (!vp9->workspace_vaddr) {
 		/*
 		 * codec_vp9_stop() ran while this interrupt was in flight and
-		 * took the lock first.  Everything below reads the workspace.
+		 * took the lock first.  Everything below reads the workspace,
+		 * and the per-frame MV buffers are freed under this same lock
+		 * once this pointer is NULL, so they are covered too.
 		 */
 		goto unlock;
 	}
