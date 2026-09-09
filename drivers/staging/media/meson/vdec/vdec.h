@@ -225,6 +225,7 @@ enum amvdec_status {
  * @resyncing: the codec is discarding input until the next keyframe, so it
  *	will not produce a CAPTURE buffer for a while and the ESPARSER
  *	backpressure credit below must not be applied to it
+ * @eos_pending: feed queued VC-1 OUTPUT packets before sending the EOS BDU
  * @should_stop: flag set if userspace signaled EOS via command
  *		 or empty buffer
  * @keyframe_found: flag set once a keyframe has been parsed
@@ -282,6 +283,7 @@ struct amvdec_session {
 	unsigned int resyncing;
 
 	unsigned int should_stop;
+	bool eos_pending;
 	unsigned int keyframe_found;
 	unsigned int num_dst_bufs;
 	unsigned int changed_format;

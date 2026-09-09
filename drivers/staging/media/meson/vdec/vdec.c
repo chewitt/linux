@@ -23,6 +23,7 @@
 #include "vdec.h"
 #include "codec_hevc_common.h"
 #include "codec_hevc.h"
+#include "codec_vc1_parser.h"
 #include "esparser.h"
 #include "vdec_helpers.h"
 
@@ -156,6 +157,7 @@ static void vdec_poweroff(struct amvdec_session *sess)
 	struct amvdec_codec_ops *codec_ops = sess->fmt_out->codec_ops;
 
 	sess->should_stop = 1;
+	sess->eos_pending = false;
 	vdec_wait_inactive(sess);
 	if (codec_ops->drain)
 		codec_ops->drain(sess);
@@ -510,6 +512,28 @@ static bool vdec_parse_mpeg4_vol_header(struct amvdec_session *sess,
 	return false;
 }
 
+/* Read coded geometry before allocating canvases; CAPTURE S_FMT may be a placeholder. */
+static bool vdec_parse_vc1_seq_header(struct amvdec_session *sess,
+				      struct vb2_buffer *vb)
+{
+	const u8 *data = vb2_plane_vaddr(vb, 0);
+	u32 len = vb2_get_plane_payload(vb, 0);
+	u32 i, width, height;
+
+	if (!data)
+		return false;
+	for (i = 0; i + 4 < len; ++i) {
+		if (data[i] || data[i + 1] || data[i + 2] != 1 || data[i + 3] != 0x0f)
+			continue;
+		if (vc1_sequence_header(data + i + 4, len - i - 4, &width, &height))
+			return false;
+		sess->width = width;
+		sess->height = height;
+		return true;
+	}
+	return false;
+}
+
 static void vdec_init_src_change(struct amvdec_session *sess,
 				 struct vb2_buffer *vb)
 {
@@ -523,6 +547,9 @@ static void vdec_init_src_change(struct amvdec_session *sess,
 			return;
 	} else if (sess->fmt_out->pixfmt == V4L2_PIX_FMT_MPEG4) {
 		if (!vdec_parse_mpeg4_vol_header(sess, vb))
+			return;
+	} else if (sess->fmt_out->pixfmt == V4L2_PIX_FMT_VC1_ANNEX_G) {
+		if (!vdec_parse_vc1_seq_header(sess, vb))
 			return;
 	} else if (!sess->width || !sess->height) {
 		/*
@@ -568,6 +595,7 @@ static void vdec_vb2_buf_queue(struct vb2_buffer *vb)
 	    (sess->fmt_out->pixfmt == V4L2_PIX_FMT_MPEG1 ||
 	     sess->fmt_out->pixfmt == V4L2_PIX_FMT_MPEG2 ||
 	     sess->fmt_out->pixfmt == V4L2_PIX_FMT_MPEG4 ||
+	     sess->fmt_out->pixfmt == V4L2_PIX_FMT_VC1_ANNEX_G ||
 	     sess->fmt_out->pixfmt == V4L2_PIX_FMT_H263))
 		vdec_init_src_change(sess, vb);
 
@@ -669,6 +697,7 @@ static int vdec_start_streaming(struct vb2_queue *q, unsigned int count)
 	}
 
 	sess->should_stop = 0;
+	sess->eos_pending = false;
 	sess->keyframe_found = 0;
 	sess->last_offset = 0;
 	sess->wrap_count = 0;
@@ -1083,6 +1112,7 @@ vdec_decoder_cmd(struct file *file, void *fh, struct v4l2_decoder_cmd *cmd)
 	if (cmd->cmd == V4L2_DEC_CMD_START) {
 		v4l2_m2m_clear_state(sess->m2m_ctx);
 		sess->should_stop = 0;
+		sess->eos_pending = false;
 		return 0;
 	}
 
@@ -1091,6 +1121,16 @@ vdec_decoder_cmd(struct file *file, void *fh, struct v4l2_decoder_cmd *cmd)
 		return -EINVAL;
 
 	dev_dbg(dev, "Received V4L2_DEC_CMD_STOP\n");
+
+	if (sess->fmt_out->pixfmt == V4L2_PIX_FMT_VC1_ANNEX_G) {
+		/* STOP can arrive while OUTPUT packets are still queued. Let
+		 * the worker feed them before appending the end-of-sequence BDU.
+		 */
+		sess->eos_pending = true;
+		v4l2_m2m_mark_stopped(sess->m2m_ctx);
+		schedule_work(&sess->esparser_queue_work);
+		return 0;
+	}
 
 	sess->should_stop = 1;
 

@@ -19,6 +19,7 @@
 
 #include "dos_regs.h"
 #include "esparser.h"
+#include "codec_vc1.h"
 #include "vdec_helpers.h"
 
 /* PARSER REGS (CBUS) */
@@ -266,6 +267,10 @@ int esparser_queue_eos(struct amvdec_core *core, const u8 *data, u32 len)
 		return -ENOMEM;
 
 	memcpy(eos_vaddr, data, len);
+	/* Match the trailer used for ordinary OUTPUT packets. */
+	memset(eos_vaddr + len, 0, SEARCH_PATTERN_LEN);
+	((u8 *)eos_vaddr)[len + 2] = 1;
+	((u8 *)eos_vaddr)[len + 3] = 0xff;
 	ret = esparser_write_data(core, eos_paddr, len);
 	dma_free_coherent(dev, len + SEARCH_PATTERN_LEN,
 			  eos_vaddr, eos_paddr);
@@ -390,6 +395,16 @@ esparser_queue(struct amvdec_session *sess, struct vb2_v4l2_buffer *vbuf)
 		}
 	}
 
+	if (sess->fmt_out->pixfmt == V4L2_PIX_FMT_VC1_ANNEX_G) {
+		payload_size = codec_vc1_prepare_input(sess, vb);
+		if (!payload_size) {
+			amvdec_remove_ts(sess, vb->timestamp);
+			v4l2_m2m_buf_done(vbuf, VB2_BUF_STATE_ERROR);
+			amvdec_abort(sess);
+			return 0;
+		}
+	}
+
 	pad_size = esparser_pad_start_code(core, vb, payload_size);
 	ret = esparser_write_data(core, phy, payload_size + pad_size);
 
@@ -421,6 +436,13 @@ void esparser_queue_all_src(struct work_struct *work)
 
 		if (esparser_queue(sess, &buf->vb) < 0)
 			break;
+	}
+	if (sess->eos_pending && !sess->should_stop &&
+	    !v4l2_m2m_num_src_bufs_ready(sess->m2m_ctx)) {
+		sess->eos_pending = false;
+		sess->should_stop = 1;
+		if (codec_vc1_queue_eos(sess, esparser_get_offset(sess)) < 0)
+			amvdec_abort(sess);
 	}
 	mutex_unlock(&sess->lock);
 }
