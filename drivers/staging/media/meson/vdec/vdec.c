@@ -380,6 +380,136 @@ static bool vdec_parse_mpeg_seq_header(struct amvdec_session *sess,
 	return false;
 }
 
+/* Minimal MSB-first bit reader over one OUTPUT buffer */
+struct vdec_bitreader {
+	const u8 *data;
+	u32 len;	/* bytes */
+	u32 pos;	/* bits consumed */
+};
+
+static u32 vdec_br_bits(struct vdec_bitreader *br, u8 n)
+{
+	u32 v = 0;
+
+	while (n--) {
+		u32 byte = br->pos >> 3;
+
+		if (byte >= br->len)
+			return v << (n + 1);	/* ran off the end */
+
+		v = (v << 1) | ((br->data[byte] >> (7 - (br->pos & 7))) & 1);
+		br->pos++;
+	}
+
+	return v;
+}
+
+/*
+ * MPEG-4 Part 2 video_object_layer_header (ISO/IEC 14496-2 sec. 6.2.3).
+ *
+ * The geometry cannot be taken from the client here.  vdec_s_fmt() assigns
+ * sess->width/height from whatever dimensions the CAPTURE S_FMT carried, and
+ * a client that sets CAPTURE before it knows the coded size - ffmpeg does -
+ * leaves a placeholder behind.  For MPEG1/2 the sequence-header parse above
+ * corrects that; MPEG-4 has no equivalent, so a placeholder would go straight
+ * into MP4_PIC_WH and into the canvas sizes while the microcode decodes at
+ * the real size.  That is the wild write this driver has been bitten by
+ * before, so parse the real thing.
+ */
+static bool vdec_parse_mpeg4_vol_header(struct amvdec_session *sess,
+					struct vb2_buffer *vb)
+{
+	const u8 *data = vb2_plane_vaddr(vb, 0);
+	u32 len = vb2_get_plane_payload(vb, 0);
+	struct vdec_bitreader br;
+	u32 i, verid = 1, shape, w, h;
+
+	if (!data)
+		return false;
+
+	for (i = 0; i + 4 < len; i++) {
+		if (data[i] != 0x00 || data[i + 1] != 0x00 ||
+		    data[i + 2] != 0x01 ||
+		    data[i + 3] < 0x20 || data[i + 3] > 0x2f)
+			continue;
+
+		br.data = data;
+		br.len = len;
+		br.pos = (i + 4) * 8;
+
+		vdec_br_bits(&br, 1);		/* random_accessible_vol */
+		vdec_br_bits(&br, 8);		/* video_object_type_indication */
+
+		if (vdec_br_bits(&br, 1)) {	/* is_object_layer_identifier */
+			verid = vdec_br_bits(&br, 4);
+			vdec_br_bits(&br, 3);	/* priority */
+		}
+
+		if (vdec_br_bits(&br, 4) == 15)	/* aspect_ratio_info */
+			vdec_br_bits(&br, 16);	/* par_width, par_height */
+
+		if (vdec_br_bits(&br, 1)) {	/* vol_control_parameters */
+			vdec_br_bits(&br, 3);	/* chroma_format, low_delay */
+			if (vdec_br_bits(&br, 1)) {	/* vbv_parameters */
+				vdec_br_bits(&br, 15);	/* first_half_bit_rate */
+				vdec_br_bits(&br, 1);
+				vdec_br_bits(&br, 15);	/* latter_half_bit_rate */
+				vdec_br_bits(&br, 1);
+				vdec_br_bits(&br, 15);	/* first_half_vbv_buf */
+				vdec_br_bits(&br, 1);
+				vdec_br_bits(&br, 3);	/* latter_half_vbv_buf */
+				vdec_br_bits(&br, 11);	/* first_half_vbv_occ */
+				vdec_br_bits(&br, 1);
+				vdec_br_bits(&br, 15);	/* latter_half_vbv_occ */
+				vdec_br_bits(&br, 1);
+			}
+		}
+
+		shape = vdec_br_bits(&br, 2);	/* video_object_layer_shape */
+		if (shape == 3 && verid != 1)
+			vdec_br_bits(&br, 4);	/* shape_extension */
+
+		vdec_br_bits(&br, 1);		/* marker_bit */
+		if (vdec_br_bits(&br, 16)) {	/* vop_time_increment_resolution */
+			u32 res = 1, bits = 1;
+
+			/*
+			 * fixed_vop_time_increment is
+			 * ceil(log2(vop_time_increment_resolution)) bits wide,
+			 * so it can only be skipped by recomputing that width.
+			 */
+			br.pos -= 16;
+			res = vdec_br_bits(&br, 16);
+			while ((1U << bits) < res && bits < 16)
+				bits++;
+			vdec_br_bits(&br, 1);		/* marker_bit */
+			if (vdec_br_bits(&br, 1))	/* fixed_vop_rate */
+				vdec_br_bits(&br, bits);
+		} else {
+			vdec_br_bits(&br, 1);		/* marker_bit */
+			vdec_br_bits(&br, 1);		/* fixed_vop_rate */
+		}
+
+		if (shape != 0)			/* not rectangular */
+			return false;
+
+		vdec_br_bits(&br, 1);		/* marker_bit */
+		w = vdec_br_bits(&br, 13);
+		vdec_br_bits(&br, 1);		/* marker_bit */
+		h = vdec_br_bits(&br, 13);
+
+		if (!w || !h)
+			return false;
+
+		sess->width = w;
+		sess->height = h;
+		dev_dbg(sess->core->dev, "mpeg4 VOL header: %ux%u\n", w, h);
+		return true;
+	}
+
+	return false;
+}
+
 static void vdec_init_src_change(struct amvdec_session *sess,
 				 struct vb2_buffer *vb)
 {
@@ -387,8 +517,22 @@ static void vdec_init_src_change(struct amvdec_session *sess,
 		.type = V4L2_EVENT_SOURCE_CHANGE,
 		.u.src_change.changes = V4L2_EVENT_SRC_CH_RESOLUTION };
 
-	if (!vdec_parse_mpeg_seq_header(sess, vb))
+	if (sess->fmt_out->pixfmt == V4L2_PIX_FMT_MPEG1 ||
+	    sess->fmt_out->pixfmt == V4L2_PIX_FMT_MPEG2) {
+		if (!vdec_parse_mpeg_seq_header(sess, vb))
+			return;
+	} else if (sess->fmt_out->pixfmt == V4L2_PIX_FMT_MPEG4) {
+		if (!vdec_parse_mpeg4_vol_header(sess, vb))
+			return;
+	} else if (!sess->width || !sess->height) {
+		/*
+		 * H.263 carries its size in each picture header rather than a
+		 * sequence header, so it still relies on the client's S_FMT.
+		 * If none was supplied there is nothing to announce, and
+		 * starting anyway would size the canvases from zero.
+		 */
 		return;
+	}
 
 	v4l2_ctrl_s_ctrl(sess->ctrl_min_buf_capture,
 			 sess->fmt_out->min_buffers);
@@ -413,12 +557,18 @@ static void vdec_vb2_buf_queue(struct vb2_buffer *vb)
 	 * full-size picture straight past the end of them: a wild DMA that
 	 * wedges the DDR controller.  Gate on the codec, not on the absence
 	 * of a resume op.
+	 *
+	 * MPEG-4 and H.263 are listed here as well, but they take the
+	 * client-supplied geometry branch in vdec_init_src_change() and never
+	 * reach that parser.
 	 */
 	if (vb->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE &&
 	    !sess->fmt_out->codec_ops->resume &&
 	    !sess->init_src_change_done &&
 	    (sess->fmt_out->pixfmt == V4L2_PIX_FMT_MPEG1 ||
-	     sess->fmt_out->pixfmt == V4L2_PIX_FMT_MPEG2))
+	     sess->fmt_out->pixfmt == V4L2_PIX_FMT_MPEG2 ||
+	     sess->fmt_out->pixfmt == V4L2_PIX_FMT_MPEG4 ||
+	     sess->fmt_out->pixfmt == V4L2_PIX_FMT_H263))
 		vdec_init_src_change(sess, vb);
 
 	if (!sess->streamon_out)
