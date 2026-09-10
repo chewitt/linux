@@ -512,6 +512,11 @@ void amvdec_dst_buf_done_idx(struct amvdec_session *sess,
 	struct vb2_v4l2_buffer *vbuf;
 	struct device *dev = sess->core->dev_dec;
 
+	if (buf_idx >= ARRAY_SIZE(sess->fw_idx_to_vb2_idx)) {
+		dev_err(dev, "Invalid firmware buffer index %u\n", buf_idx);
+		return;
+	}
+
 	vbuf = v4l2_m2m_dst_buf_remove_by_idx(sess->m2m_ctx,
 					      sess->fw_idx_to_vb2_idx[buf_idx]);
 
