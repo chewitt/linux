@@ -218,7 +218,7 @@ static irqreturn_t codec_mpeg4_threaded_isr(struct amvdec_session *sess)
 		field = V4L2_FIELD_INTERLACED_TB;
 
 	offset = amvdec_read_dos(core, MP4_OFFSET_REG);
-	amvdec_dst_buf_done_idx(sess, buffer_index, offset, field);
+	amvdec_dst_buf_done_idx(sess, buffer_index, offset, field, 0);
 
 	amvdec_write_dos(core, MREG_BUFFEROUT, 0);
 	return IRQ_HANDLED;

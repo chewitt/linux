@@ -292,7 +292,7 @@ static irqreturn_t codec_vc1_threaded_isr(struct amvdec_session *sess)
 		amvdec_write_dos(core, VC1_BUFFEROUT, 0);
 		return IRQ_HANDLED;
 	}
-	amvdec_dst_buf_done_idx(sess, buffer_index, offset, field);
+	amvdec_dst_buf_done_idx(sess, buffer_index, offset, field, 0);
 
 	amvdec_write_dos(core, VC1_BUFFEROUT, 0);
 	return IRQ_HANDLED;
