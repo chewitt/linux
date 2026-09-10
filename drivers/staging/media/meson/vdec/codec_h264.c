@@ -312,12 +312,16 @@ static void codec_h264_resume(struct amvdec_session *sess)
 	struct codec_h264 *h264 = sess->priv;
 	u32 mb_width, mb_height, mb_total;
 
-	amvdec_set_canvases(sess,
-			    (u32[]){ ANC0_CANVAS_ADDR, 0 },
-			    (u32[]){ 24, 0 });
+	/* Userspace may still hold some allocated buffers after a seek. */
+	if (amvdec_set_canvases(sess,
+				(u32[]){ ANC0_CANVAS_ADDR, 0 },
+				(u32[]){ 24, 0 }) || !sess->num_fw_bufs) {
+		amvdec_abort(sess);
+		return;
+	}
 
 	dev_dbg(core->dev, "max_refs = %u; actual_dpb_size = %u\n",
-		h264->max_refs, sess->num_dst_bufs);
+		h264->max_refs, sess->num_fw_bufs);
 
 	/* Align to a multiple of 4 macroblocks */
 	mb_width = ALIGN(h264->mb_width, 4);
@@ -338,7 +342,7 @@ static void codec_h264_resume(struct amvdec_session *sess)
 	amvdec_write_dos(core, AV_SCRATCH_4, h264->ref_paddr + h264->ref_size);
 
 	amvdec_write_dos(core, AV_SCRATCH_0, (h264->max_refs << 24) |
-					     (sess->num_dst_bufs << 16) |
+					     (sess->num_fw_bufs << 16) |
 					     ((h264->max_refs - 1) << 8));
 }
 

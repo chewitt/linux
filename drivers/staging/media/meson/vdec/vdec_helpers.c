@@ -273,6 +273,9 @@ int amvdec_set_canvases(struct amvdec_session *sess,
 	int i = 0;
 	int ret;
 
+	sess->num_fw_bufs = 0;
+	for (i = 0; i < ARRAY_SIZE(sess->fw_idx_to_vb2_idx); ++i)
+		sess->fw_idx_to_vb2_idx[i] = VB2_IDX_UNMAPPED;
 	for (i = 0; i < ARRAY_SIZE(sess->vb2_idx_to_fw_idx); ++i)
 		sess->vb2_idx_to_fw_idx[i] = VB2_IDX_UNMAPPED;
 	i = 0;
@@ -323,6 +326,7 @@ int amvdec_set_canvases(struct amvdec_session *sess,
 		i++;
 	}
 
+	sess->num_fw_bufs = i;
 	return 0;
 }
 EXPORT_SYMBOL_GPL(amvdec_set_canvases);

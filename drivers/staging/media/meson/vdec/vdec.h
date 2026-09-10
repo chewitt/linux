@@ -229,7 +229,8 @@ enum amvdec_status {
  * @should_stop: flag set if userspace signaled EOS via command
  *		 or empty buffer
  * @keyframe_found: flag set once a keyframe has been parsed
- * @num_dst_bufs: number of destination buffers
+ * @num_dst_bufs: number of allocated destination buffers
+ * @num_fw_bufs: number of destination buffers mapped to firmware canvases
  * @changed_format: the format changed
  * @canvas_alloc: array of all the canvas IDs allocated
  * @canvas_num: number of canvas IDs allocated
@@ -286,6 +287,7 @@ struct amvdec_session {
 	bool eos_pending;
 	unsigned int keyframe_found;
 	unsigned int num_dst_bufs;
+	unsigned int num_fw_bufs;
 	unsigned int changed_format;
 	unsigned int init_src_change_done;
 

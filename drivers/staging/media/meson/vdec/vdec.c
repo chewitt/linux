@@ -246,9 +246,9 @@ static void process_num_buffers(struct vb2_queue *q,
 	 * may write a frame into any of them - so every buffer must be
 	 * queued before the stream can start.
 	 *
-	 * Codecs with a resume op program buffers per frame and set their
-	 * tables up from every ALLOCATED buffer (codec_hevc_setup_buffers),
-	 * so they can start with the interface minimum.  Demanding every
+	 * Codecs with a resume op configure buffers later: H.264 advertises
+	 * queued canvases, while HEVC and VP9 assign buffers per frame.
+	 * They can start with the interface minimum.  Demanding every
 	 * buffer here deadlocked seeks with a zero-copy client: Kodi keeps
 	 * two CAPTURE buffers on the display across a seek and re-queues
 	 * the other eighteen, so vb2 accepted STREAMON but never called
