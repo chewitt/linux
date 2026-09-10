@@ -8,6 +8,7 @@
 
 #include <drm/drm.h>
 #include <drm/drm_atomic.h>
+#include <drm/drm_atomic_helper.h>
 #include <drm/drm_damage_helper.h>
 #include <drm/drm_fourcc.h>
 #include <drm/drm_framebuffer.h>
@@ -24,8 +25,59 @@ static const struct drm_framebuffer_funcs rockchip_drm_fb_funcs = {
 	.dirty	       = drm_atomic_helper_dirtyfb,
 };
 
+static int rockchip_atomic_commit_setup(struct drm_atomic_commit *state)
+{
+	struct rockchip_drm_private *priv = state->dev->dev_private;
+	struct rockchip_drm_commit_hooks *hooks = priv->commit_hooks;
+
+	if (!hooks)
+		return 0;
+
+	return hooks->setup(hooks, state);
+}
+
+/*
+ * drm_atomic_helper_commit_tail_rpm(), with the VOP's commit hooks: tail_begin
+ * before any CRTC is touched, tail_end once every CRTC has moved over but
+ * before drm_atomic_helper_commit_hw_done().
+ */
+static void rockchip_atomic_commit_tail(struct drm_atomic_commit *state)
+{
+	struct drm_device *dev = state->dev;
+	struct rockchip_drm_private *priv = dev->dev_private;
+	struct rockchip_drm_commit_hooks *hooks = priv->commit_hooks;
+
+	if (hooks)
+		hooks->tail_begin(hooks, state);
+
+	drm_atomic_helper_commit_modeset_disables(dev, state);
+
+	drm_atomic_helper_commit_modeset_enables(dev, state);
+
+	drm_atomic_helper_commit_planes(dev, state,
+					DRM_PLANE_COMMIT_ACTIVE_ONLY);
+
+	/*
+	 * Every CRTC has moved over by now: a disabled one stopped inside its
+	 * atomic_disable, an enabled one runs its new mode.  Settle before
+	 * commit_hw_done(): after it the state may not be touched, and the
+	 * next commit only waits for it.
+	 */
+	if (hooks)
+		hooks->tail_end(hooks, state);
+
+	drm_atomic_helper_fake_vblank(state);
+
+	drm_atomic_helper_commit_hw_done(state);
+
+	drm_atomic_helper_wait_for_vblanks(dev, state);
+
+	drm_atomic_helper_cleanup_planes(dev, state);
+}
+
 static const struct drm_mode_config_helper_funcs rockchip_mode_config_helpers = {
-	.atomic_commit_tail = drm_atomic_helper_commit_tail_rpm,
+	.atomic_commit_setup = rockchip_atomic_commit_setup,
+	.atomic_commit_tail = rockchip_atomic_commit_tail,
 };
 
 static struct drm_framebuffer *
