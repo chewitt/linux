@@ -8,6 +8,7 @@
 #define _ROCKCHIP_DRM_VOP2_H
 
 #include <linux/regmap.h>
+#include <drm/drm_atomic.h>
 #include <drm/drm_modes.h>
 #include <dt-bindings/soc/rockchip,vop2.h>
 #include "rockchip_drm_drv.h"
@@ -295,6 +296,26 @@ struct vop2_data {
 	unsigned int soc_id;
 };
 
+/*
+ * The AXI clock is shared by every video port, so the rate it has to run at is
+ * a property of the device rather than of one CRTC.  Track it as a global
+ * atomic state object: each CRTC records its own requirement during atomic
+ * check, and the rate applied is the maximum over the ports.  Going through
+ * the atomic state is what makes this safe - a commit never reads the state of
+ * a CRTC it does not hold a lock for.
+ */
+struct vop2_aclk_state {
+	struct drm_private_state base;
+	unsigned long vp_rate[ROCKCHIP_MAX_CRTC];
+	/*
+	 * The commit that last touched each video port.  The next commit to
+	 * that port waits for it before it changes the clock.
+	 */
+	struct drm_crtc_commit *pending_commit[ROCKCHIP_MAX_CRTC];
+};
+
+#define to_vop2_aclk_state(x) container_of(x, struct vop2_aclk_state, base)
+
 struct vop2 {
 	u32 version;
 	struct device *dev;
@@ -335,6 +356,10 @@ struct vop2 {
 	unsigned int enable_count;
 	struct clk *hclk;
 	struct clk *aclk;
+	/* AXI clock rate set up by the platform, used as the lower bound. */
+	unsigned long aclk_rate_normal;
+	struct drm_private_obj aclk_obj;
+	struct rockchip_drm_commit_hooks commit_hooks;
 	struct clk *pclk;
 	struct clk *pll_hdmiphy0;
 	struct clk *pll_hdmiphy1;
