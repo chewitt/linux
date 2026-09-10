@@ -62,17 +62,41 @@ struct rockchip_crtc_state {
 		container_of(s, struct rockchip_crtc_state, base)
 
 /*
+ * A VOP applies its hardware state one CRTC at a time.  A VOP with a resource
+ * that all of its CRTCs share, such as the AXI clock on RK3588, needs to see
+ * the commit as a whole in order to program it: commits that only share that
+ * resource have to be ordered, and the resource has to be held at the level
+ * both the old and the new configuration need until every CRTC has moved
+ * over.  The VOP points rockchip_drm_private.commit_hooks at its hooks at
+ * bind time, and the atomic commit helpers call them.  All three are
+ * required.
+ */
+struct rockchip_drm_commit_hooks {
+	/* From drm_mode_config_helper_funcs.atomic_commit_setup. */
+	int (*setup)(struct rockchip_drm_commit_hooks *hooks,
+		     struct drm_atomic_commit *state);
+	/* Start of the commit tail, before any CRTC is touched. */
+	void (*tail_begin)(struct rockchip_drm_commit_hooks *hooks,
+			   struct drm_atomic_commit *state);
+	/* After every CRTC has moved over, before commit_hw_done(). */
+	void (*tail_end)(struct rockchip_drm_commit_hooks *hooks,
+			 struct drm_atomic_commit *state);
+};
+
+/*
  * Rockchip drm private structure.
  *
  * @crtc: array of enabled CRTCs, used to map from "pipe" to drm_crtc.
  * @num_pipe: number of pipes for this device.
  * @mm_lock: protect drm_mm on multi-threads.
+ * @commit_hooks: set by a VOP that has to see whole commits, or NULL.
  */
 struct rockchip_drm_private {
 	struct iommu_domain *domain;
 	struct device *iommu_dev;
 	struct mutex mm_lock;
 	struct drm_mm mm;
+	struct rockchip_drm_commit_hooks *commit_hooks;
 };
 
 struct rockchip_encoder {
