@@ -244,6 +244,11 @@ static u32 esparser_vififo_get_free_space(struct amvdec_session *sess)
 	vififo_usage += amvdec_read_parser(core, PARSER_VIDEO_HOLE);
 	vififo_usage += (6 * SZ_1K); // 6 KiB internal fifo
 
+	dev_dbg(core->dev,
+		"krn16 fifo sess=%p usage=%u size=%u offset=%u wraps=%u\n",
+		sess, vififo_usage, sess->vififo_size,
+		sess->last_offset, sess->wrap_count);
+
 	if (vififo_usage > sess->vififo_size) {
 		dev_warn(sess->core->dev,
 			 "VIFIFO usage (%u) > VIFIFO size (%u)\n",
@@ -306,6 +311,9 @@ esparser_queue(struct amvdec_session *sess, struct vb2_v4l2_buffer *vbuf)
 	u32 offset;
 	u32 pad_size;
 
+	dev_dbg(core->dev, "krn16 feed-attempt sess=%p idx=%u bytes=%u\n",
+		sess, vb->index, payload_size);
+
 	/*
 	 * When max ref frame is held by VP9, this should be -= 3 to prevent a
 	 * shortage of CAPTURE buffers on the decoder side.
@@ -359,8 +367,13 @@ esparser_queue(struct amvdec_session *sess, struct vb2_v4l2_buffer *vbuf)
 		 * above still bounds how much input can be in flight.
 		 */
 		if (!sess->resyncing &&
-		    atomic_read(&sess->esparser_queued_bufs) >= num_dst_bufs)
+		    atomic_read(&sess->esparser_queued_bufs) >= num_dst_bufs) {
+			dev_dbg(core->dev,
+				"krn16 credit-block sess=%p credit=%d limit=%u\n",
+				sess, atomic_read(&sess->esparser_queued_bufs),
+				num_dst_bufs);
 			return -EAGAIN;
+		}
 
 	} else if (esparser_vififo_get_free_space(sess) < payload_size) {
 		return -EAGAIN;
@@ -417,6 +430,9 @@ esparser_queue(struct amvdec_session *sess, struct vb2_v4l2_buffer *vbuf)
 		return 0;
 	}
 
+	dev_dbg(core->dev,
+		"krn16 feed sess=%p idx=%u ts=%llu offset=%u bytes=%u parser_ret=%d\n",
+		sess, vb->index, vb->timestamp, offset, payload_size, ret);
 	atomic_inc(&sess->esparser_queued_bufs);
 	v4l2_m2m_buf_done(vbuf, VB2_BUF_STATE_DONE);
 

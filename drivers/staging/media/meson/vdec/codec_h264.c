@@ -161,6 +161,7 @@ static void codec_h264_recycle(struct amvdec_core *core, u32 buf_idx)
 		amvdec_write_dos(core, AV_SCRATCH_7, buf_idx + 1);
 	else
 		amvdec_write_dos(core, AV_SCRATCH_8, buf_idx + 1);
+	dev_dbg(core->dev, "krn16 h264-recycle fw_idx=%u\n", buf_idx);
 }
 
 static int codec_h264_start(struct amvdec_session *sess)
@@ -320,8 +321,8 @@ static void codec_h264_resume(struct amvdec_session *sess)
 		return;
 	}
 
-	dev_dbg(core->dev, "max_refs = %u; actual_dpb_size = %u\n",
-		h264->max_refs, sess->num_fw_bufs);
+	dev_dbg(core->dev, "krn16 h264-resume sess=%p refs=%u fw_bufs=%u\n",
+		sess, h264->max_refs, sess->num_fw_bufs);
 
 	/* Align to a multiple of 4 macroblocks */
 	mb_width = ALIGN(h264->mb_width, 4);
@@ -452,6 +453,8 @@ static irqreturn_t codec_h264_threaded_isr(struct amvdec_session *sess)
 
 	status = amvdec_read_dos(core, AV_SCRATCH_0);
 	cmd = status & CMD_MASK;
+	dev_dbg(core->dev, "krn16 h264-irq sess=%p status=%#x cmd=%u\n",
+		sess, status, cmd);
 
 	switch (cmd) {
 	case CMD_SRC_CHANGE:

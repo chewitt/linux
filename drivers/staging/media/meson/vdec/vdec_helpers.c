@@ -504,6 +504,9 @@ void amvdec_dst_buf_done_offset(struct amvdec_session *sess,
 	}
 	spin_unlock_irqrestore(&sess->ts_spinlock, flags);
 
+	dev_dbg(dev,
+		"krn16 offset-done sess=%p idx=%u offset=%u matched=%u ts=%llu\n",
+		sess, vbuf->vb2_buf.index, offset, !!match, timestamp);
 	dst_buf_done(sess, vbuf, field, timestamp, timecode, vbuf_flags);
 	/* A completed frame releases input credit even without a timestamp. */
 	atomic_dec(&sess->esparser_queued_bufs);

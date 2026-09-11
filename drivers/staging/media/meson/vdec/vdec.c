@@ -567,6 +567,22 @@ static void vdec_init_src_change(struct amvdec_session *sess,
 	sess->init_src_change_done = 1;
 }
 
+/* Software-only snapshots: safe even when the decoder is powered down. */
+static void vdec_debug_state(struct amvdec_session *sess, const char *event,
+			     u32 type, u32 value)
+{
+	dev_dbg(sess->core->dev,
+		"krn16 %s sess=%p type=%u value=%#x status=%u stream=%u/%u stop=%u src_ready=%u dst_ready=%u seq=%u/%u credit=%d irq_jiffies=%llu\n",
+		event, sess, type, value, READ_ONCE(sess->status),
+		READ_ONCE(sess->streamon_out), READ_ONCE(sess->streamon_cap),
+		READ_ONCE(sess->should_stop),
+		v4l2_m2m_num_src_bufs_ready(sess->m2m_ctx),
+		v4l2_m2m_num_dst_bufs_ready(sess->m2m_ctx),
+		READ_ONCE(sess->sequence_out), READ_ONCE(sess->sequence_cap),
+		atomic_read(&sess->esparser_queued_bufs),
+		READ_ONCE(sess->last_irq_jiffies));
+}
+
 static void vdec_vb2_buf_queue(struct vb2_buffer *vb)
 {
 	struct vb2_v4l2_buffer *vbuf = to_vb2_v4l2_buffer(vb);
@@ -574,6 +590,7 @@ static void vdec_vb2_buf_queue(struct vb2_buffer *vb)
 	struct v4l2_m2m_ctx *m2m_ctx = sess->m2m_ctx;
 
 	v4l2_m2m_buf_queue(m2m_ctx, vbuf);
+	vdec_debug_state(sess, "qbuf", vb->type, vb->index);
 
 	/*
 	 * Only MPEG1/2 may take this path.  The parser below looks for the
@@ -617,6 +634,8 @@ static int vdec_start_streaming(struct vb2_queue *q, unsigned int count)
 	struct amvdec_core *core = sess->core;
 	struct vb2_v4l2_buffer *buf;
 	int ret;
+
+	vdec_debug_state(sess, "streamon-enter", q->type, count);
 
 	/*
 	 * Sessions serialize on per-session vb2 locks, so two opens can
@@ -774,6 +793,8 @@ static void vdec_stop_streaming(struct vb2_queue *q)
 	struct amvdec_core *core = sess->core;
 	struct vb2_v4l2_buffer *buf;
 
+	vdec_debug_state(sess, "streamoff-enter", q->type, 0);
+
 	if (sess->status == STATUS_RUNNING ||
 	    sess->status == STATUS_INIT ||
 	    (sess->status == STATUS_NEEDS_RESUME &&
@@ -818,6 +839,7 @@ static void vdec_stop_streaming(struct vb2_queue *q)
 	    core->cur_sess == sess)
 		core->cur_sess = NULL;
 	mutex_unlock(&core->lock);
+	vdec_debug_state(sess, "streamoff-exit", q->type, 0);
 }
 
 static int vdec_vb2_buf_prepare(struct vb2_buffer *vb)
@@ -1368,6 +1390,7 @@ static __poll_t vdec_fop_poll(struct file *file, poll_table *wait)
 	if (!sess->streamon_cap && (ret & EPOLLERR))
 		ret &= ~EPOLLERR;
 
+	vdec_debug_state(sess, "poll", 0, (__force u32)ret);
 	return ret;
 }
 
