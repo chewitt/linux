@@ -187,7 +187,7 @@ static irqreturn_t codec_mpeg12_threaded_isr(struct amvdec_session *sess)
 	codec_mpeg12_update_dar(sess);
 	buffer_index = ((reg & 0xf) - 1) & 7;
 	offset = amvdec_read_dos(core, MREG_FRAME_OFFSET);
-	amvdec_dst_buf_done_idx(sess, buffer_index, offset, field);
+	amvdec_dst_buf_done_idx(sess, buffer_index, offset, field, 0);
 
 end:
 	amvdec_write_dos(core, MREG_BUFFEROUT, 0);
