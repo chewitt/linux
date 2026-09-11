@@ -16,9 +16,14 @@ config SND_MESON_AUDIN
 	tristate "Amlogic AUDIN"
 	select REGMAP_MMIO
 	select SND_MESON_AIU
+	select SND_MESON_AUDIN_FIFO
 	help
 	  Select Y or M to add support for the audio input subsystem found
 	  in the Amlogic GX SoC family. Currently only I2S input is supported.
+
+config SND_MESON_AUDIN_FIFO
+	tristate
+	select REGMAP_MMIO
 
 config SND_MESON_AXG_FIFO
 	tristate
