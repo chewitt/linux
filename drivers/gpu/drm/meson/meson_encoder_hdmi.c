@@ -393,11 +393,22 @@ meson_encoder_hdmi_get_inp_bus_fmts(struct drm_bridge *bridge,
 		return NULL;
 
 	/*
-	 * Deep color is implemented (PLL m/frac cases, analog band
-	 * parameters, VPU dither block) for G12A-family only; on older
-	 * SoCs the clock code would program a dead PLL.
+	 * Deep color needs PLL parameters for the deeper VCOs, which exist
+	 * for the G12A family and for GXL/GXM, and a pipeline with the bits
+	 * to carry, which is where the parts differ: S912 (GXM) is 10-bit
+	 * throughout and dithers 12 down to it, while S905 and S905X have
+	 * an 8-to-10 converter in front of the HDMI controller and nothing
+	 * behind it - a deeper wire format there carries upconverted 8-bit
+	 * data at a higher clock, which is worth nothing and risks the
+	 * modeset.  So: 10 and 12 bits on G12A-family, 10 bits on GXM,
+	 * 8 bits everywhere else.
 	 */
 	if (meson_encoder_hdmi_fmt_depth(output_fmt) > 8 &&
+	    !meson_vpu_is_compatible(encoder_hdmi->priv, VPU_COMPATIBLE_G12A) &&
+	    !meson_vpu_is_compatible(encoder_hdmi->priv, VPU_COMPATIBLE_GXM))
+		return NULL;
+
+	if (meson_encoder_hdmi_fmt_depth(output_fmt) > 10 &&
 	    !meson_vpu_is_compatible(encoder_hdmi->priv, VPU_COMPATIBLE_G12A))
 		return NULL;
 
