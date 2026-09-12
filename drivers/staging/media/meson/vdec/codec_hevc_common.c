@@ -352,49 +352,76 @@ static void codec_hevc_setup_buffers_gxbb(struct amvdec_session *sess,
 					  int is_10bit)
 {
 	struct amvdec_core *core = sess->core;
-	struct v4l2_m2m_buffer *buf;
-	u32 buf_num = v4l2_m2m_num_dst_bufs_ready(sess->m2m_ctx);
-	dma_addr_t buf_y_paddr = 0;
-	dma_addr_t buf_uv_paddr = 0;
-	u32 idx = 0;
-	u32 val;
+	struct vb2_buffer *bufs[MAX_REF_PIC_NUM];
+	const bool fbc = codec_hevc_use_fbc(sess->pixfmt_cap, is_10bit);
+	dma_addr_t fill_y = 0, fill_uv = 0;
+	unsigned int idx, n;
 	int i;
+
+	/*
+	 * Unlike the auto-incrementing table on gxl and later, every entry
+	 * here carries its own slot number, so the table can be - and must
+	 * be - written for the whole index space: the reference lists
+	 * address it by vb2_buf.index (index * 2 and index * 2 + 1 for the
+	 * two-plane formats), whether or not that buffer happens to be
+	 * queued right now.  A slot left unwritten reads as address zero
+	 * and the MC engine predicts from physical page 0.
+	 *
+	 * A slot with no buffer behind it is never referenced by a correct
+	 * decode; point it at a real buffer anyway so that a corrupt
+	 * reference reads valid memory.
+	 */
+	n = codec_hevc_capture_buffers(sess, bufs);
+	if (!n)
+		return;
+
+	for (idx = 0; idx < n; idx++) {
+		if (!bufs[idx])
+			continue;
+
+		fill_y = fbc ? comm->fbc_buffer_paddr[idx] :
+			       vb2_dma_contig_plane_dma_addr(bufs[idx], 0);
+		if (!fill_y)
+			continue;
+
+		if (!fbc)
+			fill_uv = vb2_dma_contig_plane_dma_addr(bufs[idx], 1);
+		break;
+	}
+
+	if (!fill_y)
+		return;
 
 	amvdec_write_dos(core, HEVCD_MPP_ANC2AXI_TBL_CONF_ADDR, 0);
 
-	v4l2_m2m_for_each_dst_buf(sess->m2m_ctx, buf) {
-		struct vb2_buffer *vb = &buf->vb.vb2_buf;
+	for (idx = 0; idx < MAX_REF_PIC_NUM; idx++) {
+		struct vb2_buffer *vb = idx < n ? bufs[idx] : NULL;
+		dma_addr_t buf_y_paddr = 0;
+		dma_addr_t buf_uv_paddr = 0;
 
-		idx = vb->index;
-
-		if (codec_hevc_use_fbc(sess->pixfmt_cap, is_10bit))
+		if (vb && fbc) {
 			buf_y_paddr = comm->fbc_buffer_paddr[idx];
-		else
+		} else if (vb) {
 			buf_y_paddr = vb2_dma_contig_plane_dma_addr(vb, 0);
-
-		if (codec_hevc_use_fbc(sess->pixfmt_cap, is_10bit)) {
-			val = buf_y_paddr | (idx << 8) | 1;
-			amvdec_write_dos(core, HEVCD_MPP_ANC2AXI_TBL_CMD_ADDR,
-					 val);
-		} else {
 			buf_uv_paddr = vb2_dma_contig_plane_dma_addr(vb, 1);
-			val = buf_y_paddr | ((idx * 2) << 8) | 1;
+		}
+
+		if (!buf_y_paddr) {
+			buf_y_paddr = fill_y;
+			buf_uv_paddr = fill_uv;
+		}
+
+		if (fbc) {
 			amvdec_write_dos(core, HEVCD_MPP_ANC2AXI_TBL_CMD_ADDR,
-					 val);
-			val = buf_uv_paddr | ((idx * 2 + 1) << 8) | 1;
+					 buf_y_paddr | (idx << 8) | 1);
+		} else {
 			amvdec_write_dos(core, HEVCD_MPP_ANC2AXI_TBL_CMD_ADDR,
-					 val);
+					 buf_y_paddr | ((idx * 2) << 8) | 1);
+			amvdec_write_dos(core, HEVCD_MPP_ANC2AXI_TBL_CMD_ADDR,
+					 buf_uv_paddr | ((idx * 2 + 1) << 8) |
+					 1);
 		}
 	}
-
-	if (codec_hevc_use_fbc(sess->pixfmt_cap, is_10bit))
-		val = buf_y_paddr | (idx << 8) | 1;
-	else
-		val = buf_y_paddr | ((idx * 2) << 8) | 1;
-
-	/* Fill the remaining unused slots with the last buffer's Y addr */
-	for (i = buf_num; i < MAX_REF_PIC_NUM; ++i)
-		amvdec_write_dos(core, HEVCD_MPP_ANC2AXI_TBL_CMD_ADDR, val);
 
 	amvdec_write_dos(core, HEVCD_MPP_ANC2AXI_TBL_CONF_ADDR, 1);
 	amvdec_write_dos(core, HEVCD_MPP_ANC_CANVAS_ACCCONFIG_ADDR, 1);
