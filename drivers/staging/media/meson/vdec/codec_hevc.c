@@ -222,6 +222,8 @@ union rpm_param {
 };
 
 enum nal_unit_type {
+	NAL_UNIT_CODED_SLICE_RASL_N	= 8,
+	NAL_UNIT_CODED_SLICE_RASL_R	= 9,
 	NAL_UNIT_CODED_SLICE_BLA	= 16,
 	NAL_UNIT_CODED_SLICE_BLANT	= 17,
 	NAL_UNIT_CODED_SLICE_BLA_N_LP	= 18,
@@ -265,6 +267,8 @@ struct codec_hevc {
 	 * has no valid references at all).
 	 */
 	u32 seen_irap;
+	/* Discarding the leading pictures of the CRA that opened the stream */
+	bool drop_rasl;
 
 	/*
 	 * In-session stall recovery (vendor decode-timeout protocol).
@@ -359,6 +363,8 @@ static void codec_hevc_set_resync(struct amvdec_session *sess, bool on)
 
 	hevc->seen_irap = !on;
 	sess->resyncing = on;
+	if (on)
+		hevc->drop_rasl = false;
 }
 
 static u32 codec_hevc_num_pending_bufs(struct amvdec_session *sess)
@@ -2024,12 +2030,36 @@ static int codec_hevc_process_segment(struct amvdec_session *sess)
 		if (nal_type >= NAL_UNIT_CODED_SLICE_BLA &&
 		    nal_type <= NAL_UNIT_CODED_SLICE_CRA) {
 			codec_hevc_set_resync(sess, false);
+			hevc->drop_rasl =
+				nal_type != NAL_UNIT_CODED_SLICE_IDR &&
+				nal_type != NAL_UNIT_CODED_SLICE_IDR_N_LP;
 		} else {
 			dev_dbg(core->dev,
 				"skipping pre-IRAP slice (nal %u)\n",
 				nal_type);
 			return codec_hevc_skip_slice(sess);
 		}
+	}
+
+	/*
+	 * The RASL pictures that follow a CRA or BLA in decode order
+	 * predict from pictures that precede it, so when that IRAP is where
+	 * the stream was entered - a seek, or a session starting mid-GOP -
+	 * none of those references exist.  H.265 8.1.3 says not to decode
+	 * them at all.  Substituting whatever reference is to hand instead
+	 * feeds the firmware a picture it cannot reconstruct, and it stalls
+	 * on the attempt.  They end at the first trailing picture.
+	 */
+	if (hevc->drop_rasl) {
+		if (nal_type == NAL_UNIT_CODED_SLICE_RASL_N ||
+		    nal_type == NAL_UNIT_CODED_SLICE_RASL_R) {
+			dev_dbg(core->dev, "skipping RASL slice (nal %u)\n",
+				nal_type);
+			return codec_hevc_skip_slice(sess);
+		}
+
+		if (nal_type < NAL_UNIT_CODED_SLICE_BLA)
+			hevc->drop_rasl = false;
 	}
 
 	/* First slice: new frame */
