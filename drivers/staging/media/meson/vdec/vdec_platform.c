@@ -18,6 +18,17 @@
 
 static const struct amvdec_format vdec_formats_gxbb[] = {
 	{
+		.pixfmt = V4L2_PIX_FMT_H263,
+		.min_buffers = 8,
+		.max_buffers = 8,
+		.max_width = 1920,
+		.max_height = 1088,
+		.vdec_ops = &vdec_1_ops,
+		.codec_ops = &codec_mpeg4_ops,
+		.firmware_path = "meson/vdec/gxl_h263.bin",
+		.pixfmts_cap = { V4L2_PIX_FMT_NV12M, V4L2_PIX_FMT_YUV420M, 0 },
+		.flags = V4L2_FMT_FLAG_COMPRESSED,
+	}, {
 		.pixfmt = V4L2_PIX_FMT_H264,
 		.min_buffers = 2,
 		.max_buffers = 24,
@@ -63,11 +74,44 @@ static const struct amvdec_format vdec_formats_gxbb[] = {
 		.firmware_path = "meson/vdec/gxl_mpeg12.bin",
 		.pixfmts_cap = { V4L2_PIX_FMT_NV12M, V4L2_PIX_FMT_YUV420M, 0 },
 		.flags = V4L2_FMT_FLAG_COMPRESSED,
+	}, {
+		.pixfmt = V4L2_PIX_FMT_MPEG4,
+		.min_buffers = 8,
+		.max_buffers = 8,
+		.max_width = 1920,
+		.max_height = 1088,
+		.vdec_ops = &vdec_1_ops,
+		.codec_ops = &codec_mpeg4_ops,
+		.firmware_path = "meson/vdec/gxl_mpeg4_5.bin",
+		.pixfmts_cap = { V4L2_PIX_FMT_NV12M, V4L2_PIX_FMT_YUV420M, 0 },
+		.flags = V4L2_FMT_FLAG_COMPRESSED,
+	}, {
+		.pixfmt = V4L2_PIX_FMT_VC1_ANNEX_G,
+		.min_buffers = 4,
+		.max_buffers = 4,
+		.max_width = 1920,
+		.max_height = 1088,
+		.vdec_ops = &vdec_1_ops,
+		.codec_ops = &codec_vc1_ops,
+		.firmware_path = "meson/vdec/gxl_vc1.bin",
+		.pixfmts_cap = { V4L2_PIX_FMT_NV12M, V4L2_PIX_FMT_YUV420M, 0 },
+		.flags = V4L2_FMT_FLAG_COMPRESSED,
 	},
 };
 
 static const struct amvdec_format vdec_formats_gxl[] = {
 	{
+		.pixfmt = V4L2_PIX_FMT_H263,
+		.min_buffers = 8,
+		.max_buffers = 8,
+		.max_width = 1920,
+		.max_height = 1088,
+		.vdec_ops = &vdec_1_ops,
+		.codec_ops = &codec_mpeg4_ops,
+		.firmware_path = "meson/vdec/gxl_h263.bin",
+		.pixfmts_cap = { V4L2_PIX_FMT_NV12M, V4L2_PIX_FMT_YUV420M, 0 },
+		.flags = V4L2_FMT_FLAG_COMPRESSED,
+	}, {
 		.pixfmt = V4L2_PIX_FMT_H264,
 		.min_buffers = 2,
 		.max_buffers = 24,
@@ -111,6 +155,28 @@ static const struct amvdec_format vdec_formats_gxl[] = {
 		.vdec_ops = &vdec_1_ops,
 		.codec_ops = &codec_mpeg12_ops,
 		.firmware_path = "meson/vdec/gxl_mpeg12.bin",
+		.pixfmts_cap = { V4L2_PIX_FMT_NV12M, V4L2_PIX_FMT_YUV420M, 0 },
+		.flags = V4L2_FMT_FLAG_COMPRESSED,
+	}, {
+		.pixfmt = V4L2_PIX_FMT_MPEG4,
+		.min_buffers = 8,
+		.max_buffers = 8,
+		.max_width = 1920,
+		.max_height = 1088,
+		.vdec_ops = &vdec_1_ops,
+		.codec_ops = &codec_mpeg4_ops,
+		.firmware_path = "meson/vdec/gxl_mpeg4_5.bin",
+		.pixfmts_cap = { V4L2_PIX_FMT_NV12M, V4L2_PIX_FMT_YUV420M, 0 },
+		.flags = V4L2_FMT_FLAG_COMPRESSED,
+	}, {
+		.pixfmt = V4L2_PIX_FMT_VC1_ANNEX_G,
+		.min_buffers = 4,
+		.max_buffers = 4,
+		.max_width = 1920,
+		.max_height = 1088,
+		.vdec_ops = &vdec_1_ops,
+		.codec_ops = &codec_vc1_ops,
+		.firmware_path = "meson/vdec/gxl_vc1.bin",
 		.pixfmts_cap = { V4L2_PIX_FMT_NV12M, V4L2_PIX_FMT_YUV420M, 0 },
 		.flags = V4L2_FMT_FLAG_COMPRESSED,
 	}, {
@@ -130,6 +196,17 @@ static const struct amvdec_format vdec_formats_gxl[] = {
 
 static const struct amvdec_format vdec_formats_gxlx[] = {
 	{
+		.pixfmt = V4L2_PIX_FMT_H263,
+		.min_buffers = 8,
+		.max_buffers = 8,
+		.max_width = 1920,
+		.max_height = 1088,
+		.vdec_ops = &vdec_1_ops,
+		.codec_ops = &codec_mpeg4_ops,
+		.firmware_path = "meson/vdec/gxl_h263.bin",
+		.pixfmts_cap = { V4L2_PIX_FMT_NV12M, V4L2_PIX_FMT_YUV420M, 0 },
+		.flags = V4L2_FMT_FLAG_COMPRESSED,
+	}, {
 		.pixfmt = V4L2_PIX_FMT_H264,
 		.min_buffers = 2,
 		.max_buffers = 24,
@@ -175,11 +252,44 @@ static const struct amvdec_format vdec_formats_gxlx[] = {
 		.firmware_path = "meson/vdec/gxl_mpeg12.bin",
 		.pixfmts_cap = { V4L2_PIX_FMT_NV12M, V4L2_PIX_FMT_YUV420M, 0 },
 		.flags = V4L2_FMT_FLAG_COMPRESSED,
+	}, {
+		.pixfmt = V4L2_PIX_FMT_MPEG4,
+		.min_buffers = 8,
+		.max_buffers = 8,
+		.max_width = 1920,
+		.max_height = 1088,
+		.vdec_ops = &vdec_1_ops,
+		.codec_ops = &codec_mpeg4_ops,
+		.firmware_path = "meson/vdec/gxl_mpeg4_5.bin",
+		.pixfmts_cap = { V4L2_PIX_FMT_NV12M, V4L2_PIX_FMT_YUV420M, 0 },
+		.flags = V4L2_FMT_FLAG_COMPRESSED,
+	}, {
+		.pixfmt = V4L2_PIX_FMT_VC1_ANNEX_G,
+		.min_buffers = 4,
+		.max_buffers = 4,
+		.max_width = 1920,
+		.max_height = 1088,
+		.vdec_ops = &vdec_1_ops,
+		.codec_ops = &codec_vc1_ops,
+		.firmware_path = "meson/vdec/gxl_vc1.bin",
+		.pixfmts_cap = { V4L2_PIX_FMT_NV12M, V4L2_PIX_FMT_YUV420M, 0 },
+		.flags = V4L2_FMT_FLAG_COMPRESSED,
 	},
 };
 
 static const struct amvdec_format vdec_formats_gxm[] = {
 	{
+		.pixfmt = V4L2_PIX_FMT_H263,
+		.min_buffers = 8,
+		.max_buffers = 8,
+		.max_width = 1920,
+		.max_height = 1088,
+		.vdec_ops = &vdec_1_ops,
+		.codec_ops = &codec_mpeg4_ops,
+		.firmware_path = "meson/vdec/gxl_h263.bin",
+		.pixfmts_cap = { V4L2_PIX_FMT_NV12M, V4L2_PIX_FMT_YUV420M, 0 },
+		.flags = V4L2_FMT_FLAG_COMPRESSED,
+	}, {
 		.pixfmt = V4L2_PIX_FMT_H264,
 		.min_buffers = 2,
 		.max_buffers = 24,
@@ -223,6 +333,28 @@ static const struct amvdec_format vdec_formats_gxm[] = {
 		.vdec_ops = &vdec_1_ops,
 		.codec_ops = &codec_mpeg12_ops,
 		.firmware_path = "meson/vdec/gxl_mpeg12.bin",
+		.pixfmts_cap = { V4L2_PIX_FMT_NV12M, V4L2_PIX_FMT_YUV420M, 0 },
+		.flags = V4L2_FMT_FLAG_COMPRESSED,
+	}, {
+		.pixfmt = V4L2_PIX_FMT_MPEG4,
+		.min_buffers = 8,
+		.max_buffers = 8,
+		.max_width = 1920,
+		.max_height = 1088,
+		.vdec_ops = &vdec_1_ops,
+		.codec_ops = &codec_mpeg4_ops,
+		.firmware_path = "meson/vdec/gxl_mpeg4_5.bin",
+		.pixfmts_cap = { V4L2_PIX_FMT_NV12M, V4L2_PIX_FMT_YUV420M, 0 },
+		.flags = V4L2_FMT_FLAG_COMPRESSED,
+	}, {
+		.pixfmt = V4L2_PIX_FMT_VC1_ANNEX_G,
+		.min_buffers = 4,
+		.max_buffers = 4,
+		.max_width = 1920,
+		.max_height = 1088,
+		.vdec_ops = &vdec_1_ops,
+		.codec_ops = &codec_vc1_ops,
+		.firmware_path = "meson/vdec/gxl_vc1.bin",
 		.pixfmts_cap = { V4L2_PIX_FMT_NV12M, V4L2_PIX_FMT_YUV420M, 0 },
 		.flags = V4L2_FMT_FLAG_COMPRESSED,
 	}, {
@@ -353,6 +485,17 @@ static const struct amvdec_format vdec_formats_g12a[] = {
 
 static const struct amvdec_format vdec_formats_sm1[] = {
 	{
+		.pixfmt = V4L2_PIX_FMT_H263,
+		.min_buffers = 8,
+		.max_buffers = 8,
+		.max_width = 1920,
+		.max_height = 1088,
+		.vdec_ops = &vdec_1_ops,
+		.codec_ops = &codec_mpeg4_ops,
+		.firmware_path = "meson/vdec/gxl_h263.bin",
+		.pixfmts_cap = { V4L2_PIX_FMT_NV12M, V4L2_PIX_FMT_YUV420M, 0 },
+		.flags = V4L2_FMT_FLAG_COMPRESSED,
+	}, {
 		.pixfmt = V4L2_PIX_FMT_H264,
 		.min_buffers = 2,
 		.max_buffers = 24,
@@ -384,6 +527,28 @@ static const struct amvdec_format vdec_formats_sm1[] = {
 		.vdec_ops = &vdec_1_ops,
 		.codec_ops = &codec_mpeg12_ops,
 		.firmware_path = "meson/vdec/gxl_mpeg12.bin",
+		.pixfmts_cap = { V4L2_PIX_FMT_NV12M, V4L2_PIX_FMT_YUV420M, 0 },
+		.flags = V4L2_FMT_FLAG_COMPRESSED,
+	}, {
+		.pixfmt = V4L2_PIX_FMT_MPEG4,
+		.min_buffers = 8,
+		.max_buffers = 8,
+		.max_width = 1920,
+		.max_height = 1088,
+		.vdec_ops = &vdec_1_ops,
+		.codec_ops = &codec_mpeg4_ops,
+		.firmware_path = "meson/vdec/gxl_mpeg4_5.bin",
+		.pixfmts_cap = { V4L2_PIX_FMT_NV12M, V4L2_PIX_FMT_YUV420M, 0 },
+		.flags = V4L2_FMT_FLAG_COMPRESSED,
+	}, {
+		.pixfmt = V4L2_PIX_FMT_VC1_ANNEX_G,
+		.min_buffers = 4,
+		.max_buffers = 4,
+		.max_width = 1920,
+		.max_height = 1088,
+		.vdec_ops = &vdec_1_ops,
+		.codec_ops = &codec_vc1_ops,
+		.firmware_path = "meson/vdec/g12a_vc1.bin",
 		.pixfmts_cap = { V4L2_PIX_FMT_NV12M, V4L2_PIX_FMT_YUV420M, 0 },
 		.flags = V4L2_FMT_FLAG_COMPRESSED,
 	}, {
@@ -440,9 +605,12 @@ const struct vdec_platform vdec_platform_sm1 = {
 MODULE_FIRMWARE("meson/vdec/g12a_h264.bin");
 MODULE_FIRMWARE("meson/vdec/g12a_vp9.bin");
 MODULE_FIRMWARE("meson/vdec/gxbb_h264.bin");
+MODULE_FIRMWARE("meson/vdec/gxl_h263.bin");
 MODULE_FIRMWARE("meson/vdec/gxl_h264.bin");
 MODULE_FIRMWARE("meson/vdec/gxl_hevc.bin");
 MODULE_FIRMWARE("meson/vdec/gxl_mpeg12.bin");
+MODULE_FIRMWARE("meson/vdec/gxl_mpeg4_5.bin");
+MODULE_FIRMWARE("meson/vdec/gxl_vc1.bin");
 MODULE_FIRMWARE("meson/vdec/gxl_vp9.bin");
 MODULE_FIRMWARE("meson/vdec/gxm_h264.bin");
 MODULE_FIRMWARE("meson/vdec/sm1_vp9_mmu.bin");
