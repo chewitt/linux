@@ -589,8 +589,10 @@ static void codec_hevc_show_frames(struct amvdec_session *sess)
 		    (hevc->frames_num <= tmp->num_reorder_pic))
 			break;
 
-		dev_dbg(sess->core->dev, "DONE frame poc %u; vbuf %u\n",
-			tmp->poc, tmp->vbuf->vb2_buf.index);
+		dev_dbg(sess->core->dev,
+			"DONE frame poc %u; vbuf %u; reorder %u; held %u\n",
+			tmp->poc, tmp->vbuf->vb2_buf.index,
+			tmp->num_reorder_pic, hevc->frames_num);
 		amvdec_dst_buf_done_offset(sess, tmp->vbuf, tmp->offset,
 					   V4L2_FIELD_NONE, 0, false);
 
@@ -1258,6 +1260,7 @@ codec_hevc_set_sao(struct amvdec_session *sess, struct hevc_frame *frame)
 
 	val = amvdec_read_dos(core, HEVCD_IPP_AXIIF_CONFIG) & ~0x30;
 	val |= 0xf;
+	val &= ~BIT(12); /* NV12 */
 	amvdec_write_dos(core, HEVCD_IPP_AXIIF_CONFIG, val);
 
 	val = 0;
