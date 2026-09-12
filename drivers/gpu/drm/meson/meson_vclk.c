@@ -363,12 +363,16 @@ enum {
  * this file's DOC block always said were the missing piece.
  * PHY = VCO / od1 / od2;  vclk = PHY / od3 / vid_pll_div / vclk_div.
  */
+/* 3712.5 /2 /2 /1 /6.25 /2  => /1 /1   1080p24/25/30 @ 10-bit */
+	MESON_VCLK_HDMI_74250_10B,
 /* 3712.5 /2 /1 /1 /6.25 /2  => /1 /1   1080p @ 10-bit */
 	MESON_VCLK_HDMI_148500_10B,
 /* 3712.5 /1 /1 /1 /6.25 /2  => /1 /1   4K30-class @ 10-bit */
 	MESON_VCLK_HDMI_297000_10B,
 /* 3712.5 /1 /1 /1 /6.25 /1  => /1 /2   4K60 YUV420 @ 10-bit */
 	MESON_VCLK_HDMI_594000_YUV420_10B,
+/* 4455 /2 /2 /1 /7.5 /2  => /1 /1      1080p24/25/30 @ 12-bit */
+	MESON_VCLK_HDMI_74250_12B,
 /* 4455 /2 /1 /1 /7.5 /2  => /1 /1      1080p @ 12-bit */
 	MESON_VCLK_HDMI_148500_12B,
 /* 4455 /1 /1 /1 /7.5 /1  => /1 /2      4K60 YUV420 @ 12-bit */
@@ -483,6 +487,18 @@ struct meson_vclk_params {
 		.vid_pll_div = VID_PLL_DIV_5,
 		.vclk_div = 1,
 	},
+	[MESON_VCLK_HDMI_74250_10B] = {
+		.pll_freq = 3712500000,
+		.phy_freq = 928125000,
+		.venc_freq = 74250000,
+		.vclk_freq = 74250000,
+		.pixel_freq = 74250000,
+		.pll_od1 = 2,
+		.pll_od2 = 2,
+		.pll_od3 = 1,
+		.vid_pll_div = VID_PLL_DIV_6p25,
+		.vclk_div = 2,
+	},
 	[MESON_VCLK_HDMI_148500_10B] = {
 		.pll_freq = 3712500000,
 		.phy_freq = 1856250000,
@@ -518,6 +534,18 @@ struct meson_vclk_params {
 		.pll_od3 = 1,
 		.vid_pll_div = VID_PLL_DIV_6p25,
 		.vclk_div = 1,
+	},
+	[MESON_VCLK_HDMI_74250_12B] = {
+		.pll_freq = 4455000000,
+		.phy_freq = 1113750000,
+		.venc_freq = 74250000,
+		.vclk_freq = 74250000,
+		.pixel_freq = 74250000,
+		.pll_od1 = 2,
+		.pll_od2 = 2,
+		.pll_od3 = 1,
+		.vid_pll_div = VID_PLL_DIV_7p5,
+		.vclk_div = 2,
 	},
 	[MESON_VCLK_HDMI_148500_12B] = {
 		.pll_freq = 4455000000,
