@@ -355,6 +355,11 @@ meson_encoder_hdmi_get_inp_bus_fmts(struct drm_bridge *bridge,
 		return NULL;
 
 	if (meson_encoder_hdmi_fmt_depth(output_fmt) > 8 &&
+	    !meson_vpu_is_compatible(encoder_hdmi->priv, VPU_COMPATIBLE_G12A) &&
+	    !meson_vpu_is_compatible(encoder_hdmi->priv, VPU_COMPATIBLE_GXM))
+		return NULL;
+
+	if (meson_encoder_hdmi_fmt_depth(output_fmt) > 10 &&
 	    !meson_vpu_is_compatible(encoder_hdmi->priv, VPU_COMPATIBLE_G12A))
 		return NULL;
 
