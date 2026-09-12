@@ -201,18 +201,17 @@ static int aiu_encoder_i2s_prepare(struct snd_pcm_substream *substream,
 	struct snd_soc_component *component = dai->component;
 	int ret;
 
-	if (ts->clk_enabled)
-		return 0;
+	if (!ts->clk_enabled) {
+		ret = clk_prepare_enable(ts->iface->mclk);
+		if (ret)
+			return ret;
 
-	ret = clk_prepare_enable(ts->iface->mclk);
-	if (ret)
-		return ret;
+		ts->clk_enabled = true;
 
-	ts->clk_enabled = true;
+		aiu_encoder_i2s_divider_enable(component, true);
+	}
 
-	aiu_encoder_i2s_divider_enable(component, true);
-
-	return 0;
+	return gx_stream_start(ts);
 }
 
 static int aiu_encoder_i2s_hw_free(struct snd_pcm_substream *substream,
