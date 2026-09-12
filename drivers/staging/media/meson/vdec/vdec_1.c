@@ -90,7 +90,8 @@ static void vdec_1_core_scrub(struct amvdec_core *core)
 	udelay(10);
 	amvdec_write_dos(core, DOS_SW_RESET0, 0);
 
-	amvdec_dmc_pipeline_reset(core);
+	if (vdec_1_is_g12(core))
+		amvdec_dmc_pipeline_reset(core);
 }
 
 /*

@@ -43,11 +43,28 @@ static void __iomem *amvdec_map(u64 addr, u32 size, void __iomem **cache)
 	return *cache;
 }
 
+/*
+ * Both addresses above belong to the G12 family register map.  GX parts
+ * put the DMC at 0xc8838000 and the reset controller at 0xc1104404, and
+ * decode nothing at all in the 0xff000000 range: an access there is an
+ * unclaimed bus transaction that takes the SoC down without so much as
+ * an oops.  The pre-G12A DMC request port (bit 13 for VDEC_1, bit 4 for
+ * VDEC_HEVC) is unvalidated here, so GX simply keeps its old behaviour.
+ */
+static bool amvdec_has_g12_dmc(struct amvdec_core *core)
+{
+	return core->platform->revision == VDEC_REVISION_G12A ||
+	       core->platform->revision == VDEC_REVISION_SM1;
+}
+
 void amvdec_dmc_park(struct amvdec_core *core, u32 mask)
 {
 	static void __iomem *dmc_base;
 	u32 val;
 	int i;
+
+	if (!amvdec_has_g12_dmc(core))
+		return;
 
 	if (!amvdec_map(G12A_DMC_BASE, G12A_DMC_SIZE, &dmc_base))
 		return;
@@ -71,6 +88,9 @@ void amvdec_dmc_unpark(struct amvdec_core *core, u32 mask)
 	static void __iomem *dmc_base;
 	u32 val;
 
+	if (!amvdec_has_g12_dmc(core))
+		return;
+
 	if (!amvdec_map(G12A_DMC_BASE, G12A_DMC_SIZE, &dmc_base))
 		return;
 
@@ -82,6 +102,9 @@ EXPORT_SYMBOL_GPL(amvdec_dmc_unpark);
 void amvdec_dmc_pipeline_reset(struct amvdec_core *core)
 {
 	static void __iomem *reset7;
+
+	if (!amvdec_has_g12_dmc(core))
+		return;
 
 	if (!amvdec_map(G12A_RESET7_ADDR, 4, &reset7))
 		return;
