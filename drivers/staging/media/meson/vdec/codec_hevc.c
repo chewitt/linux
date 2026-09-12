@@ -774,8 +774,40 @@ void codec_hevc_workspace_release(void)
 EXPORT_SYMBOL_GPL(codec_hevc_workspace_release);
 
 /*
+ * The frame-buffer MMU registers, which are the only part of the
+ * workspace programming that cannot be done once at session start: the
+ * map is allocated by codec_hevc_setup_buffers(), which cannot run
+ * before the CAPTURE queue is negotiated.  With a compressed capture
+ * format (AM21C) the pixel format alone selects MMU mode, so session
+ * start runs with no map allocated yet - and programming 0 points the
+ * hardware at physical page 0.  Leave the map register alone until
+ * there is a map to point at; resume() programs it once there is.
+ */
+static void
+codec_hevc_setup_mmu(struct amvdec_session *sess, struct codec_hevc *hevc)
+{
+	struct amvdec_core *core = sess->core;
+	u32 revision = core->platform->revision;
+	dma_addr_t wkaddr = hevc->workspace_paddr;
+
+	amvdec_write_dos(core, HEVC_SAO_MMU_VH0_ADDR, wkaddr + MMU_VBH_OFFSET);
+	amvdec_write_dos(core, HEVC_SAO_MMU_VH1_ADDR,
+			 wkaddr + MMU_VBH_OFFSET + (MMU_VBH_SIZE / 2));
+
+	if (!hevc->common.mmu_map_paddr)
+		return;
+
+	if (revision >= VDEC_REVISION_G12A)
+		amvdec_write_dos(core, HEVC_ASSIST_MMU_MAP_ADDR,
+				 hevc->common.mmu_map_paddr);
+	else
+		amvdec_write_dos(core, H265_MMU_MAP_BUFFER,
+				 hevc->common.mmu_map_paddr);
+}
+
+/*
  * Program the workspace buffer addresses.  Split from the allocation
- * because it must run again from resume(): the MMU-mode registers
+ * because it must run again from stall recovery: the MMU-mode registers
  * (HEVC_SAO_MMU_VH0/VH1_ADDR, HEVC_ASSIST_MMU_MAP_ADDR) depend on
  * is_10bit, which is only known once the first frame's RPM has been
  * parsed, and on the MMU map allocated by codec_hevc_setup_buffers().
@@ -797,29 +829,7 @@ codec_hevc_setup_workspace(struct amvdec_session *sess,
 	amvdec_write_dos(core, HEVC_SAO_UP, wkaddr + SAO_UP_OFFSET);
 
 	if (codec_hevc_use_mmu(revision, sess->pixfmt_cap, hevc->is_10bit)) {
-		amvdec_write_dos(core, HEVC_SAO_MMU_VH0_ADDR,
-				 wkaddr + MMU_VBH_OFFSET);
-		amvdec_write_dos(core, HEVC_SAO_MMU_VH1_ADDR,
-				 wkaddr + MMU_VBH_OFFSET + (MMU_VBH_SIZE / 2));
-
-		/*
-		 * The frame MMU map is allocated by codec_hevc_setup_buffers(),
-		 * which cannot run before the capture queue is negotiated.
-		 * With a compressed capture format (AM21C) the pixel format
-		 * alone selects MMU mode, so this runs at session start with
-		 * no map allocated yet - and programming 0 points the hardware
-		 * at physical page 0.  Only header parsing happens before
-		 * resume(), which reprograms these registers after allocating,
-		 * so leave them alone until there is a map to point at.
-		 */
-		if (hevc->common.mmu_map_paddr) {
-			if (revision >= VDEC_REVISION_G12A)
-				amvdec_write_dos(core, HEVC_ASSIST_MMU_MAP_ADDR,
-						 hevc->common.mmu_map_paddr);
-			else
-				amvdec_write_dos(core, H265_MMU_MAP_BUFFER,
-						 hevc->common.mmu_map_paddr);
-		}
+		codec_hevc_setup_mmu(sess, hevc);
 	} else if (revision < VDEC_REVISION_G12A) {
 		amvdec_write_dos(core, HEVC_STREAM_SWAP_BUFFER,
 				 wkaddr + SWAP_BUF_OFFSET);
@@ -2178,14 +2188,16 @@ static void codec_hevc_resume(struct amvdec_session *sess)
 	}
 
 	/*
-	 * Same ordering as codec_vp9_resume(): the workspace registers must
-	 * be reprogrammed after codec_hevc_setup_buffers() so that in MMU
-	 * mode (10-bit on G12A+) HEVC_ASSIST_MMU_MAP_ADDR points at the
-	 * MMU map that setup_buffers just allocated.  Without this the
-	 * hardware walks an MMU map at address zero and the whole SoC
-	 * eventually falls over (SP/PC alignment exception).
+	 * Same ordering as codec_vp9_resume(): in MMU mode (10-bit on
+	 * G12A+) HEVC_ASSIST_MMU_MAP_ADDR must be programmed after
+	 * codec_hevc_setup_buffers() has allocated the map, or the
+	 * hardware walks a map at address zero and the whole SoC
+	 * eventually falls over (SP/PC alignment exception).  Nothing
+	 * else in the workspace may be reprogrammed here.
 	 */
-	codec_hevc_setup_workspace(sess, hevc);
+	if (codec_hevc_use_mmu(sess->core->platform->revision,
+			       sess->pixfmt_cap, hevc->is_10bit))
+		codec_hevc_setup_mmu(sess, hevc);
 	codec_hevc_setup_decode_head(sess, hevc->is_10bit);
 	codec_hevc_process_segment_header(sess);
 	if (codec_hevc_process_segment(sess))
