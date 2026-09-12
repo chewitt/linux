@@ -41,10 +41,17 @@ struct dummy_buf {
  * stride happens to work for CPU consumers reading the linear memory,
  * but direct scanout of such buffers (DRMPRIME) shears into columns for
  * any width that is not a multiple of 64 (e.g. DVD 720, VCD 352).
+ *
+ * The height is rounded the same way because the decoder works in whole
+ * coding-tree rows and writes the last one in full, past the bottom of
+ * a picture whose height is not a multiple of the CTU size.  64 is the
+ * largest CTU, so this covers every stream; it is also how the vendor
+ * driver sizes the plane, from the CTU-aligned area rather than the
+ * coded one.
  */
 static u32 get_output_size(u32 width, u32 height)
 {
-	return ALIGN(ALIGN(width, 64) * height, SZ_64K);
+	return ALIGN(ALIGN(width, 64) * ALIGN(height, 64), SZ_64K);
 }
 
 u32 amvdec_get_output_size(struct amvdec_session *sess)
