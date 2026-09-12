@@ -1677,9 +1677,20 @@ static void codec_hevc_update_pocs(struct amvdec_session *sess)
 	else
 		poc_msb = prev_poc_msb;
 
+	/*
+	 * H.265 8.3.1: an IRAP picture with NoRaslOutputFlag equal to 1 has
+	 * PicOrderCntMsb 0.  That is every BLA, and a CRA that opens the
+	 * stream the decoder is looking at - which after a seek is the
+	 * picture the demuxer delivered first.  prev_tid0_poc is 0 there,
+	 * so without this the wrap rule above reads a CRA's POClsb as a
+	 * counter that has wrapped and subtracts max_poc_lsb from it,
+	 * putting the whole GOP at a negative POC that no reference lookup
+	 * can match.
+	 */
 	if (nal_unit_type == NAL_UNIT_CODED_SLICE_BLA   ||
 	    nal_unit_type == NAL_UNIT_CODED_SLICE_BLANT ||
-	    nal_unit_type == NAL_UNIT_CODED_SLICE_BLA_N_LP)
+	    nal_unit_type == NAL_UNIT_CODED_SLICE_BLA_N_LP ||
+	    (nal_unit_type == NAL_UNIT_CODED_SLICE_CRA && !hevc->seen_irap))
 		poc_msb = 0;
 
 	hevc->curr_poc = (poc_msb + poc_lsb);
