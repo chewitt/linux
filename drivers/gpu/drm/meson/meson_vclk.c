@@ -1012,9 +1012,21 @@ static void meson_vclk_set(struct meson_drm *priv,
 			m = 0x7b;
 			frac = vic_alternate_clock ? 0x281 : 0x300;
 			break;
+		case 3712500000:
+			/* deep color: TMDS x1.25 (vendor hw_gxl.c case
+			 * 3712500, which GXL and GXM share)
+			 */
+			m = 0x9a;
+			frac = vic_alternate_clock ? 0x222 : 0x2c0;
+			break;
 		case 4320000000:
 			m = vic_alternate_clock ? 0xb3 : 0xb4;
 			frac = vic_alternate_clock ? 0x347 : 0;
+			break;
+		case 4455000000:
+			/* deep color: TMDS x1.5 (vendor case 4455000) */
+			m = 0xb9;
+			frac = vic_alternate_clock ? 0x1c2 : 0x280;
 			break;
 		case 5940000000:
 			m = 0xf7;
