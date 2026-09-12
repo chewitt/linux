@@ -44,6 +44,18 @@ module_param(scrambled_deep, bool, 0644);
 MODULE_PARM_DESC(scrambled_deep,
 		 "Offer deep color above 340 MHz TMDS (default Y; N restricts to the unscrambled domain)");
 
+/*
+ * YUV422 carries deep color at the 8-bit TMDS rate, so it is the one
+ * wire format the clock gate below cannot refuse - which makes it what
+ * negotiation falls into when a mode has no 444 entry at any depth,
+ * with nothing in any log to say so.  8-bit 422 is what every GX board
+ * has always run and is left alone; deep-color 422 is opt-in.
+ */
+static bool deep_422;
+module_param(deep_422, bool, 0644);
+MODULE_PARM_DESC(deep_422,
+		 "Offer YUV422 above 8 bits (default N; it bypasses the deep-color clock gate)");
+
 struct meson_encoder_hdmi {
 	struct drm_encoder encoder;
 	struct drm_bridge bridge;
@@ -375,6 +387,10 @@ meson_encoder_hdmi_get_inp_bus_fmts(struct drm_bridge *bridge,
 	int i;
 
 	*num_input_fmts = 0;
+
+	if (meson_encoder_hdmi_fmt_is_422(output_fmt) &&
+	    meson_encoder_hdmi_fmt_depth(output_fmt) > 8 && !deep_422)
+		return NULL;
 
 	/*
 	 * Deep color is implemented (PLL m/frac cases, analog band
