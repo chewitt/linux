@@ -1737,6 +1737,17 @@ static void codec_hevc_process_segment_header(struct amvdec_session *sess)
 static int codec_hevc_skip_slice(struct amvdec_session *sess)
 {
 	struct amvdec_core *core = sess->core;
+	struct codec_hevc *hevc = sess->priv;
+
+	/*
+	 * A discarded picture produces no frame, and a frame is the only
+	 * thing that ever returns the input credit the ESPARSER spent on
+	 * it.  Return it here, once per picture, or a session that
+	 * discards for any length of time leaves the counter above what
+	 * the CAPTURE queue allows and never gets fed again.
+	 */
+	if (hevc->rpm_param.p.first_slice_segment_in_pic_flag)
+		atomic_dec_if_positive(&sess->esparser_queued_bufs);
 
 	amvdec_clear_dos_bits(core, HEVC_WAIT_FLAG, BIT(1));
 	amvdec_write_dos(core, HEVC_DEC_STATUS_REG, HEVC_ACTION_DONE);
