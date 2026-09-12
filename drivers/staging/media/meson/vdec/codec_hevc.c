@@ -977,6 +977,14 @@ static int codec_hevc_start(struct amvdec_session *sess)
 	mutex_init(&hevc->lock);
 	sess->priv = hevc;
 
+	/*
+	 * A session starts knowing nothing, so it discards slices until the
+	 * first IRAP - which is what seen_irap being clear means here.  Say
+	 * so, or the ESPARSER holds this session to the CAPTURE credit it
+	 * has no way of repaying while it is discarding.
+	 */
+	codec_hevc_set_resync(sess, true);
+
 	codec_hevc_hw_init(sess);
 
 	return 0;
