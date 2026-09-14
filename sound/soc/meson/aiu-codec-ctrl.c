@@ -12,68 +12,76 @@
 #include "aiu.h"
 #include "meson-codec-glue.h"
 
-#define CTRL_CLK_SEL		GENMASK(1, 0)
-#define CTRL_DATA_SEL_SHIFT	4
-#define CTRL_DATA_SEL		(0x3 << CTRL_DATA_SEL_SHIFT)
+#define CTRL_CLK_SEL			GENMASK(1, 0)
+#define CTRL_CLK_SEL_DISABLE		0x0
+#define CTRL_CLK_SEL_PCM		0x1
+#define CTRL_CLK_SEL_AIU		0x2
+#define CTRL_DATA_SEL			GENMASK(5, 4)
+#define CTRL_DATA_SEL_OUTPUT_ZERO	0x0
+#define CTRL_DATA_SEL_PCM_DATA		0x1
+#define CTRL_DATA_SEL_I2S_DATA		0x2
 
-static const char * const aiu_codec_ctrl_mux_texts[] = {
-	"DISABLED", "PCM", "I2S",
+#define AIU_CLK_CTRL_MORE_HDMI_AMCLK	BIT(6)
+
+struct aiu_hdmi_out {
+	unsigned int data_sel;
+	bool amclk;
 };
 
-static int aiu_codec_ctrl_mux_put_enum(struct snd_kcontrol *kcontrol,
-				       struct snd_ctl_elem_value *ucontrol)
+static const struct aiu_hdmi_out aiu_hdmi_out_i2s = {
+	.data_sel	= CTRL_DATA_SEL_I2S_DATA,
+	.amclk		= true,
+};
+
+static const struct aiu_hdmi_out aiu_hdmi_out_spdif = {
+	.data_sel	= CTRL_DATA_SEL_OUTPUT_ZERO,
+	.amclk		= false,
+};
+
+/*
+ * CLK_SEL picks the clock feeding hdmi_tx_audio_master_clk and is the AIU for
+ * both sources.  DATA_SEL picks what drives the parallel data lines, which
+ * S/PDIF does not use.  AIU_CLK_CTRL_MORE bit 6 picks which AIU clock is handed
+ * over: cts_aoclkx2_int for I2S, cts_i958 for S/PDIF.
+ */
+static void aiu_codec_ctrl_select(struct snd_soc_component *component,
+				  const struct aiu_hdmi_out *out)
 {
-	struct snd_soc_component *component = snd_soc_dapm_kcontrol_to_component(kcontrol);
-	struct snd_soc_dapm_context *dapm = snd_soc_dapm_kcontrol_to_dapm(kcontrol);
-	struct soc_enum *e = (struct soc_enum *)kcontrol->private_value;
-	unsigned int mux, changed;
+	snd_soc_component_update_bits(component, AIU_HDMI_CLK_DATA_CTRL,
+				      CTRL_CLK_SEL | CTRL_DATA_SEL,
+				      FIELD_PREP(CTRL_CLK_SEL,
+						 out ? CTRL_CLK_SEL_AIU :
+						       CTRL_CLK_SEL_DISABLE) |
+				      FIELD_PREP(CTRL_DATA_SEL,
+						 out ? out->data_sel :
+						       CTRL_DATA_SEL_OUTPUT_ZERO));
 
-	if (ucontrol->value.enumerated.item[0] >= e->items)
-		return -EINVAL;
-
-	mux = snd_soc_enum_item_to_val(e, ucontrol->value.enumerated.item[0]);
-	changed = snd_soc_component_test_bits(component, e->reg,
-					      CTRL_DATA_SEL,
-					      FIELD_PREP(CTRL_DATA_SEL, mux));
-
-	if (!changed)
-		return 0;
-
-	/* Force disconnect of the mux while updating */
-	snd_soc_dapm_mux_update_power(dapm, kcontrol, 0, NULL, NULL);
-
-	/* Reset the source first */
-	snd_soc_component_update_bits(component, e->reg,
-				      CTRL_CLK_SEL |
-				      CTRL_DATA_SEL,
-				      FIELD_PREP(CTRL_CLK_SEL, 0) |
-				      FIELD_PREP(CTRL_DATA_SEL, 0));
-
-	/* Set the appropriate source */
-	snd_soc_component_update_bits(component, e->reg,
-				      CTRL_CLK_SEL |
-				      CTRL_DATA_SEL,
-				      FIELD_PREP(CTRL_CLK_SEL, mux) |
-				      FIELD_PREP(CTRL_DATA_SEL, mux));
-
-	snd_soc_dapm_mux_update_power(dapm, kcontrol, mux, e, NULL);
-
-	return 1;
+	snd_soc_component_update_bits(component, AIU_CLK_CTRL_MORE,
+				      AIU_CLK_CTRL_MORE_HDMI_AMCLK,
+				      out && out->amclk ?
+				      AIU_CLK_CTRL_MORE_HDMI_AMCLK : 0);
 }
 
-static SOC_ENUM_SINGLE_DECL(aiu_hdmi_ctrl_mux_enum, AIU_HDMI_CLK_DATA_CTRL,
-			    CTRL_DATA_SEL_SHIFT,
-			    aiu_codec_ctrl_mux_texts);
+static int aiu_codec_ctrl_output_startup(struct snd_pcm_substream *substream,
+					 struct snd_soc_dai *dai)
+{
+	int ret = meson_codec_glue_output_startup(substream, dai);
 
-static const struct snd_kcontrol_new aiu_hdmi_ctrl_mux =
-	SOC_DAPM_ENUM_EXT("HDMI Source", aiu_hdmi_ctrl_mux_enum,
-			  snd_soc_dapm_get_enum_double,
-			  aiu_codec_ctrl_mux_put_enum);
+	if (ret)
+		return ret;
 
-static const struct snd_soc_dapm_widget aiu_hdmi_ctrl_widgets[] = {
-	SND_SOC_DAPM_MUX("HDMI CTRL SRC", SND_SOC_NOPM, 0, 0,
-			 &aiu_hdmi_ctrl_mux),
-};
+	aiu_codec_ctrl_select(dai->component, dai->id == CTRL_OUT ?
+					      &aiu_hdmi_out_i2s :
+					      &aiu_hdmi_out_spdif);
+
+	return 0;
+}
+
+static void aiu_codec_ctrl_output_shutdown(struct snd_pcm_substream *substream,
+					   struct snd_soc_dai *dai)
+{
+	aiu_codec_ctrl_select(dai->component, NULL);
+}
 
 static const struct snd_soc_dai_ops aiu_codec_ctrl_input_ops = {
 	.probe		= meson_codec_glue_input_dai_probe,
@@ -83,7 +91,8 @@ static const struct snd_soc_dai_ops aiu_codec_ctrl_input_ops = {
 };
 
 static const struct snd_soc_dai_ops aiu_codec_ctrl_output_ops = {
-	.startup	= meson_codec_glue_output_startup,
+	.startup	= aiu_codec_ctrl_output_startup,
+	.shutdown	= aiu_codec_ctrl_output_shutdown,
 };
 
 #define AIU_CODEC_CTRL_FORMATS					\
@@ -117,12 +126,12 @@ static struct snd_soc_dai_driver aiu_hdmi_ctrl_dai_drv[] = {
 	[CTRL_I2S] = AIU_CODEC_CTRL_INPUT("HDMI I2S IN"),
 	[CTRL_PCM] = AIU_CODEC_CTRL_INPUT("HDMI PCM IN"),
 	[CTRL_OUT] = AIU_CODEC_CTRL_OUTPUT("HDMI OUT"),
+	[CTRL_OUT_SPDIF] = AIU_CODEC_CTRL_OUTPUT("HDMI OUT SPDIF"),
 };
 
 static const struct snd_soc_dapm_route aiu_hdmi_ctrl_routes[] = {
-	{ "HDMI CTRL SRC", "I2S", "HDMI I2S IN Playback" },
-	{ "HDMI CTRL SRC", "PCM", "HDMI PCM IN Playback" },
-	{ "HDMI OUT Capture", NULL, "HDMI CTRL SRC" },
+	{ "HDMI OUT Capture", NULL, "HDMI I2S IN Playback" },
+	{ "HDMI OUT SPDIF Capture", NULL, "HDMI PCM IN Playback" },
 };
 
 static int aiu_hdmi_of_xlate_dai_name(struct snd_soc_component *component,
@@ -134,8 +143,6 @@ static int aiu_hdmi_of_xlate_dai_name(struct snd_soc_component *component,
 
 static const struct snd_soc_component_driver aiu_hdmi_ctrl_component = {
 	.name			= "AIU HDMI Codec Control",
-	.dapm_widgets		= aiu_hdmi_ctrl_widgets,
-	.num_dapm_widgets	= ARRAY_SIZE(aiu_hdmi_ctrl_widgets),
 	.dapm_routes		= aiu_hdmi_ctrl_routes,
 	.num_dapm_routes	= ARRAY_SIZE(aiu_hdmi_ctrl_routes),
 	.of_xlate_dai_name	= aiu_hdmi_of_xlate_dai_name,
