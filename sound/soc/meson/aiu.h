@@ -7,6 +7,8 @@
 #ifndef _MESON_AIU_H
 #define _MESON_AIU_H
 
+#include <sound/asoundef.h>
+
 #include "gx-formatter.h"
 
 struct clk;
@@ -40,6 +42,7 @@ struct aiu {
 	struct aiu_interface i2s;
 	struct aiu_interface spdif;
 	const struct aiu_platform_data *platform;
+	u8 iec_status[AES_IEC958_STATUS_SIZE];
 };
 
 #define AIU_FORMATS (SNDRV_PCM_FMTBIT_S16_LE |	\
@@ -81,6 +84,7 @@ extern const struct gx_formatter_ops aiu_formatter_i2s_ops;
 #define AIU_ACODEC_CTRL			0x0b0
 #define AIU_958_CHSTAT_R0		0x0c0
 #define AIU_958_CHSTAT_R1		0x0c4
+#define AIU_958_VALID_CTRL		0x0c8
 #define AIU_MEM_I2S_START		0x180
 #define AIU_MEM_I2S_MASKS		0x18c
 #define AIU_MEM_I2S_CONTROL		0x190
