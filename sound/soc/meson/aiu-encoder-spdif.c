@@ -5,6 +5,7 @@
 
 #include <linux/bitfield.h>
 #include <linux/clk.h>
+#include <sound/asoundef.h>
 #include <sound/pcm_params.h>
 #include <sound/pcm_iec958.h>
 #include <sound/soc.h>
@@ -18,6 +19,8 @@
 #define AIU_958_MISC_MODE_32BITS	BIT(7)
 #define AIU_958_MISC_U_FROM_STREAM	BIT(12)
 #define AIU_958_MISC_FORCE_LR		BIT(13)
+#define AIU_958_VALID_CTRL_V		BIT(0)
+#define AIU_958_VALID_CTRL_EN		BIT(1)
 #define AIU_958_CTRL_HOLD_EN		BIT(0)
 #define AIU_CLK_CTRL_958_DIV_EN		BIT(1)
 #define AIU_CLK_CTRL_958_DIV		GENMASK(5, 4)
@@ -68,14 +71,15 @@ aiu_encoder_spdif_trigger(struct snd_pcm_substream *substream, int cmd,
 }
 
 static int aiu_encoder_spdif_setup_cs_word(struct snd_soc_component *component,
-					   struct snd_pcm_hw_params *params)
+					   struct snd_pcm_runtime *runtime)
 {
+	struct aiu *aiu = snd_soc_component_get_drvdata(component);
 	u8 cs[AIU_CS_WORD_LEN];
 	unsigned int val;
 	int ret;
 
-	ret = snd_pcm_create_iec958_consumer_hw_params(params, cs,
-						       AIU_CS_WORD_LEN);
+	memcpy(cs, aiu->iec_status, AIU_CS_WORD_LEN);
+	ret = snd_pcm_fill_iec958_consumer(runtime, cs, AIU_CS_WORD_LEN);
 	if (ret < 0)
 		return ret;
 
@@ -88,6 +92,10 @@ static int aiu_encoder_spdif_setup_cs_word(struct snd_soc_component *component,
 	val = cs[2] | cs[3] << 8;
 	snd_soc_component_write(component, AIU_958_CHSTAT_L1, val);
 	snd_soc_component_write(component, AIU_958_CHSTAT_R1, val);
+
+	val = cs[0] & IEC958_AES0_NONAUDIO ?
+	      AIU_958_VALID_CTRL_EN | AIU_958_VALID_CTRL_V : 0;
+	snd_soc_component_write(component, AIU_958_VALID_CTRL, val);
 
 	return 0;
 }
@@ -126,13 +134,6 @@ static int aiu_encoder_spdif_hw_params(struct snd_pcm_substream *substream,
 				      AIU_958_MISC_U_FROM_STREAM,
 				      val);
 
-	/* Set the stream channel status word */
-	ret = aiu_encoder_spdif_setup_cs_word(component, params);
-	if (ret) {
-		dev_err(dai->dev, "failed to set channel status word\n");
-		return ret;
-	}
-
 	snd_soc_component_update_bits(component, AIU_CLK_CTRL,
 				      AIU_CLK_CTRL_958_DIV |
 				      AIU_CLK_CTRL_958_DIV_MORE,
@@ -148,6 +149,21 @@ static int aiu_encoder_spdif_hw_params(struct snd_pcm_substream *substream,
 	}
 
 	aiu_encoder_spdif_divider_enable(component, true);
+
+	return 0;
+}
+
+static int aiu_encoder_spdif_prepare(struct snd_pcm_substream *substream,
+				     struct snd_soc_dai *dai)
+{
+	struct snd_soc_component *component = dai->component;
+	int ret;
+
+	ret = aiu_encoder_spdif_setup_cs_word(component, substream->runtime);
+	if (ret) {
+		dev_err(dai->dev, "failed to set channel status word\n");
+		return ret;
+	}
 
 	return 0;
 }
@@ -202,6 +218,7 @@ static void aiu_encoder_spdif_shutdown(struct snd_pcm_substream *substream,
 
 const struct snd_soc_dai_ops aiu_encoder_spdif_dai_ops = {
 	.trigger	= aiu_encoder_spdif_trigger,
+	.prepare	= aiu_encoder_spdif_prepare,
 	.hw_params	= aiu_encoder_spdif_hw_params,
 	.hw_free	= aiu_encoder_spdif_hw_free,
 	.startup	= aiu_encoder_spdif_startup,
