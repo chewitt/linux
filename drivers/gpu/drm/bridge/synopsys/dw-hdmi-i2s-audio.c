@@ -43,16 +43,29 @@ static int dw_hdmi_i2s_hw_params(struct device *dev, void *data,
 	u8 conf0 = 0;
 	u8 conf1 = 0;
 	u8 inputclkfs = 0;
+	bool spdif = fmt->fmt == HDMI_SPDIF;
+	u8 spdif0 = 0;
 
 	/* it cares I2S only */
-	if (fmt->bit_clk_provider | fmt->frame_clk_provider) {
+	if (!spdif && (fmt->bit_clk_provider | fmt->frame_clk_provider)) {
 		dev_err(dev, "unsupported clock settings\n");
 		return -EINVAL;
 	}
 
 	/* Reset the FIFOs before applying new params */
 	hdmi_write(audio, HDMI_AUD_CONF0_SW_RESET, HDMI_AUD_CONF0);
-	hdmi_write(audio, (u8)~HDMI_MC_SWRSTZ_I2SSWRST_REQ, HDMI_MC_SWRSTZ);
+	if (spdif) {
+		spdif0 = hdmi_read(audio, HDMI_AUD_SPDIF0);
+		hdmi_write(audio, spdif0 | HDMI_AUD_SPDIF0_SW_RESET,
+			   HDMI_AUD_SPDIF0);
+		hdmi_write(audio, spdif0, HDMI_AUD_SPDIF0);
+		hdmi_write(audio, (u8)~(HDMI_MC_SWRSTZ_I2SSWRST_REQ |
+					HDMI_MC_SWRSTZ_SPDIFSWRST_REQ),
+			   HDMI_MC_SWRSTZ);
+	} else {
+		hdmi_write(audio, (u8)~HDMI_MC_SWRSTZ_I2SSWRST_REQ,
+			   HDMI_MC_SWRSTZ);
+	}
 
 	inputclkfs	= HDMI_AUD_INPUTCLKFS_64FS;
 	conf0		= (HDMI_AUD_CONF0_I2S_SELECT | HDMI_AUD_CONF0_I2S_EN0);
@@ -81,6 +94,8 @@ static int dw_hdmi_i2s_hw_params(struct device *dev, void *data,
 	}
 
 	switch (fmt->fmt) {
+	case HDMI_SPDIF:
+		break;
 	case HDMI_I2S:
 		conf1 |= HDMI_AUD_CONF1_MODE_I2S;
 		break;
@@ -101,6 +116,19 @@ static int dw_hdmi_i2s_hw_params(struct device *dev, void *data,
 		return -EINVAL;
 	}
 
+	if (spdif) {
+		switch (hparms->channels) {
+		case 1 ... 2:
+			inputclkfs = HDMI_AUD_INPUTCLKFS_128FS;
+			break;
+		default:
+			dev_err(dev, "unsupported channel count for spdif: %u\n",
+				hparms->channels);
+			return -EINVAL;
+		}
+		conf0 = 0;
+	}
+
 	dw_hdmi_set_sample_rate(hdmi, hparms->sample_rate);
 	dw_hdmi_set_channel_status(hdmi, hparms->iec.status);
 	dw_hdmi_set_channel_count(hdmi, hparms->channels);
@@ -109,6 +137,13 @@ static int dw_hdmi_i2s_hw_params(struct device *dev, void *data,
 	hdmi_write(audio, inputclkfs, HDMI_AUD_INPUTCLKFS);
 	hdmi_write(audio, conf0, HDMI_AUD_CONF0);
 	hdmi_write(audio, conf1, HDMI_AUD_CONF1);
+	if (spdif) {
+		hdmi_write(audio, 24 & HDMI_AUD_SPDIF1_WIDTH_MASK,
+			   HDMI_AUD_SPDIF1);
+		hdmi_write(audio, spdif0 | HDMI_AUD_SPDIF0_SW_RESET,
+			   HDMI_AUD_SPDIF0);
+		hdmi_write(audio, spdif0, HDMI_AUD_SPDIF0);
+	}
 
 	return 0;
 }
@@ -198,6 +233,7 @@ static int snd_dw_hdmi_probe(struct platform_device *pdev)
 	pdata.ops		= &dw_hdmi_i2s_ops;
 	pdata.i2s		= 1;
 	pdata.max_i2s_channels	= 8;
+	pdata.spdif		= 1;
 	pdata.data		= audio;
 
 	memset(&pdevinfo, 0, sizeof(pdevinfo));
