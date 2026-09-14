@@ -86,7 +86,7 @@
 			sound-dai = <&aiu AIU_HDMI CTRL_OUT>;
 
 			codec-0 {
-				sound-dai = <&hdmi_tx>;
+				sound-dai = <&hdmi_tx 0>;
 			};
 		};
 	};

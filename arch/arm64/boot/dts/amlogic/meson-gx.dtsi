@@ -699,7 +699,7 @@
 			interrupts = <GIC_SPI 57 IRQ_TYPE_EDGE_RISING>;
 			#address-cells = <1>;
 			#size-cells = <0>;
-			#sound-dai-cells = <0>;
+			#sound-dai-cells = <1>;
 			sound-name-prefix = "HDMITX";
 			status = "disabled";
 
