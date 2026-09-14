@@ -14,5 +14,6 @@
 #define CTRL_I2S		0
 #define CTRL_PCM		1
 #define CTRL_OUT		2
+#define CTRL_OUT_SPDIF		3
 
 #endif /* __DT_MESON_AIU_H */
