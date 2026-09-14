@@ -291,6 +291,7 @@ struct hdmi_codec_priv {
 	unsigned int jack_status;
 	u8 iec_status[AES_IEC958_STATUS_SIZE];
 	struct snd_info_entry *proc_entry;
+	bool ctls_added;
 };
 
 static const struct snd_soc_dapm_widget hdmi_widgets[] = {
@@ -800,6 +801,9 @@ static int hdmi_codec_pcm_new(struct snd_soc_pcm_runtime *rtd,
 	unsigned int i;
 	int ret;
 
+	if (hcp->ctls_added)
+		return 0;
+
 	ret =  snd_pcm_add_chmap_ctls(rtd->pcm, SNDRV_PCM_STREAM_PLAYBACK,
 				      NULL, drv->playback.channels_max, 0,
 				      &hcp->chmap_info);
@@ -827,6 +831,8 @@ static int hdmi_codec_pcm_new(struct snd_soc_pcm_runtime *rtd,
 		if (ret < 0)
 			return ret;
 	}
+
+	hcp->ctls_added = true;
 
 	return 0;
 }
