@@ -9,6 +9,8 @@
 #include <linux/of_platform.h>
 #include <linux/regmap.h>
 #include <linux/reset.h>
+#include <sound/pcm.h>
+#include <sound/pcm_iec958.h>
 #include <sound/soc.h>
 #include <sound/soc-dai.h>
 
@@ -28,6 +30,69 @@ static SOC_ENUM_SINGLE_DECL(aiu_spdif_encode_sel_enum, AIU_I2S_MISC,
 
 static const struct snd_kcontrol_new aiu_spdif_encode_mux =
 	SOC_DAPM_ENUM("SPDIF Buffer Src", aiu_spdif_encode_sel_enum);
+
+static int aiu_iec958_info(struct snd_kcontrol *kcontrol,
+			   struct snd_ctl_elem_info *uinfo)
+{
+	uinfo->type = SNDRV_CTL_ELEM_TYPE_IEC958;
+	uinfo->count = 1;
+
+	return 0;
+}
+
+static int aiu_iec958_mask_get(struct snd_kcontrol *kcontrol,
+			       struct snd_ctl_elem_value *ucontrol)
+{
+	memset(ucontrol->value.iec958.status, 0xff,
+	       sizeof(ucontrol->value.iec958.status));
+
+	return 0;
+}
+
+static int aiu_iec958_get(struct snd_kcontrol *kcontrol,
+			  struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_component *component = snd_kcontrol_chip(kcontrol);
+	struct aiu *aiu = snd_soc_component_get_drvdata(component);
+
+	memcpy(ucontrol->value.iec958.status, aiu->iec_status,
+	       sizeof(aiu->iec_status));
+
+	return 0;
+}
+
+static int aiu_iec958_put(struct snd_kcontrol *kcontrol,
+			  struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_component *component = snd_kcontrol_chip(kcontrol);
+	struct aiu *aiu = snd_soc_component_get_drvdata(component);
+
+	if (!memcmp(aiu->iec_status, ucontrol->value.iec958.status,
+		    sizeof(aiu->iec_status)))
+		return 0;
+
+	memcpy(aiu->iec_status, ucontrol->value.iec958.status,
+	       sizeof(aiu->iec_status));
+
+	return 1;
+}
+
+static const struct snd_kcontrol_new aiu_cpu_controls[] = {
+	{
+		.access	= SNDRV_CTL_ELEM_ACCESS_READ,
+		.iface	= SNDRV_CTL_ELEM_IFACE_PCM,
+		.name	= SNDRV_CTL_NAME_IEC958("", PLAYBACK, MASK),
+		.info	= aiu_iec958_info,
+		.get	= aiu_iec958_mask_get,
+	},
+	{
+		.iface	= SNDRV_CTL_ELEM_IFACE_PCM,
+		.name	= SNDRV_CTL_NAME_IEC958("", PLAYBACK, DEFAULT),
+		.info	= aiu_iec958_info,
+		.get	= aiu_iec958_get,
+		.put	= aiu_iec958_put,
+	},
+};
 
 #define AIU_WIDGET_SPDIF_SRC_SEL	0
 #define AIU_WIDGET_I2S_FORMATTER	1
@@ -104,6 +169,8 @@ static void aiu_cpu_component_remove(struct snd_soc_component *component)
 
 static const struct snd_soc_component_driver aiu_cpu_component = {
 	.name			= "AIU CPU",
+	.controls		= aiu_cpu_controls,
+	.num_controls		= ARRAY_SIZE(aiu_cpu_controls),
 	.dapm_widgets		= aiu_cpu_dapm_widgets,
 	.num_dapm_widgets	= ARRAY_SIZE(aiu_cpu_dapm_widgets),
 	.dapm_routes		= aiu_cpu_dapm_routes,
@@ -276,6 +343,11 @@ static int aiu_probe(struct platform_device *pdev)
 		return -ENODEV;
 
 	platform_set_drvdata(pdev, aiu);
+
+	ret = snd_pcm_create_iec958_consumer_default(aiu->iec_status,
+						     sizeof(aiu->iec_status));
+	if (ret < 0)
+		return ret;
 
 	ret = device_reset(dev);
 	if (ret)
