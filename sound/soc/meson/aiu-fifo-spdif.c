@@ -60,11 +60,6 @@ static int fifo_spdif_trigger(struct snd_pcm_substream *substream, int cmd,
 			      struct snd_soc_dai *dai)
 {
 	struct snd_soc_component *component = dai->component;
-	int ret;
-
-	ret = aiu_fifo_trigger(substream, cmd, dai);
-	if (ret)
-		return ret;
 
 	switch (cmd) {
 	case SNDRV_PCM_TRIGGER_START:
@@ -85,7 +80,7 @@ static int fifo_spdif_trigger(struct snd_pcm_substream *substream, int cmd,
 		return -EINVAL;
 	}
 
-	return 0;
+	return aiu_fifo_trigger(substream, cmd, dai);
 }
 
 static int fifo_spdif_prepare(struct snd_pcm_substream *substream,
