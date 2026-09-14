@@ -26,7 +26,8 @@
 #define AIU_MEM_IEC958_BUF_CNTL_INIT		BIT(0)
 #define AIU_RST_SOFT_958_FAST			BIT(2)
 
-#define AIU_FIFO_SPDIF_BLOCK			8
+#define AIU_FIFO_SPDIF_BLOCK			1
+#define AIU_FIFO_SPDIF_BURST			128
 
 static const struct snd_pcm_hardware fifo_spdif_pcm = {
 	.info = (SNDRV_PCM_INFO_INTERLEAVED |
@@ -38,8 +39,8 @@ static const struct snd_pcm_hardware fifo_spdif_pcm = {
 	.rate_max = 192000,
 	.channels_min = 2,
 	.channels_max = 2,
-	.period_bytes_min = AIU_FIFO_SPDIF_BLOCK,
-	.period_bytes_max = AIU_FIFO_SPDIF_BLOCK * USHRT_MAX,
+	.period_bytes_min = AIU_FIFO_SPDIF_BURST,
+	.period_bytes_max = ALIGN_DOWN(USHRT_MAX, AIU_FIFO_SPDIF_BURST),
 	.periods_min = 2,
 	.periods_max = UINT_MAX,
 
@@ -185,7 +186,8 @@ int aiu_fifo_spdif_dai_probe(struct snd_soc_dai *dai)
 
 	fifo->pcm = &fifo_spdif_pcm;
 	fifo->mem_offset = AIU_MEM_IEC958_START;
-	fifo->fifo_block = 1;
+	fifo->fifo_block = AIU_FIFO_SPDIF_BLOCK;
+	fifo->burst = AIU_FIFO_SPDIF_BURST;
 	fifo->pclk = aiu->spdif.clks[PCLK].clk;
 	fifo->irq = aiu->spdif.irq;
 
