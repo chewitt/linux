@@ -144,6 +144,10 @@
 		};
 
 		dai-link-1 {
+			sound-dai = <&aiu AIU_CPU CPU_SPDIF_FIFO>;
+		};
+
+		dai-link-2 {
 			sound-dai = <&aiu AIU_CPU CPU_I2S_ENCODER>;
 			dai-format = "i2s";
 			mclk-fs = <256>;
@@ -157,7 +161,7 @@
 			};
 		};
 
-		dai-link-2 {
+		dai-link-3 {
 			sound-dai = <&aiu AIU_HDMI CTRL_OUT>;
 
 			codec-0 {
@@ -165,11 +169,27 @@
 			};
 		};
 
-		dai-link-3 {
+		dai-link-4 {
 			sound-dai = <&aiu AIU_ACODEC CTRL_OUT>;
 
 			codec-0 {
 				sound-dai = <&acodec>;
+			};
+		};
+
+		dai-link-5 {
+			sound-dai = <&aiu AIU_CPU CPU_SPDIF_ENCODER>;
+
+			codec-0 {
+				sound-dai = <&aiu AIU_HDMI CTRL_PCM>;
+			};
+		};
+
+		dai-link-6 {
+			sound-dai = <&aiu AIU_HDMI CTRL_OUT_SPDIF>;
+
+			codec-0 {
+				sound-dai = <&hdmi_tx 1>;
 			};
 		};
 	};
