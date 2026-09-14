@@ -21,6 +21,7 @@ struct aiu_fifo {
 	const struct snd_pcm_hardware *pcm;
 	unsigned int mem_offset;
 	unsigned int fifo_block;
+	unsigned int burst;
 	struct clk *pclk;
 	int irq;
 };
