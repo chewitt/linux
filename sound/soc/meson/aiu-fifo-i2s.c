@@ -166,6 +166,7 @@ int aiu_fifo_i2s_dai_probe(struct snd_soc_dai *dai)
 	fifo->pcm = &fifo_i2s_pcm;
 	fifo->mem_offset = AIU_MEM_I2S_START;
 	fifo->fifo_block = AIU_FIFO_I2S_BLOCK;
+	fifo->burst = AIU_FIFO_I2S_BLOCK;
 	fifo->pclk = aiu->i2s.clks[PCLK].clk;
 	fifo->irq = aiu->i2s.irq;
 
