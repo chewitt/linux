@@ -34,6 +34,8 @@ static inline u8 hdmi_read(struct dw_hdmi_i2s_audio_data *audio, int offset)
 	return audio->read(hdmi, offset);
 }
 
+#define DW_HDMI_HBR_CHANNEL_ALLOCATION	0x13
+
 static int dw_hdmi_i2s_hw_params(struct device *dev, void *data,
 				 struct hdmi_codec_daifmt *fmt,
 				 struct hdmi_codec_params *hparms)
@@ -44,7 +46,8 @@ static int dw_hdmi_i2s_hw_params(struct device *dev, void *data,
 	u8 conf1 = 0;
 	u8 inputclkfs = 0;
 	bool spdif = fmt->fmt == HDMI_SPDIF;
-	u8 spdif0 = 0;
+	u8 spdif0 = 0, spdif1;
+	bool hbr;
 
 	/* it cares I2S only */
 	if (!spdif && (fmt->bit_clk_provider | fmt->frame_clk_provider)) {
@@ -116,10 +119,19 @@ static int dw_hdmi_i2s_hw_params(struct device *dev, void *data,
 		return -EINVAL;
 	}
 
+	hbr = (hparms->iec.status[0] & IEC958_AES0_NONAUDIO) &&
+	      hparms->channels == 8;
+
 	if (spdif) {
 		switch (hparms->channels) {
 		case 1 ... 2:
 			inputclkfs = HDMI_AUD_INPUTCLKFS_128FS;
+			break;
+		case 4:
+			inputclkfs = HDMI_AUD_INPUTCLKFS_256FS;
+			break;
+		case 8:
+			inputclkfs = HDMI_AUD_INPUTCLKFS_512FS;
 			break;
 		default:
 			dev_err(dev, "unsupported channel count for spdif: %u\n",
@@ -130,16 +142,20 @@ static int dw_hdmi_i2s_hw_params(struct device *dev, void *data,
 	}
 
 	dw_hdmi_set_sample_rate(hdmi, hparms->sample_rate);
-	dw_hdmi_set_channel_status(hdmi, hparms->iec.status);
+	dw_hdmi_set_channel_status(hdmi, hparms->iec.status, hbr);
 	dw_hdmi_set_channel_count(hdmi, hparms->channels);
-	dw_hdmi_set_channel_allocation(hdmi, hparms->cea.channel_allocation);
+	dw_hdmi_set_channel_allocation(hdmi, hbr ? DW_HDMI_HBR_CHANNEL_ALLOCATION :
+					     hparms->cea.channel_allocation);
 
 	hdmi_write(audio, inputclkfs, HDMI_AUD_INPUTCLKFS);
 	hdmi_write(audio, conf0, HDMI_AUD_CONF0);
 	hdmi_write(audio, conf1, HDMI_AUD_CONF1);
 	if (spdif) {
-		hdmi_write(audio, 24 & HDMI_AUD_SPDIF1_WIDTH_MASK,
-			   HDMI_AUD_SPDIF1);
+		spdif1 = 24 & HDMI_AUD_SPDIF1_WIDTH_MASK;
+		if (hbr)
+			spdif1 |= HDMI_AUD_SPDIF1_SETNLPCM |
+				  HDMI_AUD_SPDIF1_HBR;
+		hdmi_write(audio, spdif1, HDMI_AUD_SPDIF1);
 		hdmi_write(audio, spdif0 | HDMI_AUD_SPDIF0_SW_RESET,
 			   HDMI_AUD_SPDIF0);
 		hdmi_write(audio, spdif0, HDMI_AUD_SPDIF0);
