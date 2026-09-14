@@ -143,13 +143,13 @@ int aiu_fifo_startup(struct snd_pcm_substream *substream,
 	 */
 	ret = snd_pcm_hw_constraint_step(substream->runtime, 0,
 					 SNDRV_PCM_HW_PARAM_BUFFER_BYTES,
-					 fifo->fifo_block);
+					 fifo->burst);
 	if (ret)
 		return ret;
 
 	ret = snd_pcm_hw_constraint_step(substream->runtime, 0,
 					 SNDRV_PCM_HW_PARAM_PERIOD_BYTES,
-					 fifo->fifo_block);
+					 fifo->burst);
 	if (ret)
 		return ret;
 
