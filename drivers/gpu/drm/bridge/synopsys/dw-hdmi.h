@@ -402,6 +402,8 @@
 #define HDMI_AUD_CTS2                           0x3204
 #define HDMI_AUD_CTS3                           0x3205
 #define HDMI_AUD_INPUTCLKFS                     0x3206
+#define HDMI_AUD_SPDIF0				0x3300
+#define HDMI_AUD_SPDIF1				0x3301
 #define HDMI_AUD_SPDIFINT			0x3302
 #define HDMI_AUD_CONF0_HBR                      0x3400
 #define HDMI_AUD_HBR_STATUS                     0x3401
@@ -955,6 +957,14 @@ enum {
 	HDMI_AUD_INPUTCLKFS_512FS = 2,
 	HDMI_AUD_INPUTCLKFS_64FS = 4,
 
+/* HDMI_AUD_SPDIF0 field values */
+	HDMI_AUD_SPDIF0_SW_RESET = 0x80,
+
+/* HDMI_AUD_SPDIF1 field values */
+	HDMI_AUD_SPDIF1_SETNLPCM = 0x80,
+	HDMI_AUD_SPDIF1_HBR = 0x40,
+	HDMI_AUD_SPDIF1_WIDTH_MASK = 0x1f,
+
 /* AHB_DMA_CONF0 field values */
 	HDMI_AHB_DMA_CONF0_SW_FIFO_RST_OFFSET = 7,
 	HDMI_AHB_DMA_CONF0_SW_FIFO_RST_MASK = 0x80,
@@ -1000,6 +1010,7 @@ enum {
 
 /* MC_SWRSTZ field values */
 	HDMI_MC_SWRSTZ_I2SSWRST_REQ = 0x08,
+	HDMI_MC_SWRSTZ_SPDIFSWRST_REQ = 0x10,
 	HDMI_MC_SWRSTZ_TMDSSWRST_REQ = 0x02,
 
 /* MC_FLOWCTRL field values */
