@@ -143,6 +143,10 @@
 			codec-0 {
 				sound-dai = <&spdif_dit>;
 			};
+
+			codec-1 {
+				sound-dai = <&aiu AIU_HDMI CTRL_PCM>;
+			};
 		};
 
 		dai-link-4 {
@@ -150,6 +154,14 @@
 
 			codec-0 {
 				sound-dai = <&hdmi_tx 0>;
+			};
+		};
+
+		dai-link-5 {
+			sound-dai = <&aiu AIU_HDMI CTRL_OUT_SPDIF>;
+
+			codec-0 {
+				sound-dai = <&hdmi_tx 1>;
 			};
 		};
 	};
