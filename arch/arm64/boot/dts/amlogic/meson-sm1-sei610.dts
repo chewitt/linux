@@ -237,7 +237,10 @@
 				"TODDR_C IN 0", "TDMIN_A OUT",
 				"TODDR_A IN 1", "TDMIN_B OUT",
 				"TODDR_B IN 1", "TDMIN_B OUT",
-				"TODDR_C IN 1", "TDMIN_B OUT";
+				"TODDR_C IN 1", "TDMIN_B OUT",
+				"SPDIFOUT_B IN 0", "FRDDR_A OUT 4",
+				"SPDIFOUT_B IN 1", "FRDDR_B OUT 4",
+				"SPDIFOUT_B IN 2", "FRDDR_C OUT 4";
 
 		clocks = <&clkc CLKID_MPLL2>,
 			 <&clkc CLKID_MPLL0>,
@@ -320,6 +323,24 @@
 
 			codec {
 				sound-dai = <&hdmi_tx 0>;
+			};
+		};
+
+		/* spdif hdmi interface */
+		dai-link-10 {
+			sound-dai = <&spdifout_b>;
+
+			codec {
+				sound-dai = <&tohdmitx TOHDMITX_SPDIF_IN_B>;
+			};
+		};
+
+		/* hdmi glue, compressed */
+		dai-link-11 {
+			sound-dai = <&tohdmitx TOHDMITX_SPDIF_OUT>;
+
+			codec {
+				sound-dai = <&hdmi_tx 1>;
 			};
 		};
 	};
@@ -507,6 +528,10 @@
 	mmc-pwrseq = <&emmc_pwrseq>;
 	vmmc-supply = <&vddao_3v3>;
 	vqmmc-supply = <&emmc_1v8>;
+};
+
+&spdifout_b {
+	status = "okay";
 };
 
 &tdmif_a {
