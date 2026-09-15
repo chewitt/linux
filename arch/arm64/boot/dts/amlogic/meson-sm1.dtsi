@@ -442,6 +442,19 @@
 			status = "disabled";
 		};
 
+		spdifout_b: audio-controller@680 {
+			compatible = "amlogic,sm1-spdifout",
+				     "amlogic,axg-spdifout";
+			reg = <0x0 0x680 0x0 0x50>;
+			#sound-dai-cells = <0>;
+			sound-name-prefix = "SPDIFOUT_B";
+			clocks = <&clkc_audio AUD_CLKID_SPDIFOUT_B>,
+				 <&clkc_audio AUD_CLKID_SPDIFOUT_B_CLK>;
+			clock-names = "pclk", "mclk";
+			resets = <&clkc_audio AUD_RESET_SPDIFOUT_B>;
+			status = "disabled";
+		};
+
 		toacodec: audio-controller@740 {
 			compatible = "amlogic,sm1-toacodec",
 				     "amlogic,g12a-toacodec";
