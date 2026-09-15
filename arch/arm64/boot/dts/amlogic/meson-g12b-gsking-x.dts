@@ -90,7 +90,7 @@
 			sound-dai = <&tohdmitx TOHDMITX_I2S_OUT>;
 
 			codec {
-				sound-dai = <&hdmi_tx>;
+				sound-dai = <&hdmi_tx 0>;
 			};
 		};
 	};
