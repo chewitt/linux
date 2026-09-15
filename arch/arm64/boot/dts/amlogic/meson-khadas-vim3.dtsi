@@ -180,7 +180,10 @@
 				"TDMIN_A IN 3", "TDM_A Loopback",
 				"TODDR_A IN 0", "TDMIN_A OUT",
 				"TODDR_B IN 0", "TDMIN_A OUT",
-				"TODDR_C IN 0", "TDMIN_A OUT";
+				"TODDR_C IN 0", "TDMIN_A OUT",
+				"SPDIFOUT_B IN 0", "FRDDR_A OUT 4",
+				"SPDIFOUT_B IN 1", "FRDDR_B OUT 4",
+				"SPDIFOUT_B IN 2", "FRDDR_C OUT 4";
 
 		clocks = <&clkc CLKID_MPLL2>,
 			 <&clkc CLKID_MPLL0>,
@@ -238,6 +241,24 @@
 
 			codec {
 				sound-dai = <&hdmi_tx 0>;
+			};
+		};
+
+		/* spdif hdmi interface */
+		dai-link-8 {
+			sound-dai = <&spdifout_b>;
+
+			codec {
+				sound-dai = <&tohdmitx TOHDMITX_SPDIF_IN_B>;
+			};
+		};
+
+		/* hdmi glue, compressed */
+		dai-link-9 {
+			sound-dai = <&tohdmitx TOHDMITX_SPDIF_OUT>;
+
+			codec {
+				sound-dai = <&hdmi_tx 1>;
 			};
 		};
 	};
@@ -455,6 +476,10 @@
  * Replace emmc_data_8b_pins to emmc_data_4b_pins from sd_emmc_c pinctrl-0,
  * and change bus-width to 4 then spifc can be enabled.
  */
+&spdifout_b {
+	status = "okay";
+};
+
 &spifc {
 	status = "disabled";
 	pinctrl-0 = <&nor_pins>;

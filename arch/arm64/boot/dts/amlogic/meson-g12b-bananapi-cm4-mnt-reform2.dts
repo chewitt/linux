@@ -77,7 +77,10 @@
 				"External Speaker", "SPK_RP",
 				"External Speaker", "SPK_RN",
 				"LINPUT1", "Mic Jack",
-				"Mic Jack", "MICB";
+				"Mic Jack", "MICB",
+				"SPDIFOUT_B IN 0", "FRDDR_A OUT 4",
+				"SPDIFOUT_B IN 1", "FRDDR_B OUT 4",
+				"SPDIFOUT_B IN 2", "FRDDR_C OUT 4";
 
 		clocks = <&clkc CLKID_MPLL2>,
 			 <&clkc CLKID_MPLL0>,
@@ -147,6 +150,24 @@
 
 			codec {
 				sound-dai = <&hdmi_tx 0>;
+			};
+		};
+
+		/* spdif hdmi interface */
+		dai-link-9 {
+			sound-dai = <&spdifout_b>;
+
+			codec {
+				sound-dai = <&tohdmitx TOHDMITX_SPDIF_IN_B>;
+			};
+		};
+
+		/* hdmi glue, compressed */
+		dai-link-10 {
+			sound-dai = <&tohdmitx TOHDMITX_SPDIF_OUT>;
+
+			codec {
+				sound-dai = <&hdmi_tx 1>;
 			};
 		};
 	};
@@ -338,6 +359,10 @@
 };
 
 &sd_emmc_b {
+	status = "okay";
+};
+
+&spdifout_b {
 	status = "okay";
 };
 

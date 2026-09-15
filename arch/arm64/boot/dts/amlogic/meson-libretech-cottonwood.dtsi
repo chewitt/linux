@@ -336,6 +336,24 @@
 				sound-dai = <&acodec>;
 			};
 		};
+
+		/* spdif hdmi interface */
+		dai-link-11 {
+			sound-dai = <&spdifout_b>;
+
+			codec {
+				sound-dai = <&tohdmitx TOHDMITX_SPDIF_IN_B>;
+			};
+		};
+
+		/* hdmi glue, compressed */
+		dai-link-12 {
+			sound-dai = <&tohdmitx TOHDMITX_SPDIF_OUT>;
+
+			codec {
+				sound-dai = <&hdmi_tx 1>;
+			};
+		};
 	};
 };
 
@@ -519,6 +537,10 @@
 	mmc-pwrseq = <&emmc_pwrseq>;
 	vmmc-supply = <&vcc_3v3>;
 	vqmmc-supply = <&flash_1v8>;
+};
+
+&spdifout_b {
+	status = "okay";
 };
 
 &spifc {
