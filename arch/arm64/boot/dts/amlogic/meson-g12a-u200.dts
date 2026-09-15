@@ -372,6 +372,15 @@
 				sound-dai = <&spdif_dir>;
 			};
 		};
+
+		/* hdmi glue, compressed */
+		dai-link-14 {
+			sound-dai = <&tohdmitx TOHDMITX_SPDIF_OUT>;
+
+			codec {
+				sound-dai = <&hdmi_tx 1>;
+			};
+		};
 	};
 };
 

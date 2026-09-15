@@ -20,7 +20,10 @@
 		audio-routing = "TDMOUT_B IN 0", "FRDDR_A OUT 1",
 				"TDMOUT_B IN 1", "FRDDR_B OUT 1",
 				"TDMOUT_B IN 2", "FRDDR_C OUT 1",
-				"TDM_B Playback", "TDMOUT_B OUT";
+				"TDM_B Playback", "TDMOUT_B OUT",
+				"SPDIFOUT_B IN 0", "FRDDR_A OUT 4",
+				"SPDIFOUT_B IN 1", "FRDDR_B OUT 4",
+				"SPDIFOUT_B IN 2", "FRDDR_C OUT 4";
 
 		clocks = <&clkc CLKID_MPLL2>,
 			 <&clkc CLKID_MPLL0>,
@@ -68,6 +71,24 @@
 				sound-dai = <&hdmi_tx 0>;
 			};
 		};
+
+		/* spdif hdmi interface */
+		dai-link-5 {
+			sound-dai = <&spdifout_b>;
+
+			codec {
+				sound-dai = <&tohdmitx TOHDMITX_SPDIF_IN_B>;
+			};
+		};
+
+		/* hdmi glue, compressed */
+		dai-link-6 {
+			sound-dai = <&tohdmitx TOHDMITX_SPDIF_OUT>;
+
+			codec {
+				sound-dai = <&hdmi_tx 1>;
+			};
+		};
 	};
 };
 
@@ -84,6 +105,10 @@
 };
 
 &frddr_c {
+	status = "okay";
+};
+
+&spdifout_b {
 	status = "okay";
 };
 
