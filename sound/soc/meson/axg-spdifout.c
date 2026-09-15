@@ -10,6 +10,7 @@
 #include <sound/soc.h>
 #include <sound/soc-dai.h>
 #include <sound/pcm_params.h>
+#include <sound/asoundef.h>
 #include <sound/pcm_iec958.h>
 
 /*
@@ -60,6 +61,7 @@ struct axg_spdifout {
 	struct regmap *map;
 	struct clk *mclk;
 	struct clk *pclk;
+	u8 iec_status[AES_IEC958_STATUS_SIZE];
 };
 
 static void axg_spdifout_enable(struct regmap *map)
@@ -176,7 +178,7 @@ static int axg_spdifout_sample_fmt(struct snd_pcm_hw_params *params,
 	return 0;
 }
 
-static int axg_spdifout_set_chsts(struct snd_pcm_hw_params *params,
+static int axg_spdifout_set_chsts(struct snd_pcm_runtime *runtime,
 				  struct snd_soc_dai *dai)
 {
 	struct axg_spdifout *priv = snd_soc_dai_get_drvdata(dai);
@@ -185,7 +187,8 @@ static int axg_spdifout_set_chsts(struct snd_pcm_hw_params *params,
 	u8 cs[4];
 	u32 val;
 
-	ret = snd_pcm_create_iec958_consumer_hw_params(params, cs, 4);
+	memcpy(cs, priv->iec_status, sizeof(cs));
+	ret = snd_pcm_fill_iec958_consumer(runtime, cs, sizeof(cs));
 	if (ret < 0) {
 		dev_err(dai->dev, "Creating IEC958 channel status failed %d\n",
 			ret);
@@ -233,7 +236,15 @@ static int axg_spdifout_hw_params(struct snd_pcm_substream *substream,
 		return ret;
 	}
 
-	ret = axg_spdifout_set_chsts(params, dai);
+	return 0;
+}
+
+static int axg_spdifout_prepare(struct snd_pcm_substream *substream,
+				struct snd_soc_dai *dai)
+{
+	int ret;
+
+	ret = axg_spdifout_set_chsts(substream->runtime, dai);
 	if (ret) {
 		dev_err(dai->dev, "failed to setup channel status words\n");
 		return ret;
@@ -286,6 +297,7 @@ static void axg_spdifout_shutdown(struct snd_pcm_substream *substream,
 static const struct snd_soc_dai_ops axg_spdifout_ops = {
 	.trigger	= axg_spdifout_trigger,
 	.mute_stream	= axg_spdifout_mute,
+	.prepare	= axg_spdifout_prepare,
 	.hw_params	= axg_spdifout_hw_params,
 	.startup	= axg_spdifout_startup,
 	.shutdown	= axg_spdifout_shutdown,
@@ -339,7 +351,67 @@ static const struct snd_soc_dapm_route axg_spdifout_dapm_routes[] = {
 	{ "Playback", NULL, "SRC SEL" },
 };
 
+static int axg_spdifout_iec958_info(struct snd_kcontrol *kcontrol,
+				    struct snd_ctl_elem_info *uinfo)
+{
+	uinfo->type = SNDRV_CTL_ELEM_TYPE_IEC958;
+	uinfo->count = 1;
+
+	return 0;
+}
+
+static int axg_spdifout_iec958_mask_get(struct snd_kcontrol *kcontrol,
+					struct snd_ctl_elem_value *ucontrol)
+{
+	memset(ucontrol->value.iec958.status, 0xff,
+	       sizeof(ucontrol->value.iec958.status));
+
+	return 0;
+}
+
+static int axg_spdifout_iec958_get(struct snd_kcontrol *kcontrol,
+				   struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_component *component = snd_kcontrol_chip(kcontrol);
+	struct axg_spdifout *priv = snd_soc_component_get_drvdata(component);
+
+	memcpy(ucontrol->value.iec958.status, priv->iec_status,
+	       sizeof(priv->iec_status));
+
+	return 0;
+}
+
+static int axg_spdifout_iec958_put(struct snd_kcontrol *kcontrol,
+				   struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_component *component = snd_kcontrol_chip(kcontrol);
+	struct axg_spdifout *priv = snd_soc_component_get_drvdata(component);
+
+	if (!memcmp(priv->iec_status, ucontrol->value.iec958.status,
+		    sizeof(priv->iec_status)))
+		return 0;
+
+	memcpy(priv->iec_status, ucontrol->value.iec958.status,
+	       sizeof(priv->iec_status));
+
+	return 1;
+}
+
 static const struct snd_kcontrol_new axg_spdifout_controls[] = {
+	{
+		.access	= SNDRV_CTL_ELEM_ACCESS_READ,
+		.iface	= SNDRV_CTL_ELEM_IFACE_PCM,
+		.name	= SNDRV_CTL_NAME_IEC958("", PLAYBACK, MASK),
+		.info	= axg_spdifout_iec958_info,
+		.get	= axg_spdifout_iec958_mask_get,
+	},
+	{
+		.iface	= SNDRV_CTL_ELEM_IFACE_PCM,
+		.name	= SNDRV_CTL_NAME_IEC958("", PLAYBACK, DEFAULT),
+		.info	= axg_spdifout_iec958_info,
+		.get	= axg_spdifout_iec958_get,
+		.put	= axg_spdifout_iec958_put,
+	},
 	SOC_DOUBLE("Playback Volume", SPDIFOUT_GAIN0,  0,  8, 255, 0),
 	SOC_DOUBLE("Playback Switch", SPDIFOUT_CTRL0, 22, 21, 1, 1),
 	SOC_SINGLE("Playback Gain Enable Switch",
@@ -404,11 +476,17 @@ static int axg_spdifout_probe(struct platform_device *pdev)
 	struct device *dev = &pdev->dev;
 	struct axg_spdifout *priv;
 	void __iomem *regs;
+	int ret;
 
 	priv = devm_kzalloc(dev, sizeof(*priv), GFP_KERNEL);
 	if (!priv)
 		return -ENOMEM;
 	platform_set_drvdata(pdev, priv);
+
+	ret = snd_pcm_create_iec958_consumer_default(priv->iec_status,
+						     sizeof(priv->iec_status));
+	if (ret < 0)
+		return ret;
 
 	regs = devm_platform_ioremap_resource(pdev, 0);
 	if (IS_ERR(regs))
