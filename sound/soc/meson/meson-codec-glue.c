@@ -25,8 +25,14 @@ meson_codec_glue_get_input(struct snd_soc_dapm_widget *w)
 		    snd_soc_dapm_to_component(p->source->dapm))
 			continue;
 
-		if (p->source->id == snd_soc_dapm_dai_in)
+		if (p->source->id == snd_soc_dapm_dai_in) {
+			struct snd_soc_dai *dai = p->source->priv;
+
+			if (!snd_soc_dai_stream_active(dai, SNDRV_PCM_STREAM_PLAYBACK))
+				continue;
+
 			return p->source;
+		}
 
 		in = meson_codec_glue_get_input(p->source);
 		if (in)
