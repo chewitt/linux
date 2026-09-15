@@ -227,7 +227,7 @@
 				clock-names = "isfr", "iahb", "venci";
 				#address-cells = <1>;
 				#size-cells = <0>;
-				#sound-dai-cells = <0>;
+				#sound-dai-cells = <1>;
 				status = "disabled";
 
 				assigned-clocks = <&clkc CLKID_HDMI_SEL>,
