@@ -88,6 +88,7 @@ static const char * const m2m_entity_name[] = {
  * @job_spinlock:	protects job_queue
  * @job_work:		worker to run queued jobs.
  * @job_queue_flags:	flags of the queue status, %QUEUE_PAUSED.
+ * @max_parallel_jobs:	max job_queue instances number marked as running
  * @m2m_ops:		driver callbacks
  * @kref:		device reference count
  */
@@ -106,6 +107,7 @@ struct v4l2_m2m_dev {
 	spinlock_t		job_spinlock;
 	struct work_struct	job_work;
 	unsigned long		job_queue_flags;
+	u32			max_parallel_jobs;
 
 	const struct v4l2_m2m_ops *m2m_ops;
 
@@ -120,6 +122,13 @@ static struct v4l2_m2m_queue_ctx *get_queue_ctx(struct v4l2_m2m_ctx *m2m_ctx,
 	else
 		return &m2m_ctx->cap_q_ctx;
 }
+
+void v4l2_m2m_set_max_parallel_jobs(struct v4l2_m2m_dev *m2m_dev,
+				    u32 max_parallel_jobs)
+{
+	m2m_dev->max_parallel_jobs = max_parallel_jobs;
+}
+EXPORT_SYMBOL(v4l2_m2m_set_max_parallel_jobs);
 
 struct vb2_queue *v4l2_m2m_get_vq(struct v4l2_m2m_ctx *m2m_ctx,
 				       enum v4l2_buf_type type)
@@ -256,7 +265,9 @@ EXPORT_SYMBOL(v4l2_m2m_get_curr_priv);
 static void v4l2_m2m_try_run(struct v4l2_m2m_dev *m2m_dev)
 {
 	unsigned long flags;
-	struct v4l2_m2m_ctx *chosen_ctx;
+	struct v4l2_m2m_ctx *chosen_ctx = NULL;
+	struct v4l2_m2m_ctx *ctx;
+	u32 running_jobs = 0;
 
 	spin_lock_irqsave(&m2m_dev->job_spinlock, flags);
 	if (list_empty(&m2m_dev->job_queue)) {
@@ -271,10 +282,22 @@ static void v4l2_m2m_try_run(struct v4l2_m2m_dev *m2m_dev)
 		return;
 	}
 
-	chosen_ctx = list_first_entry(&m2m_dev->job_queue, struct v4l2_m2m_ctx, queue);
-	if (chosen_ctx->job_flags & TRANS_RUNNING) {
+	list_for_each_entry(ctx, &m2m_dev->job_queue, queue) {
+		if (!(ctx->job_flags & TRANS_RUNNING)) {
+			chosen_ctx = ctx;
+			break;
+		}
+
+		running_jobs++;
+	}
+	if (running_jobs >= m2m_dev->max_parallel_jobs) {
 		spin_unlock_irqrestore(&m2m_dev->job_spinlock, flags);
-		dprintk("Another instance is running, won't run now\n");
+		dprintk("Maximum number of parallel jobs reached\n");
+		return;
+	}
+	if (!chosen_ctx) {
+		spin_unlock_irqrestore(&m2m_dev->job_spinlock, flags);
+		dprintk("All jobs already running\n");
 		return;
 	}
 
@@ -549,19 +572,24 @@ EXPORT_SYMBOL(v4l2_m2m_buf_done_and_job_finish);
 void v4l2_m2m_suspend(struct v4l2_m2m_dev *m2m_dev)
 {
 	unsigned long flags;
-	struct v4l2_m2m_ctx *curr_ctx;
 
 	spin_lock_irqsave(&m2m_dev->job_spinlock, flags);
 	m2m_dev->job_queue_flags |= QUEUE_PAUSED;
-	if (list_empty(&m2m_dev->job_queue)) {
+
+	while (!list_empty(&m2m_dev->job_queue)) {
+		/* Running jobs are always at the start of the queue */
+		struct v4l2_m2m_ctx *first_ctx =
+			list_first_entry(&m2m_dev->job_queue,
+					 struct v4l2_m2m_ctx, queue);
+
+		if (!(first_ctx->job_flags & TRANS_RUNNING))
+			break;
+
 		spin_unlock_irqrestore(&m2m_dev->job_spinlock, flags);
-		return;
+		wait_event(first_ctx->finished, !(first_ctx->job_flags & TRANS_RUNNING));
+		spin_lock_irqsave(&m2m_dev->job_spinlock, flags);
 	}
-
-	curr_ctx = list_first_entry(&m2m_dev->job_queue, struct v4l2_m2m_ctx, queue);
 	spin_unlock_irqrestore(&m2m_dev->job_spinlock, flags);
-
-	wait_event(curr_ctx->finished, !(curr_ctx->job_flags & TRANS_RUNNING));
 }
 EXPORT_SYMBOL(v4l2_m2m_suspend);
 
@@ -1205,6 +1233,7 @@ struct v4l2_m2m_dev *v4l2_m2m_init(const struct v4l2_m2m_ops *m2m_ops)
 	spin_lock_init(&m2m_dev->job_spinlock);
 	INIT_WORK(&m2m_dev->job_work, v4l2_m2m_device_run_work);
 	kref_init(&m2m_dev->kref);
+	m2m_dev->max_parallel_jobs = 1;
 
 	return m2m_dev;
 }
