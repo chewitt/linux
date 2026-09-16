@@ -144,6 +144,10 @@ struct v4l2_m2m_buffer {
  * v4l2_m2m_get_curr_priv() - return driver private data for the currently
  * running instance or NULL if no instance is running
  *
+ * It is incompatible with using parallel instances enabled by calling
+ * v4l2_m2m_set_max_parallel_jobs(), as it is undefined which private data of
+ * the parallel running instances is returned.
+ *
  * @m2m_dev: opaque pointer to the internal data to handle M2M context
  */
 void *v4l2_m2m_get_curr_priv(struct v4l2_m2m_dev *m2m_dev);
@@ -593,6 +597,20 @@ static inline void v4l2_m2m_set_dst_buffered(struct v4l2_m2m_ctx *m2m_ctx,
 {
 	m2m_ctx->cap_q_ctx.buffered = buffered;
 }
+
+/**
+ * v4l2_m2m_set_max_parallel_jobs() - adjust the limit of the maximum number of
+ * jobs being run in parallel.
+ *
+ * By default only one job is allowed to be run at any time. A driver with
+ * multiple cores can call this function to (dynamically) adjust this limit
+ * based on the underlying hardware capabilities.
+ *
+ * @m2m_dev: opaque pointer to the internal data to handle M2M context
+ * @max_parallel_jobs: maximum number of jobs to queue in parallel
+ */
+void v4l2_m2m_set_max_parallel_jobs(struct v4l2_m2m_dev *m2m_dev,
+				    u32 max_parallel_jobs);
 
 /**
  * v4l2_m2m_ctx_release() - release m2m context
