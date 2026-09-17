@@ -126,6 +126,13 @@ static const struct snd_kcontrol_new g12a_tohdmitx_spdif_mux =
 			  snd_soc_dapm_get_enum_double,
 			  g12a_tohdmitx_spdif_mux_put_enum);
 
+static int g12a_tohdmitx_xlate_tdm_slot_mask(unsigned int slots,
+					     unsigned int *tx_mask,
+					     unsigned int *rx_mask)
+{
+	return 0;
+}
+
 static const struct snd_kcontrol_new g12a_tohdmitx_out_enable =
 	SOC_DAPM_SINGLE_AUTODISABLE("Switch", TOHDMITX_CTRL0,
 				    CTRL0_ENABLE_SHIFT, 1, 0);
@@ -142,10 +149,11 @@ static const struct snd_soc_dapm_widget g12a_tohdmitx_widgets[] = {
 };
 
 static const struct snd_soc_dai_ops g12a_tohdmitx_input_ops = {
-	.probe		= meson_codec_glue_input_dai_probe,
-	.remove		= meson_codec_glue_input_dai_remove,
-	.hw_params	= meson_codec_glue_input_hw_params,
-	.set_fmt	= meson_codec_glue_input_set_fmt,
+	.probe			= meson_codec_glue_input_dai_probe,
+	.remove			= meson_codec_glue_input_dai_remove,
+	.hw_params		= meson_codec_glue_input_hw_params,
+	.set_fmt		= meson_codec_glue_input_set_fmt,
+	.xlate_tdm_slot_mask	= g12a_tohdmitx_xlate_tdm_slot_mask,
 };
 
 static const struct snd_soc_dai_ops g12a_tohdmitx_output_ops = {
