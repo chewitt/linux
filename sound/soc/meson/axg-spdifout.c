@@ -57,6 +57,8 @@
 #define SPDIFOUT_CHSTSB			0x48
 #define SPDIFOUT_MUTE_VAL		0x4c
 
+#define SPDIFOUT_CH_MAX			8
+
 struct axg_spdifout {
 	struct regmap *map;
 	struct clk *mclk;
@@ -129,18 +131,13 @@ static int axg_spdifout_sample_fmt(struct snd_pcm_hw_params *params,
 	unsigned int val;
 
 	/* Set the samples spdifout will pull from the FIFO */
-	switch (params_channels(params)) {
-	case 1:
-		val = SPDIFOUT_CTRL0_MASK(0x1);
-		break;
-	case 2:
-		val = SPDIFOUT_CTRL0_MASK(0x3);
-		break;
-	default:
+	if (params_channels(params) > SPDIFOUT_CH_MAX) {
 		dev_err(dai->dev, "too many channels for spdif dai: %u\n",
 			params_channels(params));
 		return -EINVAL;
 	}
+
+	val = SPDIFOUT_CTRL0_MASK(params_channels(params) > 1 ? 0x3 : 0x1);
 
 	regmap_update_bits(priv->map, SPDIFOUT_CTRL0,
 			   SPDIFOUT_CTRL0_MASK_MASK, val);
@@ -221,11 +218,12 @@ static int axg_spdifout_hw_params(struct snd_pcm_substream *substream,
 				  struct snd_soc_dai *dai)
 {
 	struct axg_spdifout *priv = snd_soc_dai_get_drvdata(dai);
+	unsigned int channels = max(params_channels(params), 2u);
 	unsigned int rate = params_rate(params);
 	int ret;
 
-	/* 2 * 32bits per subframe * 2 channels = 128 */
-	ret = clk_set_rate(priv->mclk, rate * 128);
+	/* 2 clocks per bit * 32bits per subframe * one subframe per channel */
+	ret = clk_set_rate(priv->mclk, rate * 64 * channels);
 	if (ret) {
 		dev_err(dai->dev, "failed to set spdif clock\n");
 		return ret;
@@ -311,7 +309,7 @@ static struct snd_soc_dai_driver axg_spdifout_dai_drv[] = {
 		.playback = {
 			.stream_name	= "Playback",
 			.channels_min	= 1,
-			.channels_max	= 2,
+			.channels_max	= SPDIFOUT_CH_MAX,
 			.rates		= (SNDRV_PCM_RATE_32000  |
 					   SNDRV_PCM_RATE_44100  |
 					   SNDRV_PCM_RATE_48000  |
