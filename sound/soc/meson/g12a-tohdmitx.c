@@ -147,11 +147,11 @@ static struct snd_soc_dai_driver g12a_tohdmitx_dai_drv[] = {
 	TOHDMITX_OUT("I2S OUT", TOHDMITX_I2S_OUT,
 		     TOHDMITX_I2S_FORMATS, 8),
 	TOHDMITX_IN("SPDIF IN A", TOHDMITX_SPDIF_IN_A,
-		    TOHDMITX_SPDIF_FORMATS, 2),
+		    TOHDMITX_SPDIF_FORMATS, 8),
 	TOHDMITX_IN("SPDIF IN B", TOHDMITX_SPDIF_IN_B,
-		    TOHDMITX_SPDIF_FORMATS, 2),
+		    TOHDMITX_SPDIF_FORMATS, 8),
 	TOHDMITX_OUT("SPDIF OUT", TOHDMITX_SPDIF_OUT,
-		     TOHDMITX_SPDIF_FORMATS, 2),
+		     TOHDMITX_SPDIF_FORMATS, 8),
 };
 
 static int g12a_tohdmi_component_probe(struct snd_soc_component *c)
