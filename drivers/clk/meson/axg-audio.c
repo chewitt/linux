@@ -239,6 +239,81 @@ static const struct clk_parent_data mst_mux_parent_data[] = {
 	{ .fw_name = "mst_in7", },
 };
 
+static const struct clk_parent_data mst_mclk_mux_parent_data[] = {
+	{ .fw_name = "mst_in0", },
+	{ .fw_name = "mst_in1", },
+	{ .fw_name = "mst_in2", },
+	{ .fw_name = "mst_in3", },
+	{ .fw_name = "mst_in4", },
+	{ .fw_name = "mst_in5", },
+	{ .fw_name = "mst_in6", },
+};
+
+static u32 mst_mclk_mux_table[] = { 0, 1, 2, 3, 4, 5, 6 };
+
+#define AUD_MST_IN_HIFI_PLL	4
+
+static int aud_mclk_mux_determine_rate(struct clk_hw *hw,
+				       struct clk_rate_request *req)
+{
+	unsigned long rate, best_rate = 0;
+	struct clk_hw *parent, *best = NULL;
+	unsigned int i;
+
+	for (i = 0; i < clk_hw_get_num_parents(hw); i++) {
+		bool hifi = mst_mclk_mux_table[i] == AUD_MST_IN_HIFI_PLL;
+
+		parent = clk_hw_get_parent_by_index(hw, i);
+		if (!parent)
+			continue;
+
+		if (hifi) {
+			struct clk_rate_request preq;
+
+			clk_hw_forward_rate_request(hw, req, parent, &preq,
+						    req->rate);
+			if (__clk_determine_rate(parent, &preq))
+				continue;
+			rate = preq.rate;
+		} else {
+			rate = clk_hw_get_rate(parent);
+		}
+
+		if (!best ||
+		    abs_diff(rate, req->rate) < abs_diff(best_rate, req->rate) ||
+		    (hifi && rate == best_rate)) {
+			best = parent;
+			best_rate = rate;
+		}
+	}
+
+	if (!best)
+		return -EINVAL;
+
+	req->best_parent_hw = best;
+	req->best_parent_rate = best_rate;
+	req->rate = best_rate;
+
+	return 0;
+}
+
+static u8 aud_mclk_mux_get_parent(struct clk_hw *hw)
+{
+	return clk_regmap_mux_ops.get_parent(hw);
+}
+
+static int aud_mclk_mux_set_parent(struct clk_hw *hw, u8 index)
+{
+	return clk_regmap_mux_ops.set_parent(hw, index);
+}
+
+static const struct clk_ops aud_mclk_mux_ops = {
+	.init		= clk_regmap_init,
+	.get_parent	= aud_mclk_mux_get_parent,
+	.set_parent	= aud_mclk_mux_set_parent,
+	.determine_rate	= aud_mclk_mux_determine_rate,
+};
+
 #define AUD_MST_MUX(_name, _reg, _flag)					\
 	AUD_MUX(_name##_sel, _reg, 0x7, 24, _flag,			\
 		mst_mux_parent_data, 0)
@@ -249,8 +324,22 @@ static const struct clk_parent_data mst_mux_parent_data[] = {
 	AUD_GATE(_name, _reg, 31, aud_##_name##_div,			\
 		 CLK_SET_RATE_PARENT)
 
-#define AUD_MST_MCLK_MUX(_name, _reg)					\
-	AUD_MST_MUX(_name, _reg, CLK_MUX_ROUND_CLOSEST)
+#define AUD_MST_MCLK_MUX(_name, _reg) {					\
+	.data = &(struct clk_regmap_mux_data){				\
+		.offset = (_reg),					\
+		.table = mst_mclk_mux_table,				\
+		.mask = 0x7,						\
+		.shift = 24,						\
+		.flags = CLK_MUX_ROUND_CLOSEST,				\
+	},								\
+	.hw.init = &(struct clk_init_data){				\
+		.name = "aud_" #_name "_sel",			\
+		.ops = &aud_mclk_mux_ops,				\
+		.parent_data = mst_mclk_mux_parent_data,		\
+		.num_parents = ARRAY_SIZE(mst_mclk_mux_parent_data),	\
+		.flags = CLK_DUTY_CYCLE_PARENT | CLK_SET_RATE_PARENT,	\
+	},								\
+}
 #define AUD_MST_MCLK_DIV(_name, _reg)					\
 	AUD_MST_DIV(_name, _reg, CLK_DIVIDER_ROUND_CLOSEST)
 
