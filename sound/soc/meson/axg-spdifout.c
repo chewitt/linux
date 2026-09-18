@@ -194,8 +194,11 @@ static int axg_spdifout_set_chsts(struct snd_pcm_runtime *runtime,
 	}
 	val = cs[0] | cs[1] << 8 | cs[2] << 16 | cs[3] << 24;
 
+	val &= ~(IEC958_AES2_CON_CHANNEL << 16);
+
 	/* Setup channel status A bits [31 - 0]*/
-	regmap_write(priv->map, SPDIFOUT_CHSTS0, val);
+	regmap_write(priv->map, SPDIFOUT_CHSTS0,
+		     val | (1 << 4) << 16);
 
 	/* Clear channel status A bits [191 - 32] */
 	for (offset = SPDIFOUT_CHSTS1; offset <= SPDIFOUT_CHSTS5;
@@ -203,7 +206,8 @@ static int axg_spdifout_set_chsts(struct snd_pcm_runtime *runtime,
 		regmap_write(priv->map, offset, 0);
 
 	/* Setup channel status B bits [31 - 0]*/
-	regmap_write(priv->map, SPDIFOUT_CHSTS6, val);
+	regmap_write(priv->map, SPDIFOUT_CHSTS6,
+		     val | (2 << 4) << 16);
 
 	/* Clear channel status B bits [191 - 32] */
 	for (offset = SPDIFOUT_CHSTS7; offset <= SPDIFOUT_CHSTSB;
