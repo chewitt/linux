@@ -239,6 +239,18 @@ static const struct clk_parent_data mst_mux_parent_data[] = {
 	{ .fw_name = "mst_in7", },
 };
 
+static const struct clk_parent_data mst_mclk_mux_parent_data[] = {
+	{ .fw_name = "mst_in0", },
+	{ .fw_name = "mst_in1", },
+	{ .fw_name = "mst_in2", },
+	{ .fw_name = "mst_in3", },
+	{ .fw_name = "mst_in4", },
+	{ .fw_name = "mst_in5", },
+	{ .fw_name = "mst_in6", },
+};
+
+static u32 mst_mclk_mux_table[] = { 0, 1, 2, 3, 4, 5, 6 };
+
 #define AUD_MST_MUX(_name, _reg, _flag)					\
 	AUD_MUX(_name##_sel, _reg, 0x7, 24, _flag,			\
 		mst_mux_parent_data, 0)
@@ -249,8 +261,22 @@ static const struct clk_parent_data mst_mux_parent_data[] = {
 	AUD_GATE(_name, _reg, 31, aud_##_name##_div,			\
 		 CLK_SET_RATE_PARENT)
 
-#define AUD_MST_MCLK_MUX(_name, _reg)					\
-	AUD_MST_MUX(_name, _reg, CLK_MUX_ROUND_CLOSEST)
+#define AUD_MST_MCLK_MUX(_name, _reg) {					\
+	.data = &(struct clk_regmap_mux_data){				\
+		.offset = (_reg),					\
+		.table = mst_mclk_mux_table,				\
+		.mask = 0x7,						\
+		.shift = 24,						\
+		.flags = CLK_MUX_ROUND_CLOSEST,				\
+	},								\
+	.hw.init = &(struct clk_init_data){				\
+		.name = "aud_" #_name "_sel",			\
+		.ops = &clk_regmap_mux_ops,				\
+		.parent_data = mst_mclk_mux_parent_data,		\
+		.num_parents = ARRAY_SIZE(mst_mclk_mux_parent_data),	\
+		.flags = CLK_DUTY_CYCLE_PARENT | CLK_SET_RATE_PARENT,	\
+	},								\
+}
 #define AUD_MST_MCLK_DIV(_name, _reg)					\
 	AUD_MST_DIV(_name, _reg, CLK_DIVIDER_ROUND_CLOSEST)
 
