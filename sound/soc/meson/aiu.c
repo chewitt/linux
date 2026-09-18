@@ -203,7 +203,7 @@ static struct snd_soc_dai_driver aiu_cpu_dai_drv[] = {
 		.playback = {
 			.stream_name	= "SPDIF FIFO Playback",
 			.channels_min	= 2,
-			.channels_max	= 2,
+			.channels_max	= 8,
 			.rates		= SNDRV_PCM_RATE_CONTINUOUS,
 			.rate_min	= 5512,
 			.rate_max	= 192000,
@@ -235,7 +235,7 @@ static struct snd_soc_dai_driver aiu_cpu_dai_drv[] = {
 		.playback = {
 			.stream_name = "SPDIF Encoder Playback",
 			.channels_min = 2,
-			.channels_max = 2,
+			.channels_max = 8,
 			.rates = (SNDRV_PCM_RATE_32000  |
 				  SNDRV_PCM_RATE_44100  |
 				  SNDRV_PCM_RATE_48000  |

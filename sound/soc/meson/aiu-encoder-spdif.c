@@ -106,7 +106,7 @@ static int aiu_encoder_spdif_hw_params(struct snd_pcm_substream *substream,
 {
 	struct snd_soc_component *component = dai->component;
 	struct aiu *aiu = snd_soc_component_get_drvdata(component);
-	unsigned int val = 0, mrate;
+	unsigned int val = 0, mrate, div;
 	int ret;
 
 	/* Disable the clock while changing the settings */
@@ -134,14 +134,16 @@ static int aiu_encoder_spdif_hw_params(struct snd_pcm_substream *substream,
 				      AIU_958_MISC_U_FROM_STREAM,
 				      val);
 
+	div = params_channels(params) > 2 ? 1 : AIU_958_INTERNAL_DIV;
+
 	snd_soc_component_update_bits(component, AIU_CLK_CTRL,
 				      AIU_CLK_CTRL_958_DIV |
 				      AIU_CLK_CTRL_958_DIV_MORE,
 				      FIELD_PREP(AIU_CLK_CTRL_958_DIV,
-						 __ffs(AIU_958_INTERNAL_DIV)));
+						 div - 1));
 
-	/* 2 * 32bits per subframe * 2 channels = 128 */
-	mrate = params_rate(params) * 128 * AIU_958_INTERNAL_DIV;
+	/* 2 clocks per bit * 32bits per subframe * one subframe per channel */
+	mrate = params_rate(params) * 64 * params_channels(params) * div;
 	ret = clk_set_rate(aiu->spdif.clks[MCLK].clk, mrate);
 	if (ret) {
 		dev_err(dai->dev, "failed to set mclk rate\n");
