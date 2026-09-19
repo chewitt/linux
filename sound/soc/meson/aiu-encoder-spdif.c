@@ -80,12 +80,12 @@ static int aiu_encoder_spdif_setup_cs_word(struct snd_soc_component *component,
 		return ret;
 
 	/* Write the 1st half word */
-	val = cs[1] | cs[0] << 8;
+	val = cs[0] | cs[1] << 8;
 	snd_soc_component_write(component, AIU_958_CHSTAT_L0, val);
 	snd_soc_component_write(component, AIU_958_CHSTAT_R0, val);
 
 	/* Write the 2nd half word */
-	val = cs[3] | cs[2] << 8;
+	val = cs[2] | cs[3] << 8;
 	snd_soc_component_write(component, AIU_958_CHSTAT_L1, val);
 	snd_soc_component_write(component, AIU_958_CHSTAT_R1, val);
 
