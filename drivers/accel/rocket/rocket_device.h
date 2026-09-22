@@ -11,6 +11,7 @@
 #include <linux/platform_device.h>
 
 #include "rocket_core.h"
+#include "rocket_devfreq.h"
 
 struct rocket_device {
 	struct drm_device ddev;
@@ -37,6 +38,8 @@ struct rocket_device {
 	 */
 	unsigned long npu_boot_rate;
 	atomic_t active_cores;
+
+	struct rocket_devfreq devfreq;
 };
 
 struct rocket_device *rocket_device_init(struct platform_device *pdev,
