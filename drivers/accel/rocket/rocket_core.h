@@ -7,6 +7,7 @@
 #include <drm/gpu_scheduler.h>
 #include <linux/clk.h>
 #include <linux/io.h>
+#include <linux/ktime.h>
 #include <linux/mutex_types.h>
 #include <linux/reset.h>
 
@@ -60,6 +61,16 @@ struct rocket_core {
 	struct drm_gpu_scheduler sched;
 	u64 fence_context;
 	u64 emit_seqno;
+
+	/*
+	 * Utilisation seen by devfreq, guarded by rdev->devfreq.busy_lock. A
+	 * core runs one task at a time, so a flag is exact here and, unlike a
+	 * counter, cannot be left skewed by a job the reset path tore down.
+	 */
+	bool busy;
+	ktime_t busy_time;
+	ktime_t idle_time;
+	ktime_t time_last_update;
 };
 
 int rocket_core_init(struct rocket_core *core);
