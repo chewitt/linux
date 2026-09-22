@@ -15,6 +15,7 @@
 
 #include "rocket_core.h"
 #include "rocket_device.h"
+#include "rocket_devfreq.h"
 #include "rocket_drv.h"
 #include "rocket_job.h"
 #include "rocket_registers.h"
@@ -148,6 +149,8 @@ static void rocket_job_hw_submit(struct rocket_core *core, struct rocket_job *jo
 					 PC_TASK_CON_TASK_PP_EN(1));
 
 	rocket_pc_writel(core, TASK_DMA_BASE_ADDR, PC_TASK_DMA_BASE_ADDR_DMA_BASE_ADDR(0x0));
+
+	rocket_devfreq_record_busy(core);
 
 	rocket_pc_writel(core, OPERATION_ENABLE, PC_OPERATION_ENABLE_OP_EN(1));
 
@@ -348,6 +351,8 @@ static void rocket_job_handle_irq(struct rocket_core *core)
 	rocket_pc_writel(core, OPERATION_ENABLE, 0x0);
 	rocket_pc_writel(core, INTERRUPT_CLEAR, 0x1ffff);
 
+	rocket_devfreq_record_idle(core);
+
 	scoped_guard(mutex, &core->job_lock)
 		if (core->in_flight_job) {
 			if (core->in_flight_job->next_task_idx < core->in_flight_job->task_count) {
@@ -378,6 +383,8 @@ rocket_reset(struct rocket_core *core, struct drm_sched_job *bad)
 	scoped_guard(mutex, &core->job_lock) {
 		if (core->in_flight_job)
 			pm_runtime_put_noidle(core->dev);
+
+		rocket_devfreq_record_idle(core);
 
 		iommu_detach_group(NULL, core->iommu_group);
 
