@@ -14,6 +14,7 @@
 #include <linux/pm_runtime.h>
 
 #include "rocket_device.h"
+#include "rocket_devfreq.h"
 #include "rocket_drv.h"
 #include "rocket_gem.h"
 #include "rocket_job.h"
@@ -247,6 +248,20 @@ static int rocket_probe(struct platform_device *pdev)
 	if (ret)
 		goto err_core;
 
+	/*
+	 * Every core described in the devicetree has to be bound before the
+	 * devfreq device goes up. A rate change resumes all of them and keeps
+	 * them resumed, and a core that had not probed yet would come up later
+	 * underneath a raised clock.
+	 */
+	if (rdev->num_cores == rdev->max_cores) {
+		ret = rocket_devfreq_init(rdev);
+		if (ret) {
+			rocket_core_fini(&rdev->cores[core]);
+			goto err_core;
+		}
+	}
+
 	return 0;
 
 err_core:
@@ -270,6 +285,9 @@ static void rocket_remove(struct platform_device *pdev)
 
 	if (WARN_ON(core < 0))
 		return;
+
+	/* The devfreq device drives every core, so it goes before any of them. */
+	rocket_devfreq_fini(rdev);
 
 	rocket_core_fini(&rdev->cores[core]);
 	rdev->cores[core].dev = NULL;
@@ -317,7 +335,18 @@ static void rocket_npu_restore_boot_rate(struct rocket_core *core)
 	if (!rdev->npu_boot_rate)
 		return;
 
-	err = clk_set_rate(core->clks[2].clk, rdev->npu_boot_rate);
+	/*
+	 * Go through the OPP core once there is a table, never behind its
+	 * back: it caches the OPP it last applied and skips a request for that
+	 * same OPP, so a raw clk_set_rate() here would make the next request
+	 * for the raised rate a silent no-op, with sysfs reporting a rate the
+	 * hardware was not running.
+	 */
+	if (rdev->devfreq.owner)
+		err = rocket_devfreq_set_boot_rate(rdev);
+	else
+		err = clk_set_rate(core->clks[2].clk, rdev->npu_boot_rate);
+
 	if (err)
 		dev_warn(core->dev,
 			 "failed to restore the NPU boot rate of %lu Hz: %d\n",
@@ -363,14 +392,38 @@ static int rocket_device_runtime_suspend(struct device *dev)
 	return 0;
 }
 
+static int rocket_device_suspend(struct device *dev)
+{
+	struct rocket_device *rdev = dev_get_drvdata(dev);
+
+	/*
+	 * pm_runtime_force_suspend() below powers this core down whatever the
+	 * runtime PM usage count says, so the references taken while the clock
+	 * is raised do not hold it off. Put the rate back first; the call is a
+	 * no-op on every core after the first.
+	 */
+	rocket_devfreq_suspend(rdev);
+
+	return pm_runtime_force_suspend(dev);
+}
+
 EXPORT_GPL_DEV_PM_OPS(rocket_pm_ops) = {
 	RUNTIME_PM_OPS(rocket_device_runtime_suspend, rocket_device_runtime_resume, NULL)
-	SYSTEM_SLEEP_PM_OPS(pm_runtime_force_suspend, pm_runtime_force_resume)
+	SYSTEM_SLEEP_PM_OPS(rocket_device_suspend, pm_runtime_force_resume)
 };
 
 /*
  * A kexec hands the next kernel whatever rate is set here, and that kernel
  * will power the islands up before it looks at the clock.
+ *
+ * Take the devfreq device down before restoring the rate rather than after.
+ * Nothing freezes workqueues on this path, so a governor tick that landed
+ * after the restore would raise the clock straight back up and hand on exactly
+ * what this is here to prevent.
+ *
+ * The hook runs once per core. After the first call the devfreq device is
+ * gone, and each later restore asks the clock for the rate it already has,
+ * which the clock framework drops before it reaches the firmware.
  */
 static void rocket_shutdown(struct platform_device *pdev)
 {
@@ -379,6 +432,8 @@ static void rocket_shutdown(struct platform_device *pdev)
 
 	if (!rdev)
 		return;
+
+	rocket_devfreq_fini(rdev);
 
 	core = find_core_for_dev(&pdev->dev);
 	if (core >= 0)
