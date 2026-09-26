@@ -424,8 +424,9 @@ static int set_canvas_nv12m(struct amvdec_session *sess,
  * by codecs whose host names the destination and references per picture.
  * Pass the previous spec to reconfigure the same canvases in place.
  */
-int meson_amvdec_canvas_nv12m_spec(struct amvdec_session *sess, struct vb2_buffer *vb,
-			     u32 width, u32 height, u32 *spec)
+int meson_amvdec_canvas_nv12_spec(struct amvdec_session *sess, dma_addr_t y,
+				  dma_addr_t uv, u32 width, u32 height,
+				  u32 *spec)
 {
 	struct amvdec_core *core = sess->core;
 	u8 id[NUM_CANVAS_NV12];
@@ -441,18 +442,25 @@ int meson_amvdec_canvas_nv12m_spec(struct amvdec_session *sess, struct vb2_buffe
 				return ret;
 		}
 	}
-	meson_canvas_config(core->canvas, id[0],
-			    vb2_dma_contig_plane_dma_addr(vb, 0),
+	meson_canvas_config(core->canvas, id[0], y,
 			    width, height, MESON_CANVAS_WRAP_NONE,
 			    MESON_CANVAS_BLKMODE_LINEAR,
 			    MESON_CANVAS_ENDIAN_SWAP64);
-	meson_canvas_config(core->canvas, id[1],
-			    vb2_dma_contig_plane_dma_addr(vb, 1),
+	meson_canvas_config(core->canvas, id[1], uv,
 			    width, height / 2, MESON_CANVAS_WRAP_NONE,
 			    MESON_CANVAS_BLKMODE_LINEAR,
 			    MESON_CANVAS_ENDIAN_SWAP64);
 	*spec = (id[1] << 16) | (id[1] << 8) | id[0];
 	return 0;
+}
+
+int meson_amvdec_canvas_nv12m_spec(struct amvdec_session *sess, struct vb2_buffer *vb,
+			     u32 width, u32 height, u32 *spec)
+{
+	return meson_amvdec_canvas_nv12_spec(sess,
+					     vb2_dma_contig_plane_dma_addr(vb, 0),
+					     vb2_dma_contig_plane_dma_addr(vb, 1),
+					     width, height, spec);
 }
 
 /* Remember the plane addresses the canvases of @fw_idx now describe. */
