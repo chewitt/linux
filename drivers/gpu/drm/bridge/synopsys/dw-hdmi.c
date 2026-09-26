@@ -409,6 +409,9 @@ static int dw_hdmi_i2c_xfer(struct i2c_adapter *adap,
 	u8 addr = msgs[0].addr;
 	int i, ret = 0;
 
+	if (addr == DDC_SEGMENT_ADDR && num > 1)
+		addr = msgs[1].addr;
+
 	if (addr == DDC_CI_ADDR)
 		/*
 		 * The internal I2C controller does not support the multi-byte
@@ -434,7 +437,7 @@ static int dw_hdmi_i2c_xfer(struct i2c_adapter *adap,
 	/* Unmute DONE and ERROR interrupts */
 	hdmi_writeb(hdmi, 0x00, HDMI_IH_MUTE_I2CM_STAT0);
 
-	/* Set slave device address taken from the first I2C message */
+	/* Set slave device address for DDC data transfers */
 	hdmi_writeb(hdmi, addr, HDMI_I2CM_SLAVE);
 
 	/* Set slave device register address on transfer */
