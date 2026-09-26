@@ -24,6 +24,7 @@
 
 #include "amvdec.h"
 #include "hevc_regs.h"
+#include "codec_h264_synth.h"
 #include "codec_mpeg12_synth.h"
 #include "esparser.h"
 #include "amvdec_helpers.h"
@@ -935,6 +936,11 @@ static int m2m_queue_init(void *priv, struct vb2_queue *src_vq,
 	return vb2_queue_init(dst_vq);
 }
 
+static const struct v4l2_ctrl_h264_scaling_matrix vdec_h264_scaling_default = {
+	.scaling_list_4x4 = { [0 ... 5] = { [0 ... 15] = 16 } },
+	.scaling_list_8x8 = { [0 ... 1] = { [0 ... 63] = 16 } },
+};
+
 /* Find the coded format in the selected compatible's capability table. */
 static const struct amvdec_format *
 vdec_format_by_pixfmt(struct amvdec_core *core, u32 pixfmt)
@@ -947,6 +953,41 @@ vdec_format_by_pixfmt(struct amvdec_core *core, u32 pixfmt)
 			return &platform->formats[i];
 	return NULL;
 }
+
+/* Reject unsupported sequence syntax before a client commits to hardware. */
+static struct amvdec_session *vdec_ctrl_session(struct v4l2_ctrl *ctrl)
+{
+	return container_of(ctrl->handler, struct amvdec_session, ctrl_handler);
+}
+
+static int vdec_h264_try_ctrl(struct v4l2_ctrl *ctrl)
+{
+	switch (ctrl->id) {
+	case V4L2_CID_STATELESS_H264_SPS: {
+		const struct v4l2_ctrl_h264_sps *sps = ctrl->p_new.p_h264_sps;
+		const struct amvdec_format *fmt =
+			vdec_format_by_pixfmt(vdec_ctrl_session(ctrl)->core,
+					      V4L2_PIX_FMT_H264_SLICE);
+		u32 w = (sps->pic_width_in_mbs_minus1 + 1) * 16;
+		u32 h = (sps->pic_height_in_map_units_minus1 + 1) * 16 *
+			((sps->flags & V4L2_H264_SPS_FLAG_FRAME_MBS_ONLY) ? 1 : 2);
+
+		/* Enforce the coded-size limit from platform data. */
+		if (fmt && (w > fmt->max_width || h > fmt->max_height))
+			return -EINVAL;
+		return h264_sps_validate(sps) ? -EINVAL : 0;
+	}
+	case V4L2_CID_STATELESS_H264_PPS:
+		return ctrl->p_new.p_h264_pps->num_slice_groups_minus1 ?
+		       -EINVAL : 0;
+	default:
+		return 0;
+	}
+}
+
+static const struct v4l2_ctrl_ops vdec_h264_ctrl_ops = {
+	.try_ctrl = vdec_h264_try_ctrl,
+};
 
 static int vdec_mpeg2_try_ctrl(struct v4l2_ctrl *ctrl)
 {
@@ -964,6 +1005,13 @@ static const struct v4l2_ctrl_ops vdec_mpeg2_ctrl_ops = {
 };
 
 /* Compound controls must have defaults accepted by their try_ctrl callback. */
+static const struct v4l2_ctrl_h264_sps vdec_h264_sps_default = {
+	.profile_idc = 77,
+	.level_idc = 41,
+	.chroma_format_idc = 1,
+	.flags = V4L2_H264_SPS_FLAG_FRAME_MBS_ONLY,
+};
+
 static const struct v4l2_ctrl_mpeg2_sequence vdec_mpeg2_sequence_default = {
 	.horizontal_size = 16,
 	.vertical_size = 16,
@@ -980,6 +1028,42 @@ static int vdec_init_ctrls(struct amvdec_session *sess)
 		return ret;
 
 	/* Create controls for the formats in the selected capability table. */
+	if (vdec_format_by_pixfmt(sess->core, V4L2_PIX_FMT_H264_SLICE)) {
+		static const struct v4l2_ctrl_config h264_ctrls[] = {
+			{
+				.id = V4L2_CID_STATELESS_H264_SPS,
+				.ops = &vdec_h264_ctrl_ops,
+				.p_def.p_const = &vdec_h264_sps_default,
+			}, {
+				.id = V4L2_CID_STATELESS_H264_PPS,
+				.ops = &vdec_h264_ctrl_ops,
+			}, {
+				.id = V4L2_CID_STATELESS_H264_SCALING_MATRIX,
+				.ops = &vdec_h264_ctrl_ops,
+				.p_def.p_const = &vdec_h264_scaling_default,
+			}, {
+				.id = V4L2_CID_STATELESS_H264_PRED_WEIGHTS,
+			}, {
+				.id = V4L2_CID_STATELESS_H264_SLICE_PARAMS,
+			}, {
+				.id = V4L2_CID_STATELESS_H264_DECODE_PARAMS,
+			}, {
+				.id = V4L2_CID_STATELESS_H264_DECODE_MODE,
+				.min = V4L2_STATELESS_H264_DECODE_MODE_FRAME_BASED,
+				.max = V4L2_STATELESS_H264_DECODE_MODE_FRAME_BASED,
+				.def = V4L2_STATELESS_H264_DECODE_MODE_FRAME_BASED,
+			}, {
+				.id = V4L2_CID_STATELESS_H264_START_CODE,
+				.min = V4L2_STATELESS_H264_START_CODE_ANNEX_B,
+				.max = V4L2_STATELESS_H264_START_CODE_ANNEX_B,
+				.def = V4L2_STATELESS_H264_START_CODE_ANNEX_B,
+			},
+		};
+		unsigned int i;
+
+		for (i = 0; i < ARRAY_SIZE(h264_ctrls); i++)
+			v4l2_ctrl_new_custom(ctrl_handler, &h264_ctrls[i], NULL);
+	}
 
 	if (vdec_format_by_pixfmt(sess->core, V4L2_PIX_FMT_MPEG2_SLICE)) {
 		static const struct v4l2_ctrl_config mpeg2_ctrls[] = {
