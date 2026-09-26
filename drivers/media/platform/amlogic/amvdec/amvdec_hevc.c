@@ -15,6 +15,7 @@
 #include "amvdec_hevc.h"
 #include "esparser.h"
 #include "codec_hevc.h"
+#include "codec_vp9.h"
 #include "hevc_regs.h"
 #include "dos_regs.h"
 
@@ -467,7 +468,10 @@ int meson_amvdec_hevc_restream(struct amvdec_session *sess)
 		return ret;
 
 	/* Both codecs on this core publish endpoints the same way. */
-	ret = meson_amvdec_codec_hevc_restream_reinit(sess);
+	if (sess->fmt_out->pixfmt == V4L2_PIX_FMT_VP9_FRAME)
+		ret = meson_amvdec_codec_vp9_restream_reinit(sess);
+	else
+		ret = meson_amvdec_codec_hevc_restream_reinit(sess);
 	if (ret)
 		return ret;
 

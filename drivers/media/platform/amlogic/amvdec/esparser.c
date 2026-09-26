@@ -28,6 +28,7 @@
 #include "codec_mpeg12_synth.h"
 #include "codec_h264.h"
 #include "codec_hevc.h"
+#include "codec_vp9.h"
 
 /* Zero lookahead appended after each HEVC/VP9 request payload; not part of
  * the coded endpoint.
@@ -81,6 +82,112 @@ static irqreturn_t esparser_isr(int irq, void *dev)
 	}
 
 	return IRQ_HANDLED;
+}
+
+/* Prepend the 16-byte Amlogic header to each VP9 frame. */
+static int vp9_update_header(struct amvdec_core *core, struct vb2_buffer *buf)
+{
+	u8 *dp;
+	u8 marker;
+	u32 dsize;
+	int num_frames, cur_frame;
+	int cur_mag, mag, mag_ptr;
+	u32 frame_size[8], tot_frame_size[8];
+	u32 total_datasize = 0;
+	u32 index_size;
+	int new_frame_size;
+	unsigned char *old_header = NULL;
+
+	dp = (uint8_t *)vb2_plane_vaddr(buf, 0);
+	dsize = vb2_get_plane_payload(buf, 0);
+
+	if (!dsize || dsize >= vb2_plane_size(buf, 0)) {
+		dev_warn_ratelimited(core->dev, "%s: unable to update header\n", __func__);
+		return 0;
+	}
+
+	marker = dp[dsize - 1];
+	if ((marker & 0xe0) == 0xc0) {
+		num_frames = (marker & 0x7) + 1;
+		mag = ((marker >> 3) & 0x3) + 1;
+		index_size = mag * num_frames + 2;
+		if (dsize <= index_size)
+			return 0;
+
+		mag_ptr = dsize - index_size;
+		if (dp[mag_ptr] != marker)
+			return 0;
+
+		mag_ptr++;
+		for (cur_frame = 0; cur_frame < num_frames; cur_frame++) {
+			frame_size[cur_frame] = 0;
+			for (cur_mag = 0; cur_mag < mag; cur_mag++) {
+				frame_size[cur_frame] |=
+					((u32)dp[mag_ptr] << (cur_mag * 8));
+				mag_ptr++;
+			}
+			/* Every frame must be non-empty and lie before the index. */
+			if (!frame_size[cur_frame] ||
+			    frame_size[cur_frame] > dsize - index_size - total_datasize)
+				return 0;
+
+			total_datasize += frame_size[cur_frame];
+			tot_frame_size[cur_frame] = total_datasize;
+		}
+	} else {
+		num_frames = 1;
+		frame_size[0] = dsize;
+		tot_frame_size[0] = dsize;
+		total_datasize = dsize;
+	}
+
+	new_frame_size = total_datasize + num_frames * VP9_HEADER_SIZE;
+
+	if (new_frame_size >= vb2_plane_size(buf, 0)) {
+		dev_warn_ratelimited(core->dev, "%s: unable to update header\n", __func__);
+		return 0;
+	}
+
+	for (cur_frame = num_frames - 1; cur_frame >= 0; cur_frame--) {
+		u32 framesize = frame_size[cur_frame];
+		u32 framesize_header = framesize + 4;
+		u32 oldframeoff = tot_frame_size[cur_frame] - framesize;
+		u32 outheaderoff =  oldframeoff + cur_frame * VP9_HEADER_SIZE;
+		u8 *fdata = dp + outheaderoff;
+		u8 *old_framedata = dp + oldframeoff;
+
+		memmove(fdata + VP9_HEADER_SIZE, old_framedata, framesize);
+
+		fdata[0] = (framesize_header >> 24) & 0xff;
+		fdata[1] = (framesize_header >> 16) & 0xff;
+		fdata[2] = (framesize_header >> 8) & 0xff;
+		fdata[3] = (framesize_header >> 0) & 0xff;
+		fdata[4] = ((framesize_header >> 24) & 0xff) ^ 0xff;
+		fdata[5] = ((framesize_header >> 16) & 0xff) ^ 0xff;
+		fdata[6] = ((framesize_header >> 8) & 0xff) ^ 0xff;
+		fdata[7] = ((framesize_header >> 0) & 0xff) ^ 0xff;
+		fdata[8] = 0;
+		fdata[9] = 0;
+		fdata[10] = 0;
+		fdata[11] = 1;
+		fdata[12] = 'A';
+		fdata[13] = 'M';
+		fdata[14] = 'L';
+		fdata[15] = 'V';
+
+		if (!old_header) {
+		} else if (old_header > fdata + 16 + framesize) {
+			dev_dbg(core->dev, "%s: data has gaps, setting to 0\n",
+				__func__);
+			memset(fdata + 16 + framesize, 0,
+			       (old_header - fdata + 16 + framesize));
+		} else if (old_header < fdata + 16 + framesize) {
+			dev_err_ratelimited(core->dev, "%s: data overwritten\n", __func__);
+		}
+		old_header = fdata;
+	}
+
+	return new_frame_size;
 }
 
 static int
@@ -266,7 +373,54 @@ esparser_queue(struct amvdec_session *sess, struct vb2_v4l2_buffer *vbuf)
 		return ret;
 	}
 
-	if (sess->fmt_out->pixfmt == V4L2_PIX_FMT_HEVC_SLICE) {
+	if (sess->fmt_out->pixfmt == V4L2_PIX_FMT_VP9_FRAME) {
+		ctrl = v4l2_ctrl_find(&sess->ctrl_handler,
+				      V4L2_CID_STATELESS_VP9_FRAME);
+		if (!ctrl || !ctrl->p_cur.p_vp9_frame) {
+			dev_err_ratelimited(core->dev, "VP9_FRAME request control missing\n");
+			esparser_src_error(sess, vbuf);
+			return -EINVAL;
+		}
+		f->vp9_frame = *ctrl->p_cur.p_vp9_frame;
+		if (f->vp9_frame.frame_width_minus_1 + 1 != sess->width ||
+		    f->vp9_frame.frame_height_minus_1 + 1 != sess->height) {
+			dev_err_ratelimited(core->dev,
+					    "VP9 coded size changed from negotiated %ux%u to %ux%u\n",
+				    sess->width, sess->height,
+				    f->vp9_frame.frame_width_minus_1 + 1,
+				    f->vp9_frame.frame_height_minus_1 + 1);
+			esparser_src_error(sess, vbuf);
+			return -EINVAL;
+		}
+		/* Publish bit depth before allocating capture backing at the first header. */
+		if (offset && sess->bitdepth != f->vp9_frame.bit_depth) {
+			dev_err_ratelimited(core->dev,
+					    "VP9 bit depth changed midstream from %u to %u\n",
+				    sess->bitdepth, f->vp9_frame.bit_depth);
+			esparser_src_error(sess, vbuf);
+			return -EOPNOTSUPP;
+		}
+		if (!offset)
+			sess->bitdepth = f->vp9_frame.bit_depth;
+		/*
+		 * Restart the stream counter only before a key frame, which supplies its
+		 * geometry and resets probability state. Recompute the input offset after
+		 * restart while the FIFO is empty.
+		 */
+		if (meson_amvdec_codec_vp9_restream_pending(sess) &&
+		    (f->vp9_frame.flags & V4L2_VP9_FRAME_FLAG_KEY_FRAME) &&
+		    !sess->should_stop &&
+		    !atomic_read(&sess->esparser_queued_bufs)) {
+			ret = meson_amvdec_hevc_restream(sess);
+			if (ret) {
+				dev_err(core->dev, "VP9 restream failed (%d)\n", ret);
+				esparser_src_error(sess, vbuf);
+				return ret;
+			}
+			offset = esparser_get_offset(sess);
+		}
+		vp9_frame_ptr = &f->vp9_frame;
+	} else if (sess->fmt_out->pixfmt == V4L2_PIX_FMT_HEVC_SLICE) {
 		u8 *vaddr = vb2_plane_vaddr(vb, 0);
 		u32 plane_size = vb2_plane_size(vb, 0);
 		bool irap;
@@ -623,6 +777,18 @@ esparser_queue(struct amvdec_session *sess, struct vb2_v4l2_buffer *vbuf)
 	vbuf->field = V4L2_FIELD_NONE;
 	vbuf->sequence = sess->sequence_out++;
 
+	if (sess->fmt_out->pixfmt == V4L2_PIX_FMT_VP9_FRAME) {
+		payload_size = vp9_update_header(core, vb);
+
+		/* If unable to alter buffer to add headers */
+		if (payload_size == 0) {
+			meson_amvdec_remove_ts(sess, vb->timestamp);
+			esparser_src_error(sess, vbuf);
+
+			return 0;
+		}
+	}
+
 	/*
 	 * The multi blob takes the OUTPUT buffer as its stream FIFO directly:
 	 * no ESPARSER copy, no start-code padding, and the buffer stays owned
@@ -728,7 +894,8 @@ esparser_queue(struct amvdec_session *sess, struct vb2_v4l2_buffer *vbuf)
 	/* Record the framed/synthesized coded endpoint before padding or DMA.
 	 * Reading PARSER_VIDEO_WP for offset includes previous transport bytes.
 	 */
-	if (sess->fmt_out->pixfmt == V4L2_PIX_FMT_HEVC_SLICE &&
+	if ((sess->fmt_out->pixfmt == V4L2_PIX_FMT_HEVC_SLICE ||
+	     sess->fmt_out->pixfmt == V4L2_PIX_FMT_VP9_FRAME) &&
 	    meson_amvdec_set_input_end(sess, vb->timestamp, offset + payload_size)) {
 		esparser_src_error(sess, vbuf);
 		return -EINVAL;
@@ -817,6 +984,8 @@ esparser_queue(struct amvdec_session *sess, struct vb2_v4l2_buffer *vbuf)
 	if (sess->fmt_out->pixfmt == V4L2_PIX_FMT_HEVC_SLICE)
 		meson_amvdec_codec_hevc_request_input_ready(sess, vb->timestamp,
 							  offset + payload_size);
+	if (sess->fmt_out->pixfmt == V4L2_PIX_FMT_VP9_FRAME)
+		meson_amvdec_codec_vp9_request_input_ready(sess, offset + payload_size);
 
 	return 0;
 }
