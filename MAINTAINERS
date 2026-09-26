@@ -17612,7 +17612,6 @@ L:	linux-amlogic@lists.infradead.org
 S:	Supported
 T:	git git://linuxtv.org/media.git
 F:	Documentation/devicetree/bindings/media/amlogic,gx-vdec.yaml
-F:	drivers/staging/media/meson/vdec/
 
 META ETHERNET DRIVERS
 M:	Alexander Duyck <alexanderduyck@fb.com>
