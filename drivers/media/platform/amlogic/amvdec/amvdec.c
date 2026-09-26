@@ -1055,6 +1055,40 @@ static const struct v4l2_ctrl_ops vdec_mpeg2_ctrl_ops = {
 	.try_ctrl = vdec_mpeg2_try_ctrl,
 };
 
+static int vdec_vp9_try_ctrl(struct v4l2_ctrl *ctrl)
+{
+	const struct v4l2_ctrl_vp9_frame *frame = ctrl->p_new.p_vp9_frame;
+	const struct amvdec_format *fmt =
+		vdec_format_by_pixfmt(vdec_ctrl_session(ctrl)->core,
+				      V4L2_PIX_FMT_VP9_FRAME);
+	const u32 subsampling = V4L2_VP9_FRAME_FLAG_X_SUBSAMPLING |
+				V4L2_VP9_FRAME_FLAG_Y_SUBSAMPLING;
+
+	if ((frame->profile != 0 && frame->profile != 2) ||
+	    frame->bit_depth != (frame->profile == 2 ? 10 : 8) ||
+	    (frame->flags & subsampling) != subsampling)
+		return -EINVAL;
+
+	if (!fmt || !(fmt->profiles & BIT(frame->profile)) ||
+	    frame->bit_depth > fmt->max_bit_depth ||
+	    frame->frame_width_minus_1 + 1 > fmt->max_width ||
+	    frame->frame_height_minus_1 + 1 > fmt->max_height)
+		return -EINVAL;
+
+	/* Keep control validation consistent with format negotiation. */
+	if (frame->frame_width_minus_1 + 1 <
+	    amvdec_min_coded_width(V4L2_PIX_FMT_VP9_FRAME) ||
+	    frame->frame_height_minus_1 + 1 <
+	    amvdec_min_coded_height(V4L2_PIX_FMT_VP9_FRAME))
+		return -EINVAL;
+
+	return 0;
+}
+
+static const struct v4l2_ctrl_ops vdec_vp9_ctrl_ops = {
+	.try_ctrl = vdec_vp9_try_ctrl,
+};
+
 /* Compound controls must have defaults accepted by their try_ctrl callback. */
 static const struct v4l2_ctrl_h264_sps vdec_h264_sps_default = {
 	.profile_idc = 77,
@@ -1071,6 +1105,12 @@ static const struct v4l2_ctrl_mpeg2_sequence vdec_mpeg2_sequence_default = {
 	.horizontal_size = 16,
 	.vertical_size = 16,
 	.chroma_format = 1,
+};
+
+static const struct v4l2_ctrl_vp9_frame vdec_vp9_frame_default = {
+	.flags = V4L2_VP9_FRAME_FLAG_X_SUBSAMPLING |
+		 V4L2_VP9_FRAME_FLAG_Y_SUBSAMPLING,
+	.bit_depth = 8,
 };
 
 static int vdec_init_ctrls(struct amvdec_session *sess)
@@ -1118,6 +1158,21 @@ static int vdec_init_ctrls(struct amvdec_session *sess)
 
 		for (i = 0; i < ARRAY_SIZE(h264_ctrls); i++)
 			v4l2_ctrl_new_custom(ctrl_handler, &h264_ctrls[i], NULL);
+	}
+
+	if (vdec_format_by_pixfmt(sess->core, V4L2_PIX_FMT_VP9_FRAME)) {
+		static const struct v4l2_ctrl_config vp9_frame_ctrl = {
+			.id = V4L2_CID_STATELESS_VP9_FRAME,
+			.ops = &vdec_vp9_ctrl_ops,
+			.p_def.p_const = &vdec_vp9_frame_default,
+		};
+
+		v4l2_ctrl_new_custom(ctrl_handler, &vp9_frame_ctrl, NULL);
+		v4l2_ctrl_new_std_compound(ctrl_handler, NULL,
+					   V4L2_CID_STATELESS_VP9_COMPRESSED_HDR,
+					   v4l2_ctrl_ptr_create(NULL),
+					   v4l2_ctrl_ptr_create(NULL),
+					   v4l2_ctrl_ptr_create(NULL));
 	}
 
 	if (vdec_format_by_pixfmt(sess->core, V4L2_PIX_FMT_MPEG2_SLICE)) {
