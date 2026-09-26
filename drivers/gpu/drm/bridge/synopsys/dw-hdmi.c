@@ -2819,12 +2819,6 @@ static int dw_hdmi_bridge_atomic_check(struct drm_bridge *bridge,
 {
 	struct dw_hdmi *hdmi = bridge->driver_private;
 
-	hdmi->hdmi_data.enc_out_bus_format =
-			bridge_state->output_bus_cfg.format;
-
-	hdmi->hdmi_data.enc_in_bus_format =
-			bridge_state->input_bus_cfg.format;
-
 	dev_dbg(hdmi->dev, "input format 0x%04x, output format 0x%04x\n",
 		bridge_state->input_bus_cfg.format,
 		bridge_state->output_bus_cfg.format);
@@ -2896,6 +2890,7 @@ static void dw_hdmi_bridge_atomic_enable(struct drm_bridge *bridge,
 					 struct drm_atomic_commit *state)
 {
 	struct dw_hdmi *hdmi = bridge->driver_private;
+	const struct drm_bridge_state *bridge_state;
 	const struct drm_display_mode *mode;
 	struct drm_connector *connector;
 	struct drm_crtc *crtc;
@@ -2904,9 +2899,12 @@ static void dw_hdmi_bridge_atomic_enable(struct drm_bridge *bridge,
 							     bridge->encoder);
 	crtc = drm_atomic_get_new_connector_state(state, connector)->crtc;
 	mode = &drm_atomic_get_new_crtc_state(state, crtc)->adjusted_mode;
+	bridge_state = drm_atomic_get_new_bridge_state(state, bridge);
 
 	mutex_lock(&hdmi->mutex);
 	hdmi->curr_conn = connector;
+	hdmi->hdmi_data.enc_out_bus_format = bridge_state->output_bus_cfg.format;
+	hdmi->hdmi_data.enc_in_bus_format = bridge_state->input_bus_cfg.format;
 	dw_hdmi_poweron(hdmi, connector, mode);
 	handle_plugged_change(hdmi, true);
 	mutex_unlock(&hdmi->mutex);
