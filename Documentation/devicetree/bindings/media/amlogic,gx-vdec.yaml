@@ -9,7 +9,8 @@ title: Amlogic Video Decoder
 
 maintainers:
   - Neil Armstrong <neil.armstrong@linaro.org>
-  - Maxime Jourdan <mjourdan@baylibre.com>
+  - Christian Hewitt <christianshewitt@gmail.com>
+  - Gus Bourg <gus@bourg.net>
 
 description: |
   The video decoding IP lies within the DOS memory region,
