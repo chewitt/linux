@@ -1028,9 +1028,6 @@ static int amvdec_hevc_try_ctrl(struct v4l2_ctrl *ctrl)
 		kfree(resolved);
 		return ret;
 	}
-	case V4L2_CID_STATELESS_HEVC_EXT_SPS_LT_RPS:
-		/* The primary image does not implement the SPS LT table ABI. */
-		return ctrl->new_elems ? -EINVAL : 0;
 	default:
 		return 0;
 	}
@@ -1217,7 +1214,6 @@ static int vdec_init_ctrls(struct amvdec_session *sess)
 				.dims = { HEVC_RPS_MAX_SETS },
 			}, {
 				.id = V4L2_CID_STATELESS_HEVC_EXT_SPS_LT_RPS,
-				.ops = &amvdec_hevc_ctrl_ops,
 				.flags = V4L2_CTRL_FLAG_DYNAMIC_ARRAY,
 				.dims = { 32 },
 			}, {
