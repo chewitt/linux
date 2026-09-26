@@ -24,6 +24,7 @@
 
 #include "amvdec.h"
 #include "hevc_regs.h"
+#include "codec_mpeg12_synth.h"
 #include "esparser.h"
 #include "amvdec_helpers.h"
 
@@ -934,7 +935,41 @@ static int m2m_queue_init(void *priv, struct vb2_queue *src_vq,
 	return vb2_queue_init(dst_vq);
 }
 
+/* Find the coded format in the selected compatible's capability table. */
+static const struct amvdec_format *
+vdec_format_by_pixfmt(struct amvdec_core *core, u32 pixfmt)
+{
+	const struct amvdec_platform *platform = core->platform;
+	u32 i;
+
+	for (i = 0; i < platform->num_formats; i++)
+		if (platform->formats[i].pixfmt == pixfmt)
+			return &platform->formats[i];
+	return NULL;
+}
+
+static int vdec_mpeg2_try_ctrl(struct v4l2_ctrl *ctrl)
+{
+	switch (ctrl->id) {
+	case V4L2_CID_STATELESS_MPEG2_SEQUENCE:
+		return mpeg12_sequence_validate(ctrl->p_new.p_mpeg2_sequence) ?
+		       -EINVAL : 0;
+	default:
+		return 0;
+	}
+}
+
+static const struct v4l2_ctrl_ops vdec_mpeg2_ctrl_ops = {
+	.try_ctrl = vdec_mpeg2_try_ctrl,
+};
+
 /* Compound controls must have defaults accepted by their try_ctrl callback. */
+static const struct v4l2_ctrl_mpeg2_sequence vdec_mpeg2_sequence_default = {
+	.horizontal_size = 16,
+	.vertical_size = 16,
+	.chroma_format = 1,
+};
+
 static int vdec_init_ctrls(struct amvdec_session *sess)
 {
 	struct v4l2_ctrl_handler *ctrl_handler = &sess->ctrl_handler;
@@ -945,6 +980,25 @@ static int vdec_init_ctrls(struct amvdec_session *sess)
 		return ret;
 
 	/* Create controls for the formats in the selected capability table. */
+
+	if (vdec_format_by_pixfmt(sess->core, V4L2_PIX_FMT_MPEG2_SLICE)) {
+		static const struct v4l2_ctrl_config mpeg2_ctrls[] = {
+			{
+				.id = V4L2_CID_STATELESS_MPEG2_SEQUENCE,
+				.ops = &vdec_mpeg2_ctrl_ops,
+				.p_def.p_const = &vdec_mpeg2_sequence_default,
+			}, {
+				.id = V4L2_CID_STATELESS_MPEG2_PICTURE,
+			}, {
+				.id = V4L2_CID_STATELESS_MPEG2_QUANTISATION,
+			},
+		};
+		unsigned int i;
+
+		for (i = 0; i < ARRAY_SIZE(mpeg2_ctrls); i++)
+			v4l2_ctrl_new_custom(ctrl_handler,
+					     &mpeg2_ctrls[i], NULL);
+	}
 
 	/* Menus are derived from this compatible's codec descriptors. */
 	for (unsigned int i = 0; i < sess->core->platform->num_formats; i++) {
@@ -975,9 +1029,6 @@ static int vdec_open(struct file *file)
 	const struct amvdec_format *formats = core->platform->formats;
 	struct amvdec_session *sess;
 	int ret;
-
-	if (!core->platform->num_formats)
-		return -ENODEV;
 
 	sess = kzalloc_obj(*sess);
 	if (!sess)

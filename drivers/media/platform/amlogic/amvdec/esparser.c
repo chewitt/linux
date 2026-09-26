@@ -22,6 +22,8 @@
 #include "esparser.h"
 #include "amvdec_hevc.h"
 #include "amvdec_helpers.h"
+#include "codec_mpeg12.h"
+#include "codec_mpeg12_synth.h"
 
 /* Zero lookahead appended after each HEVC/VP9 request payload; not part of
  * the coded endpoint.
@@ -184,7 +186,11 @@ esparser_queue(struct amvdec_session *sess, struct vb2_v4l2_buffer *vbuf)
 	u32 offset;
 	u32 pad_size;
 
+	u16 mpeg2_tref = 0;
 	bool mpeg2_second = false;
+	bool mpeg2_job = false;
+
+	BUILD_BUG_ON(sizeof(f->headers) < MPEG12_SYNTH_MAX_HEADERS);
 
 	dev_dbg(core->dev, "feed attempt sess=%p idx=%u bytes=%u\n",
 		sess, vb->index, payload_size);
@@ -210,6 +216,7 @@ esparser_queue(struct amvdec_session *sess, struct vb2_v4l2_buffer *vbuf)
 	offset = esparser_get_offset(sess);
 
 	struct media_request *req = vb->req_obj.req;
+	struct v4l2_ctrl *ctrl;
 
 	if (!req) {
 		dev_err_ratelimited(core->dev, "stateless buffer has no request\n");
@@ -222,6 +229,90 @@ esparser_queue(struct amvdec_session *sess, struct vb2_v4l2_buffer *vbuf)
 		dev_dbg(core->dev, "request setup failed: %d\n", ret);
 		esparser_src_error(sess, vbuf);
 		return ret;
+	}
+
+	if (sess->fmt_out->pixfmt == V4L2_PIX_FMT_MPEG2_SLICE) {
+		u8 *vaddr = vb2_plane_vaddr(vb, 0);
+		u32 plane_size = vb2_plane_size(vb, 0);
+		bool have_quant = false;
+		int hdrs_len;
+
+		ctrl = v4l2_ctrl_find(&sess->ctrl_handler,
+				      V4L2_CID_STATELESS_MPEG2_SEQUENCE);
+		if (!ctrl || !ctrl->p_cur.p_mpeg2_sequence) {
+			dev_err_ratelimited(core->dev, "MPEG2 SEQUENCE control missing\n");
+			esparser_src_error(sess, vbuf);
+			return -EINVAL;
+		}
+		f->mpeg2_seq = *ctrl->p_cur.p_mpeg2_sequence;
+		/*
+		 * The canvases and CAPTURE planes are sized from the
+		 * negotiated format; a larger picture would be written
+		 * past them.  Compare in macroblocks, as for H.264.
+		 */
+		if (DIV_ROUND_UP(f->mpeg2_seq.horizontal_size, 16) >
+		    DIV_ROUND_UP(sess->width, 16) ||
+		    DIV_ROUND_UP(f->mpeg2_seq.vertical_size, 16) >
+		    DIV_ROUND_UP(sess->height, 16)) {
+			dev_err_ratelimited(core->dev,
+					    "MPEG2 sequence size %ux%u exceeds negotiated %ux%u\n",
+				f->mpeg2_seq.horizontal_size,
+				f->mpeg2_seq.vertical_size,
+				sess->width, sess->height);
+			esparser_src_error(sess, vbuf);
+			return -EINVAL;
+		}
+
+		ctrl = v4l2_ctrl_find(&sess->ctrl_handler,
+				      V4L2_CID_STATELESS_MPEG2_PICTURE);
+		if (!ctrl || !ctrl->p_cur.p_mpeg2_picture) {
+			dev_err_ratelimited(core->dev, "MPEG2 PICTURE control missing\n");
+			esparser_src_error(sess, vbuf);
+			return -EINVAL;
+		}
+		f->mpeg2_pic = *ctrl->p_cur.p_mpeg2_picture;
+		f->mpeg2_job_pic = f->mpeg2_pic;
+		mpeg2_job = true;
+
+		ctrl = v4l2_ctrl_find(&sess->ctrl_handler,
+				      V4L2_CID_STATELESS_MPEG2_QUANTISATION);
+		if (ctrl && ctrl->p_cur.p_mpeg2_quantisation) {
+			f->mpeg2_quant = *ctrl->p_cur.p_mpeg2_quantisation;
+			have_quant = true;
+		}
+
+		/*
+		 * Prepend a sequence header except between paired fields, which share
+		 * the same temporal reference.
+		 */
+		mpeg2_tref = sess->sequence_out;
+		mpeg2_second =
+			meson_amvdec_codec_mpeg12_sl_second_field(sess, &f->mpeg2_pic,
+								  &mpeg2_tref);
+		hdrs_len = mpeg12_synth_headers(&f->mpeg2_seq, &f->mpeg2_pic,
+						have_quant ? &f->mpeg2_quant : NULL,
+						mpeg2_tref, !mpeg2_second,
+						f->headers, sizeof(f->headers));
+		if (hdrs_len < 0) {
+			dev_err_ratelimited(core->dev,
+					    "MPEG2 header synthesis rejected controls: %d\n",
+				hdrs_len);
+			esparser_src_error(sess, vbuf);
+			return hdrs_len;
+		}
+		if (!vaddr || payload_size + hdrs_len > plane_size) {
+			dev_err_ratelimited(core->dev,
+					    "MPEG2 buffer too small for synthesized headers\n");
+			esparser_src_error(sess, vbuf);
+			return -ENOSPC;
+		}
+		memmove(vaddr + hdrs_len, vaddr, payload_size);
+		memcpy(vaddr, f->headers, hdrs_len);
+		payload_size += hdrs_len;
+		vb2_set_plane_payload(vb, 0, payload_size);
+		dev_dbg(core->dev,
+			"MPEG2 synthesized %d header bytes, coding_type=%u\n",
+			hdrs_len, f->mpeg2_pic.picture_coding_type);
 	}
 
 	ret = meson_amvdec_add_ts(sess, vb->timestamp, vbuf->timecode, offset,
@@ -256,6 +347,13 @@ esparser_queue(struct amvdec_session *sess, struct vb2_v4l2_buffer *vbuf)
 		}
 		for (i = 0; i < n; i++)
 			refs[i] = f->hevc_decode.dpb[i].timestamp;
+	} else if (mpeg2_job) {
+		if (f->mpeg2_job_pic.picture_coding_type !=
+		    V4L2_MPEG2_PIC_CODING_TYPE_I)
+			refs[n++] = f->mpeg2_job_pic.forward_ref_ts;
+		if (f->mpeg2_job_pic.picture_coding_type ==
+		    V4L2_MPEG2_PIC_CODING_TYPE_B)
+			refs[n++] = f->mpeg2_job_pic.backward_ref_ts;
 	} else if (vp9_frame_ptr && !(f->vp9_frame.flags &
 		   (V4L2_VP9_FRAME_FLAG_KEY_FRAME | V4L2_VP9_FRAME_FLAG_INTRA_ONLY))) {
 		n = 3;
@@ -282,7 +380,22 @@ esparser_queue(struct amvdec_session *sess, struct vb2_v4l2_buffer *vbuf)
 			return -EINVAL;
 		}
 	}
-
+	if (mpeg2_job) {
+		/* The VLD reads this buffer directly; nothing goes
+		 * through the parser FIFO.
+		 */
+		sess->request_job.credit = true;
+		atomic_inc(&sess->esparser_queued_bufs);
+		ret = meson_amvdec_codec_mpeg12_sl_feed(sess, vb, &f->mpeg2_job_pic,
+							mpeg2_tref);
+		if (ret) {
+			sess->request_job.credit = false;
+			atomic_dec(&sess->esparser_queued_bufs);
+			esparser_src_error(sess, vbuf);
+			return ret;
+		}
+		return 0;
+	}
 	/* Record the framed/synthesized coded endpoint before padding or DMA.
 	 * Reading PARSER_VIDEO_WP for offset includes previous transport bytes.
 	 */
