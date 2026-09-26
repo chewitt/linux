@@ -6,5 +6,7 @@ meson-amvdec-objs += amvdec_1.o
 meson-amvdec-objs += amvdec_hevc.o
 meson-amvdec-objs += codec_mpeg12.o
 meson-amvdec-objs += codec_h264.o
+meson-amvdec-objs += codec_hevc.o
+meson-amvdec-objs += codec_hevc_common.o
 
 obj-$(CONFIG_VIDEO_MESON_AMVDEC) += meson-amvdec.o

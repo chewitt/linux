@@ -24,6 +24,9 @@
 
 #include "amvdec.h"
 #include "hevc_regs.h"
+#include "codec_hevc_common.h"
+#include "codec_hevc.h"
+#include "codec_hevc_synth.h"
 #include "codec_h264_synth.h"
 #include "codec_mpeg12_synth.h"
 #include "esparser.h"
@@ -989,6 +992,54 @@ static const struct v4l2_ctrl_ops vdec_h264_ctrl_ops = {
 	.try_ctrl = vdec_h264_try_ctrl,
 };
 
+static int amvdec_hevc_try_ctrl(struct v4l2_ctrl *ctrl)
+{
+	switch (ctrl->id) {
+	case V4L2_CID_STATELESS_HEVC_SPS: {
+		const struct v4l2_ctrl_hevc_sps *sps = ctrl->p_new.p_hevc_sps;
+		const struct amvdec_format *fmt =
+			vdec_format_by_pixfmt(vdec_ctrl_session(ctrl)->core,
+					      V4L2_PIX_FMT_HEVC_SLICE);
+
+		if (fmt && (sps->pic_width_in_luma_samples > fmt->max_width ||
+			    sps->pic_height_in_luma_samples > fmt->max_height ||
+			    (fmt->max_bit_depth &&
+			     sps->bit_depth_luma_minus8 + 8 > fmt->max_bit_depth)))
+			return -EINVAL;
+		if (hevc_sps_bad_geometry(sps)) {
+			dev_dbg(vdec_ctrl_session(ctrl)->core->dev,
+				"HEVC pictures with one CTB column and multiple rows are unsupported\n");
+			return -EINVAL;
+		}
+		return hevc_sps_validate(sps) ? -EINVAL : 0;
+	}
+	case V4L2_CID_STATELESS_HEVC_PPS:
+		return hevc_pps_validate(ctrl->p_new.p_hevc_pps) ? -EINVAL : 0;
+	case V4L2_CID_STATELESS_HEVC_EXT_SPS_ST_RPS: {
+		struct hevc_rps *resolved;
+		int ret;
+
+		if (ctrl->new_elems > HEVC_RPS_MAX_SETS)
+			return -EINVAL;
+		resolved = kcalloc(ctrl->new_elems, sizeof(*resolved), GFP_KERNEL);
+		if (!resolved)
+			return -ENOMEM;
+		ret = hevc_rps_resolve(ctrl->p_new.p, ctrl->new_elems, resolved);
+		kfree(resolved);
+		return ret;
+	}
+	case V4L2_CID_STATELESS_HEVC_EXT_SPS_LT_RPS:
+		/* The primary image does not implement the SPS LT table ABI. */
+		return ctrl->new_elems ? -EINVAL : 0;
+	default:
+		return 0;
+	}
+}
+
+static const struct v4l2_ctrl_ops amvdec_hevc_ctrl_ops = {
+	.try_ctrl = amvdec_hevc_try_ctrl,
+};
+
 static int vdec_mpeg2_try_ctrl(struct v4l2_ctrl *ctrl)
 {
 	switch (ctrl->id) {
@@ -1010,6 +1061,10 @@ static const struct v4l2_ctrl_h264_sps vdec_h264_sps_default = {
 	.level_idc = 41,
 	.chroma_format_idc = 1,
 	.flags = V4L2_H264_SPS_FLAG_FRAME_MBS_ONLY,
+};
+
+static const struct v4l2_ctrl_hevc_sps amvdec_hevc_sps_default = {
+	.chroma_format_idc = 1,
 };
 
 static const struct v4l2_ctrl_mpeg2_sequence vdec_mpeg2_sequence_default = {
@@ -1082,6 +1137,52 @@ static int vdec_init_ctrls(struct amvdec_session *sess)
 		for (i = 0; i < ARRAY_SIZE(mpeg2_ctrls); i++)
 			v4l2_ctrl_new_custom(ctrl_handler,
 					     &mpeg2_ctrls[i], NULL);
+	}
+
+	if (vdec_format_by_pixfmt(sess->core, V4L2_PIX_FMT_HEVC_SLICE)) {
+		static const struct v4l2_ctrl_config hevc_ctrls[] = {
+			{
+				.id = V4L2_CID_STATELESS_HEVC_SPS,
+				.ops = &amvdec_hevc_ctrl_ops,
+				.p_def.p_const = &amvdec_hevc_sps_default,
+			}, {
+				.id = V4L2_CID_STATELESS_HEVC_PPS,
+				.ops = &amvdec_hevc_ctrl_ops,
+			}, {
+				.id = V4L2_CID_STATELESS_HEVC_SLICE_PARAMS,
+				.type = V4L2_CTRL_TYPE_HEVC_SLICE_PARAMS,
+				.flags = V4L2_CTRL_FLAG_DYNAMIC_ARRAY,
+				.dims = { AMVDEC_HEVC_MAX_SLICES },
+			}, {
+				.id = V4L2_CID_STATELESS_HEVC_DECODE_PARAMS,
+			}, {
+				.id = V4L2_CID_STATELESS_HEVC_EXT_SPS_ST_RPS,
+				.ops = &amvdec_hevc_ctrl_ops,
+				.flags = V4L2_CTRL_FLAG_DYNAMIC_ARRAY,
+				.dims = { HEVC_RPS_MAX_SETS },
+			}, {
+				.id = V4L2_CID_STATELESS_HEVC_EXT_SPS_LT_RPS,
+				.ops = &amvdec_hevc_ctrl_ops,
+				.flags = V4L2_CTRL_FLAG_DYNAMIC_ARRAY,
+				.dims = { 32 },
+			}, {
+				.id = V4L2_CID_STATELESS_HEVC_SCALING_MATRIX,
+			}, {
+				.id = V4L2_CID_STATELESS_HEVC_DECODE_MODE,
+				.min = V4L2_STATELESS_HEVC_DECODE_MODE_FRAME_BASED,
+				.max = V4L2_STATELESS_HEVC_DECODE_MODE_FRAME_BASED,
+				.def = V4L2_STATELESS_HEVC_DECODE_MODE_FRAME_BASED,
+			}, {
+				.id = V4L2_CID_STATELESS_HEVC_START_CODE,
+				.min = V4L2_STATELESS_HEVC_START_CODE_ANNEX_B,
+				.max = V4L2_STATELESS_HEVC_START_CODE_ANNEX_B,
+				.def = V4L2_STATELESS_HEVC_START_CODE_ANNEX_B,
+			},
+		};
+		unsigned int i;
+
+		for (i = 0; i < ARRAY_SIZE(hevc_ctrls); i++)
+			v4l2_ctrl_new_custom(ctrl_handler, &hevc_ctrls[i], NULL);
 	}
 
 	/* Menus are derived from this compatible's codec descriptors. */
@@ -1406,6 +1507,8 @@ static void vdec_remove(struct platform_device *pdev)
 {
 	struct amvdec_core *core = platform_get_drvdata(pdev);
 
+	meson_amvdec_codec_hevc_fbc_pool_drain();
+	meson_amvdec_codec_hevc_workspace_release();
 	media_device_unregister(&core->mdev);
 	v4l2_m2m_unregister_media_controller(core->m2m_dev);
 	video_unregister_device(core->vdev_dec);

@@ -23,9 +23,11 @@
 #include "amvdec_hevc.h"
 #include "amvdec_helpers.h"
 #include "codec_h264_synth.h"
+#include "codec_hevc_synth.h"
 #include "codec_mpeg12.h"
 #include "codec_mpeg12_synth.h"
 #include "codec_h264.h"
+#include "codec_hevc.h"
 
 /* Zero lookahead appended after each HEVC/VP9 request payload; not part of
  * the coded endpoint.
@@ -209,6 +211,7 @@ esparser_queue(struct amvdec_session *sess, struct vb2_v4l2_buffer *vbuf)
 	struct v4l2_ctrl_hevc_decode_params *hevc_decode_ptr = NULL;
 
 	u8 *hevc_headers __free(kfree) = NULL;
+	struct hevc_rps *hevc_rps __free(kfree) = NULL;
 	u32 hevc_headers_len = 0;
 	u32 h264_headers_len = 0;
 	u32 offset;
@@ -263,7 +266,155 @@ esparser_queue(struct amvdec_session *sess, struct vb2_v4l2_buffer *vbuf)
 		return ret;
 	}
 
-	if (sess->fmt_out->pixfmt == V4L2_PIX_FMT_MPEG2_SLICE) {
+	if (sess->fmt_out->pixfmt == V4L2_PIX_FMT_HEVC_SLICE) {
+		u8 *vaddr = vb2_plane_vaddr(vb, 0);
+		u32 plane_size = vb2_plane_size(vb, 0);
+		bool irap;
+
+		ctrl = v4l2_ctrl_find(&sess->ctrl_handler,
+				      V4L2_CID_STATELESS_HEVC_SPS);
+		if (!ctrl || !ctrl->p_cur.p_hevc_sps) {
+			dev_err_ratelimited(core->dev, "HEVC SPS request control missing\n");
+			esparser_src_error(sess, vbuf);
+			return -EINVAL;
+		}
+		f->hevc_sps = *ctrl->p_cur.p_hevc_sps;
+		/* Request setup has applied p_cur, but a missing control can
+		 * otherwise silently reuse the previous request's table.
+		 * Require SPS and its complete array in this request itself.
+		 */
+		{
+			struct v4l2_ctrl_handler *hdl;
+			struct v4l2_ctrl *table;
+			u32 rps_id = V4L2_CID_STATELESS_HEVC_EXT_SPS_ST_RPS;
+
+			hdl = v4l2_ctrl_request_hdl_find(req, &sess->ctrl_handler);
+			if (!hdl) {
+				esparser_src_error(sess, vbuf);
+				return -EINVAL;
+			}
+			table = v4l2_ctrl_request_hdl_ctrl_find(hdl, rps_id);
+			ret = 0;
+			if (!v4l2_ctrl_request_hdl_ctrl_find(hdl,
+							     V4L2_CID_STATELESS_HEVC_SPS) ||
+			    (f->hevc_sps.num_short_term_ref_pic_sets && !table) ||
+			    (table && table->elems !=
+			     f->hevc_sps.num_short_term_ref_pic_sets))
+				ret = -EINVAL;
+			if (!ret && table) {
+				hevc_rps = kcalloc(table->elems, sizeof(*hevc_rps),
+						   GFP_KERNEL);
+				ret = hevc_rps ? hevc_rps_resolve(table->p_cur.p,
+					table->elems, hevc_rps) : -ENOMEM;
+			}
+			rps_id = V4L2_CID_STATELESS_HEVC_EXT_SPS_LT_RPS;
+			if (v4l2_ctrl_request_hdl_ctrl_find(hdl, rps_id))
+				ret = -EINVAL;
+			v4l2_ctrl_request_hdl_put(hdl);
+			if (ret) {
+				dev_err_ratelimited(core->dev,
+						    "HEVC request SPS/RPS mismatch: %d\n",
+						    ret);
+				esparser_src_error(sess, vbuf);
+				return ret;
+			}
+		}
+		ctrl = v4l2_ctrl_find(&sess->ctrl_handler,
+				      V4L2_CID_STATELESS_HEVC_PPS);
+		if (!ctrl || !ctrl->p_cur.p_hevc_pps) {
+			dev_err_ratelimited(core->dev, "HEVC PPS request control missing\n");
+			esparser_src_error(sess, vbuf);
+			return -EINVAL;
+		}
+		f->hevc_pps = *ctrl->p_cur.p_hevc_pps;
+		ctrl = v4l2_ctrl_find(&sess->ctrl_handler,
+				      V4L2_CID_STATELESS_HEVC_SLICE_PARAMS);
+		if (!ctrl || !ctrl->p_cur.p_hevc_slice_params) {
+			dev_err_ratelimited(core->dev, "HEVC slice params request control missing\n");
+			esparser_src_error(sess, vbuf);
+			return -EINVAL;
+		}
+		if (!ctrl->elems || ctrl->elems > AMVDEC_HEVC_MAX_SLICES) {
+			dev_err_ratelimited(core->dev,
+					    "HEVC slice count %u outside supported range\n",
+					    ctrl->elems);
+			esparser_src_error(sess, vbuf);
+			return -EINVAL;
+		}
+		sess->request_job.slices = kmemdup(ctrl->p_cur.p,
+						   ctrl->elems * sizeof(f->hevc_slice),
+						   GFP_KERNEL);
+		if (!sess->request_job.slices) {
+			esparser_src_error(sess, vbuf);
+			return -ENOMEM;
+		}
+		sess->request_job.num_slices = ctrl->elems;
+		f->hevc_slice = sess->request_job.slices[0];
+		ctrl = v4l2_ctrl_find(&sess->ctrl_handler,
+				      V4L2_CID_STATELESS_HEVC_DECODE_PARAMS);
+		if (!ctrl || !ctrl->p_cur.p) {
+			dev_err_ratelimited(core->dev, "HEVC decode params request control missing\n");
+			esparser_src_error(sess, vbuf);
+			return -EINVAL;
+		}
+		f->hevc_decode = *(struct v4l2_ctrl_hevc_decode_params *)ctrl->p_cur.p;
+		ret = hevc_synth_validate(&f->hevc_sps, &f->hevc_pps);
+		if (ret || (offset && sess->bitdepth !=
+			    8 + f->hevc_sps.bit_depth_luma_minus8)) {
+			dev_err_ratelimited(core->dev, "HEVC unsupported SPS/PPS or midstream depth change\n");
+			esparser_src_error(sess, vbuf);
+			return ret ? ret : -EOPNOTSUPP;
+		}
+		/* Publish request bit depth before allocating MMU and FBC storage. */
+		if (!offset)
+			sess->bitdepth = 8 + f->hevc_sps.bit_depth_luma_minus8;
+
+		hevc_sps_ptr = &f->hevc_sps;
+		hevc_pps_ptr = &f->hevc_pps;
+		hevc_slice_ptr = &f->hevc_slice;
+		hevc_decode_ptr = &f->hevc_decode;
+
+		irap = f->hevc_slice.nal_unit_type >= 16 &&
+		       f->hevc_slice.nal_unit_type <= 23;
+		hevc_headers = kmalloc(HEVC_SYNTH_MAX_HEADERS, GFP_KERNEL);
+		if (!hevc_headers) {
+			esparser_src_error(sess, vbuf);
+			return -ENOMEM;
+		}
+		BUILD_BUG_ON(HEVC_SYNTH_MAX_HEADERS >
+			     sizeof(sess->hevc_cached_headers));
+		ctrl = v4l2_ctrl_find(&sess->ctrl_handler,
+				      V4L2_CID_STATELESS_HEVC_SCALING_MATRIX);
+		ret = hevc_synth_headers(&f->hevc_sps, hevc_rps, &f->hevc_pps,
+					 ctrl ? ctrl->p_cur.p : NULL,
+				 hevc_headers, HEVC_SYNTH_MAX_HEADERS,
+				 &hevc_headers_len);
+		if (ret) {
+			dev_err_ratelimited(core->dev,
+					    "HEVC header synthesis rejected controls: %d\n",
+				ret);
+			esparser_src_error(sess, vbuf);
+			return ret;
+		}
+		if (!irap && sess->hevc_headers_valid &&
+		    hevc_headers_len == sess->hevc_cached_headers_len &&
+		    !memcmp(hevc_headers, sess->hevc_cached_headers,
+			    hevc_headers_len))
+			hevc_headers_len = 0;
+		if (hevc_headers_len) {
+			if (!vaddr || hevc_headers_len > plane_size ||
+			    payload_size > plane_size - hevc_headers_len) {
+				dev_err_ratelimited(core->dev,
+						    "HEVC buffer too small for synthesized headers\n");
+				esparser_src_error(sess, vbuf);
+				return -ENOSPC;
+			}
+			memmove(vaddr + hevc_headers_len, vaddr, payload_size);
+			memcpy(vaddr, hevc_headers, hevc_headers_len);
+			payload_size += hevc_headers_len;
+			vb2_set_plane_payload(vb, 0, payload_size);
+		}
+	} else if (sess->fmt_out->pixfmt == V4L2_PIX_FMT_MPEG2_SLICE) {
 		u8 *vaddr = vb2_plane_vaddr(vb, 0);
 		u32 plane_size = vb2_plane_size(vb, 0);
 		bool have_quant = false;
@@ -577,7 +728,11 @@ esparser_queue(struct amvdec_session *sess, struct vb2_v4l2_buffer *vbuf)
 	/* Record the framed/synthesized coded endpoint before padding or DMA.
 	 * Reading PARSER_VIDEO_WP for offset includes previous transport bytes.
 	 */
-
+	if (sess->fmt_out->pixfmt == V4L2_PIX_FMT_HEVC_SLICE &&
+	    meson_amvdec_set_input_end(sess, vb->timestamp, offset + payload_size)) {
+		esparser_src_error(sess, vbuf);
+		return -EINVAL;
+	}
 	u32 tail = REQUEST_TAIL_SIZE;
 	u32 plane_size = vb2_plane_size(vb, 0);
 	u8 *data = vb2_plane_vaddr(vb, 0);
@@ -659,6 +814,10 @@ esparser_queue(struct amvdec_session *sess, struct vb2_v4l2_buffer *vbuf)
 		 sess->fmt_out->pixfmt, vb->index, vb->timestamp, payload_size, ret,
 		 atomic_read(&sess->esparser_queued_bufs));
 
+	if (sess->fmt_out->pixfmt == V4L2_PIX_FMT_HEVC_SLICE)
+		meson_amvdec_codec_hevc_request_input_ready(sess, vb->timestamp,
+							  offset + payload_size);
+
 	return 0;
 }
 
@@ -701,6 +860,19 @@ void meson_amvdec_esparser_queue_all_src(struct work_struct *work)
 	 * completed picture and the VIFIFO is empty, so nothing is lost.
 	 * VP9 restarts at a key frame instead: see esparser_queue().
 	 */
+	if (sess->fmt_out->pixfmt == V4L2_PIX_FMT_HEVC_SLICE &&
+	    meson_amvdec_codec_hevc_restream_pending(sess) &&
+	    !sess->should_stop &&
+	    !atomic_read(&sess->esparser_queued_bufs)) {
+		ret = meson_amvdec_hevc_restream(sess);
+		if (ret) {
+			dev_err(sess->core->dev,
+				"HEVC restream failed (%d)\n", ret);
+			meson_amvdec_abort(sess);
+			mutex_unlock(&sess->lock);
+			return;
+		}
+	}
 
 	v4l2_m2m_for_each_src_buf_safe(sess->m2m_ctx, buf, n) {
 		if (sess->should_stop)
