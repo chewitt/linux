@@ -14,6 +14,7 @@
 #include "amvdec_helpers.h"
 #include "amvdec_hevc.h"
 #include "esparser.h"
+#include "codec_hevc.h"
 #include "hevc_regs.h"
 #include "dos_regs.h"
 
@@ -44,6 +45,10 @@
 	(BIT(3) | BIT(4) | BIT(8) | BIT(10) | BIT(11) | BIT(12) |	\
 	 BIT(13) | BIT(14) | BIT(15) | BIT(17) | BIT(18) | BIT(19) |	\
 	 BIT(24) | BIT(26))
+
+#define DOS_SW_RESET3_HEVC_QUIESCE_GX					\
+	(BIT(3) | BIT(4) | BIT(8) | BIT(11) | BIT(12) | BIT(14) |	\
+	 BIT(15) | BIT(17) | BIT(18) | BIT(19))
 
 static int amvdec_hevc_load_firmware(struct amvdec_session *sess,
 				     const char *fwname)
@@ -208,8 +213,13 @@ static int amvdec_hevc_core_scrub(struct amvdec_core *core)
 	u32 val;
 	int i;
 
-	if (!amvdec_is_g12(core))
+	if (!amvdec_is_g12(core)) {
+		meson_amvdec_write_dos(core, DOS_SW_RESET3,
+				       DOS_SW_RESET3_HEVC_QUIESCE_GX);
+		udelay(10);
+		meson_amvdec_write_dos(core, DOS_SW_RESET3, 0);
 		return 0;
+	}
 
 	if (!reset7_lvl)
 		reset7_lvl = ioremap(G12B_RESET7_LEVEL_ADDR, 4);
@@ -440,6 +450,53 @@ stop:
 	if (!__vdec_hevc_stop(sess))
 		clk_disable_unprepare(core->amvdec_hevc_clk);
 	return ret;
+}
+
+/*
+ * Restart at an empty request boundary before the firmware stream offset
+ * reaches 0x80000000 and stops consuming input.
+ */
+int meson_amvdec_hevc_restream(struct amvdec_session *sess)
+{
+	struct amvdec_core *core = sess->core;
+	unsigned int dropped;
+	int ret;
+
+	ret = amvdec_hevc_stop_armrisc(core);
+	if (ret)
+		return ret;
+	ret = amvdec_hevc_quiesce_reset_locked(core, true);
+	if (ret)
+		return ret;
+
+	amvdec_hevc_stbuf_init(sess);
+
+	ret = amvdec_hevc_load_firmware(sess, sess->fmt_out->firmware_path);
+	if (ret)
+		return ret;
+
+	/* Both codecs on this core publish endpoints the same way. */
+	ret = meson_amvdec_codec_hevc_restream_reinit(sess);
+	if (ret)
+		return ret;
+
+	meson_amvdec_write_dos(core, DOS_SW_RESET3, BIT(12) | BIT(11));
+	meson_amvdec_write_dos(core, DOS_SW_RESET3, 0);
+	meson_amvdec_read_dos(core, DOS_SW_RESET3);
+
+	meson_amvdec_write_dos(core, HEVC_MPSR, 1);
+	usleep_range(10, 20);
+
+	/* The stream restarts at the beginning of the VIFIFO: the host's
+	 * cumulative offsets must restart with it.
+	 */
+	meson_amvdec_esparser_power_up(sess);
+	sess->last_offset = 0;
+	sess->wrap_count = 0;
+	dropped = meson_amvdec_flush_ts(sess);
+	dev_dbg(core->dev, "HEVC core restreamed: positions restart at 0, %u stale snapshots dropped\n",
+		dropped);
+	return 0;
 }
 
 static int amvdec_hevc_start(struct amvdec_session *sess)
