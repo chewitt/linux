@@ -14,15 +14,13 @@
 #include "codec_mpeg12.h"
 #include "codec_h264.h"
 #include "codec_hevc.h"
+#include "codec_vp9.h"
 
 #define AMVDEC_H264_PROFILES (BIT(V4L2_MPEG_VIDEO_H264_PROFILE_BASELINE) | \
 	BIT(V4L2_MPEG_VIDEO_H264_PROFILE_CONSTRAINED_BASELINE) | \
 	BIT(V4L2_MPEG_VIDEO_H264_PROFILE_MAIN) | \
 	BIT(V4L2_MPEG_VIDEO_H264_PROFILE_HIGH))
 
-/*
- * GXBB: H.264 and MPEG-2 at 1920x1088; HEVC Main/Main10 at 3840x2160.
- */
 static const struct amvdec_format amvdec_formats_gxbb[] = {
 	{
 		.pixfmt = V4L2_PIX_FMT_H264_SLICE,
@@ -50,8 +48,8 @@ static const struct amvdec_format amvdec_formats_gxbb[] = {
 			    BIT(V4L2_MPEG_VIDEO_HEVC_PROFILE_MAIN_10),
 		.min_buffers = 16,
 		.max_buffers = 24,
-		.max_width = 3840,
-		.max_height = 2160,
+		.max_width = 1920,
+		.max_height = 1088,
 		.max_bit_depth = 10,
 		.vdec_ops = &meson_amvdec_hevc_ops,
 		.codec_ops = &meson_amvdec_codec_hevc_ops,
@@ -69,13 +67,9 @@ static const struct amvdec_format amvdec_formats_gxbb[] = {
 		.firmware_path = "meson/vdec/gxl_mpeg12_multi.bin",
 		.pixfmts_cap = { V4L2_PIX_FMT_NV12M, 0 },
 		.flags = V4L2_FMT_FLAG_COMPRESSED,
-	}
+	},
 };
 
-/*
- * GXL: H.264 and MPEG-2 at 1920x1088; HEVC Main/Main10 and VP9
- * profiles 0/2 at 3840x2160.
- */
 static const struct amvdec_format amvdec_formats_gxl[] = {
 	{
 		.pixfmt = V4L2_PIX_FMT_H264_SLICE,
@@ -84,12 +78,12 @@ static const struct amvdec_format amvdec_formats_gxl[] = {
 		.level_ctrl = V4L2_CID_MPEG_VIDEO_H264_LEVEL,
 		.default_level = V4L2_MPEG_VIDEO_H264_LEVEL_4_1,
 		.profiles = AMVDEC_H264_PROFILES,
-		.max_level = V4L2_MPEG_VIDEO_H264_LEVEL_4_2,
+		.max_level = V4L2_MPEG_VIDEO_H264_LEVEL_5_1,
 		.max_bit_depth = 8,
 		.min_buffers = 16,
 		.max_buffers = 32,
-		.max_width = 1920,
-		.max_height = 1088,
+		.max_width = 3840,
+		.max_height = 2160,
 		.vdec_ops = &meson_amvdec_1_ops,
 		.codec_ops = &meson_amvdec_codec_h264_multi_ops,
 		.firmware_path = "meson/vdec/gxl_h264_multi.bin",
@@ -103,8 +97,8 @@ static const struct amvdec_format amvdec_formats_gxl[] = {
 			    BIT(V4L2_MPEG_VIDEO_HEVC_PROFILE_MAIN_10),
 		.min_buffers = 16,
 		.max_buffers = 24,
-		.max_width = 3840,
-		.max_height = 2160,
+		.max_width = 4096,
+		.max_height = 2304,
 		.max_bit_depth = 10,
 		.vdec_ops = &meson_amvdec_hevc_ops,
 		.codec_ops = &meson_amvdec_codec_hevc_ops,
@@ -122,12 +116,25 @@ static const struct amvdec_format amvdec_formats_gxl[] = {
 		.firmware_path = "meson/vdec/gxl_mpeg12_multi.bin",
 		.pixfmts_cap = { V4L2_PIX_FMT_NV12M, 0 },
 		.flags = V4L2_FMT_FLAG_COMPRESSED,
-	}
+	}, {
+		.pixfmt = V4L2_PIX_FMT_VP9_FRAME,
+		.profile_ctrl = V4L2_CID_MPEG_VIDEO_VP9_PROFILE,
+		.default_profile = V4L2_MPEG_VIDEO_VP9_PROFILE_0,
+		.profiles = BIT(V4L2_MPEG_VIDEO_VP9_PROFILE_0) |
+			    BIT(V4L2_MPEG_VIDEO_VP9_PROFILE_2),
+		.max_bit_depth = 10,
+		.min_buffers = 16,
+		.max_buffers = 24,
+		.max_width = 3840,
+		.max_height = 2160,
+		.vdec_ops = &meson_amvdec_hevc_ops,
+		.codec_ops = &meson_amvdec_codec_vp9_ops,
+		.firmware_path = "meson/vdec/gxl_vp9.bin",
+		.pixfmts_cap = { V4L2_PIX_FMT_NV12M, 0 },
+		.flags = V4L2_FMT_FLAG_COMPRESSED,
+	},
 };
 
-/*
- * GXLX: H.264 and MPEG-2 at 1920x1088; HEVC Main/Main10 at 3840x2160.
- */
 static const struct amvdec_format amvdec_formats_gxlx[] = {
 	{
 		.pixfmt = V4L2_PIX_FMT_H264_SLICE,
@@ -155,8 +162,8 @@ static const struct amvdec_format amvdec_formats_gxlx[] = {
 			    BIT(V4L2_MPEG_VIDEO_HEVC_PROFILE_MAIN_10),
 		.min_buffers = 16,
 		.max_buffers = 24,
-		.max_width = 3840,
-		.max_height = 2160,
+		.max_width = 4096,
+		.max_height = 2304,
 		.max_bit_depth = 10,
 		.vdec_ops = &meson_amvdec_hevc_ops,
 		.codec_ops = &meson_amvdec_codec_hevc_ops,
@@ -174,13 +181,9 @@ static const struct amvdec_format amvdec_formats_gxlx[] = {
 		.firmware_path = "meson/vdec/gxl_mpeg12_multi.bin",
 		.pixfmts_cap = { V4L2_PIX_FMT_NV12M, 0 },
 		.flags = V4L2_FMT_FLAG_COMPRESSED,
-	}
+	},
 };
 
-/*
- * GXM: H.264 and MPEG-2 at 1920x1088; HEVC Main/Main10 and VP9
- * profiles 0/2 at 3840x2160.
- */
 static const struct amvdec_format amvdec_formats_gxm[] = {
 	{
 		.pixfmt = V4L2_PIX_FMT_H264_SLICE,
@@ -189,12 +192,12 @@ static const struct amvdec_format amvdec_formats_gxm[] = {
 		.level_ctrl = V4L2_CID_MPEG_VIDEO_H264_LEVEL,
 		.default_level = V4L2_MPEG_VIDEO_H264_LEVEL_4_1,
 		.profiles = AMVDEC_H264_PROFILES,
-		.max_level = V4L2_MPEG_VIDEO_H264_LEVEL_4_2,
+		.max_level = V4L2_MPEG_VIDEO_H264_LEVEL_5_1,
 		.max_bit_depth = 8,
 		.min_buffers = 16,
 		.max_buffers = 32,
-		.max_width = 1920,
-		.max_height = 1088,
+		.max_width = 3840,
+		.max_height = 2160,
 		.vdec_ops = &meson_amvdec_1_ops,
 		.codec_ops = &meson_amvdec_codec_h264_multi_ops,
 		.firmware_path = "meson/vdec/gxm_h264_multi.bin",
@@ -208,8 +211,8 @@ static const struct amvdec_format amvdec_formats_gxm[] = {
 			    BIT(V4L2_MPEG_VIDEO_HEVC_PROFILE_MAIN_10),
 		.min_buffers = 16,
 		.max_buffers = 24,
-		.max_width = 3840,
-		.max_height = 2160,
+		.max_width = 4096,
+		.max_height = 2304,
 		.max_bit_depth = 10,
 		.vdec_ops = &meson_amvdec_hevc_ops,
 		.codec_ops = &meson_amvdec_codec_hevc_ops,
@@ -227,16 +230,27 @@ static const struct amvdec_format amvdec_formats_gxm[] = {
 		.firmware_path = "meson/vdec/gxl_mpeg12_multi.bin",
 		.pixfmts_cap = { V4L2_PIX_FMT_NV12M, 0 },
 		.flags = V4L2_FMT_FLAG_COMPRESSED,
-	}
+	}, {
+		.pixfmt = V4L2_PIX_FMT_VP9_FRAME,
+		.profile_ctrl = V4L2_CID_MPEG_VIDEO_VP9_PROFILE,
+		.default_profile = V4L2_MPEG_VIDEO_VP9_PROFILE_0,
+		.profiles = BIT(V4L2_MPEG_VIDEO_VP9_PROFILE_0) |
+			    BIT(V4L2_MPEG_VIDEO_VP9_PROFILE_2),
+		.max_bit_depth = 10,
+		.min_buffers = 16,
+		.max_buffers = 24,
+		.max_width = 3840,
+		.max_height = 2160,
+		.vdec_ops = &meson_amvdec_hevc_ops,
+		.codec_ops = &meson_amvdec_codec_vp9_ops,
+		.firmware_path = "meson/vdec/gxl_vp9.bin",
+		.pixfmts_cap = { V4L2_PIX_FMT_NV12M, 0 },
+		.flags = V4L2_FMT_FLAG_COMPRESSED,
+	},
 };
 
-/*
- * G12A/G12B: H.264, HEVC Main/Main10 and VP9 profiles 0/2 at
- * 3840x2160; MPEG-2 at 1920x1088.
- */
 static const struct amvdec_format amvdec_formats_g12a[] = {
 	{
-		/* Multi-instance firmware, fed straight from the OUTPUT buffer. */
 		.pixfmt = V4L2_PIX_FMT_H264_SLICE,
 		.profile_ctrl = V4L2_CID_MPEG_VIDEO_H264_PROFILE,
 		.default_profile = V4L2_MPEG_VIDEO_H264_PROFILE_MAIN,
@@ -255,7 +269,6 @@ static const struct amvdec_format amvdec_formats_g12a[] = {
 		.pixfmts_cap = { V4L2_PIX_FMT_NV12M, 0 },
 		.flags = V4L2_FMT_FLAG_COMPRESSED,
 	}, {
-		/* Main 10 and AM21C capture use the MMU. */
 		.pixfmt = V4L2_PIX_FMT_HEVC_SLICE,
 		.profile_ctrl = V4L2_CID_MPEG_VIDEO_HEVC_PROFILE,
 		.default_profile = V4L2_MPEG_VIDEO_HEVC_PROFILE_MAIN,
@@ -264,8 +277,8 @@ static const struct amvdec_format amvdec_formats_g12a[] = {
 		.max_bit_depth = 10,
 		.min_buffers = 16,
 		.max_buffers = 24,
-		.max_width = 3840,
-		.max_height = 2160,
+		.max_width = 4096,
+		.max_height = 2304,
 		.vdec_ops = &meson_amvdec_hevc_ops,
 		.codec_ops = &meson_amvdec_codec_hevc_ops,
 		.firmware_path = "meson/vdec/g12a_hevc_mmu.bin",
@@ -273,31 +286,38 @@ static const struct amvdec_format amvdec_formats_g12a[] = {
 				 V4L2_PIX_FMT_AM21C, 0 },
 		.flags = V4L2_FMT_FLAG_COMPRESSED,
 	}, {
-		/*
-		 * The firmware parses sequence and picture headers synthesized from
-		 * controls.
-		 */
 		.pixfmt = V4L2_PIX_FMT_MPEG2_SLICE,
 		.min_buffers = 2,
 		.max_buffers = 24,
 		.max_width = 1920,
-		/* 1080 lines are coded as 1088: whole macroblocks, in field pairs */
 		.max_height = 1088,
 		.vdec_ops = &meson_amvdec_1_ops,
 		.codec_ops = &meson_amvdec_codec_mpeg12_sl_ops,
 		.firmware_path = "meson/vdec/gxl_mpeg12_multi.bin",
 		.pixfmts_cap = { V4L2_PIX_FMT_NV12M, 0 },
 		.flags = V4L2_FMT_FLAG_COMPRESSED,
-	}
+	}, {
+		.pixfmt = V4L2_PIX_FMT_VP9_FRAME,
+		.profile_ctrl = V4L2_CID_MPEG_VIDEO_VP9_PROFILE,
+		.default_profile = V4L2_MPEG_VIDEO_VP9_PROFILE_0,
+		.profiles = BIT(V4L2_MPEG_VIDEO_VP9_PROFILE_0) |
+			    BIT(V4L2_MPEG_VIDEO_VP9_PROFILE_2),
+		.max_bit_depth = 10,
+		.min_buffers = 16,
+		.max_buffers = 24,
+		.max_width = 3840,
+		.max_height = 2160,
+		.vdec_ops = &meson_amvdec_hevc_ops,
+		.codec_ops = &meson_amvdec_codec_vp9_ops,
+		.firmware_path = "meson/vdec/g12a_vp9.bin",
+		.pixfmts_cap = { V4L2_PIX_FMT_NV12M,
+				 V4L2_PIX_FMT_AM21C, 0 },
+		.flags = V4L2_FMT_FLAG_COMPRESSED,
+	},
 };
 
-/*
- * SM1: H.264, HEVC Main/Main10 and VP9 profiles 0/2 at 3840x2160;
- * MPEG-2 at 1920x1088.
- */
 static const struct amvdec_format amvdec_formats_sm1[] = {
 	{
-		/* Multi-instance firmware, fed straight from the OUTPUT buffer. */
 		.pixfmt = V4L2_PIX_FMT_H264_SLICE,
 		.profile_ctrl = V4L2_CID_MPEG_VIDEO_H264_PROFILE,
 		.default_profile = V4L2_MPEG_VIDEO_H264_PROFILE_MAIN,
@@ -316,7 +336,6 @@ static const struct amvdec_format amvdec_formats_sm1[] = {
 		.pixfmts_cap = { V4L2_PIX_FMT_NV12M, 0 },
 		.flags = V4L2_FMT_FLAG_COMPRESSED,
 	}, {
-		/* Main 10 and AM21C capture use the MMU. */
 		.pixfmt = V4L2_PIX_FMT_HEVC_SLICE,
 		.profile_ctrl = V4L2_CID_MPEG_VIDEO_HEVC_PROFILE,
 		.default_profile = V4L2_MPEG_VIDEO_HEVC_PROFILE_MAIN,
@@ -325,8 +344,8 @@ static const struct amvdec_format amvdec_formats_sm1[] = {
 		.max_bit_depth = 10,
 		.min_buffers = 16,
 		.max_buffers = 24,
-		.max_width = 3840,
-		.max_height = 2160,
+		.max_width = 4096,
+		.max_height = 2304,
 		.vdec_ops = &meson_amvdec_hevc_ops,
 		.codec_ops = &meson_amvdec_codec_hevc_ops,
 		.firmware_path = "meson/vdec/sm1_hevc_mmu.bin",
@@ -334,22 +353,34 @@ static const struct amvdec_format amvdec_formats_sm1[] = {
 				 V4L2_PIX_FMT_AM21C, 0 },
 		.flags = V4L2_FMT_FLAG_COMPRESSED,
 	}, {
-		/*
-		 * The firmware parses sequence and picture headers synthesized from
-		 * controls.
-		 */
 		.pixfmt = V4L2_PIX_FMT_MPEG2_SLICE,
 		.min_buffers = 2,
 		.max_buffers = 24,
 		.max_width = 1920,
-		/* 1080 lines are coded as 1088: whole macroblocks, in field pairs */
 		.max_height = 1088,
 		.vdec_ops = &meson_amvdec_1_ops,
 		.codec_ops = &meson_amvdec_codec_mpeg12_sl_ops,
 		.firmware_path = "meson/vdec/gxl_mpeg12_multi.bin",
 		.pixfmts_cap = { V4L2_PIX_FMT_NV12M, 0 },
 		.flags = V4L2_FMT_FLAG_COMPRESSED,
-	}
+	}, {
+		.pixfmt = V4L2_PIX_FMT_VP9_FRAME,
+		.profile_ctrl = V4L2_CID_MPEG_VIDEO_VP9_PROFILE,
+		.default_profile = V4L2_MPEG_VIDEO_VP9_PROFILE_0,
+		.profiles = BIT(V4L2_MPEG_VIDEO_VP9_PROFILE_0) |
+			    BIT(V4L2_MPEG_VIDEO_VP9_PROFILE_2),
+		.max_bit_depth = 10,
+		.min_buffers = 16,
+		.max_buffers = 24,
+		.max_width = 3840,
+		.max_height = 2160,
+		.vdec_ops = &meson_amvdec_hevc_ops,
+		.codec_ops = &meson_amvdec_codec_vp9_ops,
+		.firmware_path = "meson/vdec/sm1_vp9_mmu.bin",
+		.pixfmts_cap = { V4L2_PIX_FMT_NV12M,
+				 V4L2_PIX_FMT_AM21C, 0 },
+		.flags = V4L2_FMT_FLAG_COMPRESSED,
+	},
 };
 
 const struct amvdec_platform meson_amvdec_platform_gxbb = {
@@ -390,9 +421,12 @@ const struct amvdec_platform meson_amvdec_platform_sm1 = {
 
 MODULE_FIRMWARE("meson/vdec/g12a_h264_multi.bin");
 MODULE_FIRMWARE("meson/vdec/g12a_hevc_mmu.bin");
+MODULE_FIRMWARE("meson/vdec/g12a_vp9.bin");
 MODULE_FIRMWARE("meson/vdec/gxl_h264_multi.bin");
 MODULE_FIRMWARE("meson/vdec/gxl_hevc.bin");
+MODULE_FIRMWARE("meson/vdec/gxl_vp9.bin");
 MODULE_FIRMWARE("meson/vdec/gxl_mpeg12_multi.bin");
 MODULE_FIRMWARE("meson/vdec/gxm_h264_multi.bin");
 MODULE_FIRMWARE("meson/vdec/sm1_h264_multi.bin");
 MODULE_FIRMWARE("meson/vdec/sm1_hevc_mmu.bin");
+MODULE_FIRMWARE("meson/vdec/sm1_vp9_mmu.bin");
