@@ -22,8 +22,10 @@
 #include "esparser.h"
 #include "amvdec_hevc.h"
 #include "amvdec_helpers.h"
+#include "codec_h264_synth.h"
 #include "codec_mpeg12.h"
 #include "codec_mpeg12_synth.h"
+#include "codec_h264.h"
 
 /* Zero lookahead appended after each HEVC/VP9 request payload; not part of
  * the coded endpoint.
@@ -150,6 +152,26 @@ static u32 esparser_get_offset(struct amvdec_session *sess)
 static void esparser_src_error(struct amvdec_session *sess,
 			       struct vb2_v4l2_buffer *src)
 {
+	bool direct = codec_h264_direct_input(sess);
+	struct vb2_v4l2_buffer *dst = NULL;
+	u32 plane;
+
+	if (direct) {
+		WRITE_ONCE(sess->m2m_run_armed, false);
+		dst = v4l2_m2m_dst_buf_remove(sess->m2m_ctx);
+		meson_amvdec_codec_h264_multi_discard_capture(
+			sess, dst ? dst->vb2_buf.index : U32_MAX);
+		if (dst) {
+			v4l2_m2m_buf_copy_metadata(src, dst);
+			for (plane = 0; plane < dst->vb2_buf.num_planes; plane++)
+				vb2_set_plane_payload(&dst->vb2_buf, plane, 0);
+			dst->sequence = sess->sequence_cap++;
+			dev_dbg(sess->core->dev_dec,
+				"h264 request refused: output=%u capture=%u ts=%llu\n",
+				 src->vb2_buf.index, dst->vb2_buf.index, src->vb2_buf.timestamp);
+			v4l2_m2m_buf_done(dst, VB2_BUF_STATE_ERROR);
+		}
+	}
 	if (meson_amvdec_request_jobs(sess) && sess->request_job.src == src) {
 		if (sess->request_job.credit) {
 			/* Hardware may have consumed input: ownership ends at stop. */
@@ -162,7 +184,8 @@ static void esparser_src_error(struct amvdec_session *sess,
 	}
 	/* Also completes the OUTPUT's media-request control-handler object. */
 	meson_amvdec_src_buf_done(sess, src, VB2_BUF_STATE_ERROR);
-
+	if (direct)
+		v4l2_m2m_job_finish(sess->m2m_dev, sess->m2m_ctx);
 }
 
 static int
@@ -176,6 +199,10 @@ esparser_queue(struct amvdec_session *sess, struct vb2_v4l2_buffer *vbuf)
 	dma_addr_t phy = vb2_dma_contig_plane_dma_addr(vb, 0);
 	struct amvdec_feed_scratch *f = &sess->feed;
 	struct v4l2_ctrl_vp9_frame *vp9_frame_ptr = NULL;
+	const struct v4l2_ctrl_h264_sps *h264_sps;
+	const struct v4l2_ctrl_h264_pps *h264_pps;
+	const struct v4l2_ctrl_h264_scaling_matrix *h264_sm = NULL;
+	bool h264_idr = false;
 	struct v4l2_ctrl_hevc_sps *hevc_sps_ptr = NULL;
 	struct v4l2_ctrl_hevc_pps *hevc_pps_ptr = NULL;
 	struct v4l2_ctrl_hevc_slice_params *hevc_slice_ptr = NULL;
@@ -183,14 +210,16 @@ esparser_queue(struct amvdec_session *sess, struct vb2_v4l2_buffer *vbuf)
 
 	u8 *hevc_headers __free(kfree) = NULL;
 	u32 hevc_headers_len = 0;
+	u32 h264_headers_len = 0;
 	u32 offset;
 	u32 pad_size;
-
+	bool direct_h264 = codec_h264_direct_input(sess);
 	u16 mpeg2_tref = 0;
 	bool mpeg2_second = false;
 	bool mpeg2_job = false;
 
-	BUILD_BUG_ON(sizeof(f->headers) < MPEG12_SYNTH_MAX_HEADERS);
+	BUILD_BUG_ON(sizeof(f->headers) < H264_SYNTH_MAX_HEADERS ||
+		     sizeof(f->headers) < MPEG12_SYNTH_MAX_HEADERS);
 
 	dev_dbg(core->dev, "feed attempt sess=%p idx=%u bytes=%u\n",
 		sess, vb->index, payload_size);
@@ -201,12 +230,15 @@ esparser_queue(struct amvdec_session *sess, struct vb2_v4l2_buffer *vbuf)
 	 * so examining a buffer that is then deferred would overwrite the
 	 * parameters of the picture currently being decoded.
 	 */
+	if (direct_h264 &&
+	    (meson_amvdec_codec_h264_multi_busy(sess) || !READ_ONCE(sess->m2m_run_armed)))
+		return -EAGAIN;
 
 	if (meson_amvdec_request_jobs(sess) &&
 	    (!READ_ONCE(sess->m2m_run_armed) || atomic_read(&sess->request_job.state)))
 		return -EAGAIN;
 
-	if (esparser_vififo_get_free_space(sess) < payload_size)
+	if (!direct_h264 && esparser_vififo_get_free_space(sess) < payload_size)
 		return -EAGAIN;
 
 	if (meson_amvdec_request_jobs(sess) && meson_amvdec_request_begin(sess, vbuf))
@@ -313,6 +345,116 @@ esparser_queue(struct amvdec_session *sess, struct vb2_v4l2_buffer *vbuf)
 		dev_dbg(core->dev,
 			"MPEG2 synthesized %d header bytes, coding_type=%u\n",
 			hdrs_len, f->mpeg2_pic.picture_coding_type);
+	} else {
+		u8 *vaddr = vb2_plane_vaddr(vb, 0);
+		u32 plane_size = vb2_plane_size(vb, 0);
+		/* Parsed copy of vaddr, see meson_amvdec_codec_h264_scan_copy(). */
+		const u8 *scan;
+
+		ctrl = v4l2_ctrl_find(&sess->ctrl_handler,
+				      V4L2_CID_STATELESS_H264_SPS);
+		if (!ctrl || !ctrl->p_cur.p_h264_sps) {
+			dev_err_ratelimited(core->dev, "H.264 SPS request control missing\n");
+			esparser_src_error(sess, vbuf);
+			return -EINVAL;
+		}
+		h264_sps = ctrl->p_cur.p_h264_sps;
+		ctrl = v4l2_ctrl_find(&sess->ctrl_handler,
+				      V4L2_CID_STATELESS_H264_PPS);
+		if (!ctrl || !ctrl->p_cur.p_h264_pps) {
+			dev_err_ratelimited(core->dev, "H.264 PPS request control missing\n");
+			esparser_src_error(sess, vbuf);
+			return -EINVAL;
+		}
+		h264_pps = ctrl->p_cur.p_h264_pps;
+		scan = meson_amvdec_codec_h264_scan_copy(sess, vaddr, payload_size,
+							 plane_size);
+		ret = h264_request_preflight(scan, payload_size, h264_pps);
+		if (ret) {
+			dev_err_ratelimited(core->dev,
+					    "h264 syntax refused before feed: %d slice_groups=%u\n",
+				ret, h264_pps->num_slice_groups_minus1);
+			esparser_src_error(sess, vbuf);
+			return ret;
+		}
+		ctrl = v4l2_ctrl_find(&sess->ctrl_handler,
+				      V4L2_CID_STATELESS_H264_DECODE_PARAMS);
+		if (!ctrl || !ctrl->p_cur.p_h264_decode_params) {
+			dev_err_ratelimited(core->dev, "H.264 decode params request control missing\n");
+			esparser_src_error(sess, vbuf);
+			return -EINVAL;
+		}
+		h264_idr = ctrl->p_cur.p_h264_decode_params->flags &
+			   V4L2_H264_DECODE_PARAM_FLAG_IDR_PIC;
+		meson_amvdec_codec_h264_multi_set_params(sess, h264_sps, h264_pps,
+							 ctrl->p_cur.p_h264_decode_params);
+		ctrl = v4l2_ctrl_find(&sess->ctrl_handler,
+				      V4L2_CID_STATELESS_H264_SCALING_MATRIX);
+		h264_sm = ctrl ? ctrl->p_cur.p_h264_scaling_matrix : NULL;
+		ret = h264_synth_validate(h264_sps, h264_pps, h264_sm);
+		if (ret) {
+			dev_err_ratelimited(core->dev,
+					    "H.264 header synthesis rejected controls: %d (profile=%u chroma=%u depth=%u/%u sps_flags=%#llx pps_flags=%#x slice_groups=%u poc_type=%u)\n",
+				ret, h264_sps->profile_idc,
+				h264_sps->chroma_format_idc,
+				h264_sps->bit_depth_luma_minus8,
+				h264_sps->bit_depth_chroma_minus8,
+				(unsigned long long)h264_sps->flags,
+				h264_pps->flags,
+				h264_pps->num_slice_groups_minus1,
+				h264_sps->pic_order_cnt_type);
+			esparser_src_error(sess, vbuf);
+			return ret;
+		}
+
+		/*
+		 * Read reference-list modifications from slice headers before prepending
+		 * headers. Frame-based requests do not supply final reference lists.
+		 */
+		if (vaddr) {
+			struct h264_slice_refs sr;
+			const u8 *nal;
+			u32 nal_len = 0;
+
+			nal = h264_find_first_slice(scan, payload_size,
+						    &nal_len);
+			if (nal && !h264_parse_slice_refs(nal, nal_len,
+							  h264_sps,
+							  h264_pps, &sr, &f->h264_parse))
+				meson_amvdec_codec_h264_multi_set_slice_refs(sess, &sr);
+			else
+				meson_amvdec_codec_h264_multi_set_slice_refs(sess, NULL);
+		}
+
+		/* The multi firmware consumes SPS/PPS in band. Its cache must
+		 * include every emitted dependency, not just the PPS control.
+		 */
+		ret = meson_amvdec_codec_h264_multi_headers(sess, h264_sps, h264_pps,
+							    h264_sm, h264_idr,
+							    f->headers, sizeof(f->headers),
+							    &h264_headers_len);
+		if (h264_headers_len || ret) {
+			if (ret) {
+				dev_err_ratelimited(core->dev,
+						    "H.264 header synthesis failed: %d\n",
+						    ret);
+				esparser_src_error(sess, vbuf);
+				return ret;
+			}
+			if (!vaddr || payload_size + h264_headers_len > plane_size) {
+				dev_err_ratelimited(core->dev,
+						    "H.264 buffer too small for synthesized headers\n");
+				esparser_src_error(sess, vbuf);
+				return -ENOSPC;
+			}
+			memmove(vaddr + h264_headers_len, vaddr, payload_size);
+			memcpy(vaddr, f->headers, h264_headers_len);
+			payload_size += h264_headers_len;
+			vb2_set_plane_payload(vb, 0, payload_size);
+			dev_dbg(core->dev,
+				"H.264 synthesized %u header bytes ahead of %s\n",
+				h264_headers_len, h264_idr ? "IDR" : "picture");
+		}
 	}
 
 	ret = meson_amvdec_add_ts(sess, vb->timestamp, vbuf->timecode, offset,
@@ -335,6 +477,41 @@ esparser_queue(struct amvdec_session *sess, struct vb2_v4l2_buffer *vbuf)
 	 * no ESPARSER copy, no start-code padding, and the buffer stays owned
 	 * by the hardware until the picture completes.
 	 */
+	if (direct_h264) {
+		/*
+		 * Only one access unit can be in flight: the VLD is pointed at
+		 * that buffer, so feeding another would reset the FIFO out
+		 * from under a running decode.
+		 */
+		WRITE_ONCE(sess->m2m_run_armed, false);
+
+		/*
+		 * Claim the buffer before the firmware is kicked: feeding it
+		 * starts the decode, and the slice-head interrupt can land
+		 * before this function returns.
+		 */
+		dev_dbg(core->dev,
+			"h264 multi feed pair: out_idx=%u out_ts=%llu\n",
+			 vb->index, vb->timestamp);
+		meson_amvdec_codec_h264_multi_hold_src(sess, vbuf);
+		/*
+		 * One request in, one frame out - the CAPTURE timestamp is
+		 * copied from this OUTPUT buffer at completion, so the FIFO
+		 * timestamp list is not used and must not accumulate.
+		 */
+		meson_amvdec_remove_ts(sess, vb->timestamp);
+		atomic_inc(&sess->esparser_queued_bufs);
+		meson_amvdec_trace(sess, AMVDEC_TR_FEED, vb->index, payload_size, 0);
+		ret = meson_amvdec_codec_h264_multi_feed_buffer(sess, vb);
+		meson_amvdec_trace(sess, AMVDEC_TR_FED, ret, 0, 0);
+		if (ret) {
+			meson_amvdec_codec_h264_multi_hold_src(sess, NULL);
+			atomic_dec(&sess->esparser_queued_bufs);
+			esparser_src_error(sess, vbuf);
+			return ret;
+		}
+		return 0;
+	}
 
 	unsigned int i, n = 0;
 	u64 refs[16];
@@ -380,6 +557,7 @@ esparser_queue(struct amvdec_session *sess, struct vb2_v4l2_buffer *vbuf)
 			return -EINVAL;
 		}
 	}
+	v4l2_m2m_buf_copy_metadata(vbuf, sess->request_job.dst);
 	if (mpeg2_job) {
 		/* The VLD reads this buffer directly; nothing goes
 		 * through the parser FIFO.
@@ -501,6 +679,21 @@ void meson_amvdec_esparser_queue_all_src(struct work_struct *work)
 	if (meson_amvdec_request_jobs(sess))
 		meson_amvdec_request_retire(sess, false);
 	/* Retire a finished picture before feeding the next one. */
+	if (codec_h264_direct_input(sess)) {
+		struct v4l2_m2m_buffer *b;
+		char q[48] = "";
+		int p = 0;
+
+		meson_amvdec_codec_h264_multi_finish_picture(sess);
+		v4l2_m2m_for_each_src_buf(sess->m2m_ctx, b)
+			if (p < 40)
+				p += scnprintf(q + p, sizeof(q) - p, "%u,",
+					       b->vb.vb2_buf.index);
+		dev_dbg(sess->core->dev,
+			"h264 multi worker: armed=%u busy=%u rdy=[%s]\n",
+			 READ_ONCE(sess->m2m_run_armed),
+			 meson_amvdec_codec_h264_multi_busy(sess), q);
+	}
 
 	/*
 	 * The stream position counter must not reach 0x80000000. Restart the
@@ -524,7 +717,8 @@ void meson_amvdec_esparser_queue_all_src(struct work_struct *work)
 		 * ready queue (esparser_queue() dequeues what it feeds), and
 		 * the VLD is pointed at it until the picture completes.
 		 */
-
+		if (codec_h264_direct_input(sess))
+			break;
 	}
 	dev_dbg(sess->core->dev,
 		"worker end fed=%u ret=%d src=%u queued=%d dst=%u\n",
