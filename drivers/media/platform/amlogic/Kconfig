@@ -2,5 +2,6 @@
 
 comment "Amlogic media platform drivers"
 
+source "drivers/media/platform/amlogic/amvdec/Kconfig"
 source "drivers/media/platform/amlogic/c3/Kconfig"
 source "drivers/media/platform/amlogic/meson-ge2d/Kconfig"
