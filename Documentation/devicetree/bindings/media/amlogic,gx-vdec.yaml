@@ -21,7 +21,7 @@ description: |
   - ESPARSER is a bitstream parser that outputs to a VIFIFO. Further VDEC blocks
     then feed from this VIFIFO.
   - VDEC_1 can decode MPEG-1, MPEG-2, MPEG-4 part 2, MJPEG, H.263, H.264, VC-1.
-  - VDEC_HEVC can decode HEVC and VP9.
+  - VDEC_HEVC can decode HEVC, and VP9 on GXL, GXM, G12A and SM1.
 
   Both VDEC_1 and VDEC_HEVC share the "vdec" IRQ and as such cannot run
   concurrently.
