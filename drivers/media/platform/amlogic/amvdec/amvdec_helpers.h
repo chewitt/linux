@@ -63,6 +63,9 @@ void meson_amvdec_src_buf_done(struct amvdec_session *sess,
 /* Helpers to read/write to the various IPs (DOS, PARSER) */
 u32 meson_amvdec_read_dos(struct amvdec_core *core, u32 reg);
 void meson_amvdec_write_dos(struct amvdec_core *core, u32 reg, u32 val);
+int meson_amvdec_canvas_nv12_spec(struct amvdec_session *sess, dma_addr_t y,
+				  dma_addr_t uv, u32 width, u32 height,
+				  u32 *spec);
 int meson_amvdec_canvas_nv12m_spec(struct amvdec_session *sess, struct vb2_buffer *vb,
 			     u32 width, u32 height, u32 *spec);
 bool meson_amvdec_request_jobs(struct amvdec_session *sess);
