@@ -5,6 +5,7 @@
 
 #include <linux/module.h>
 #include <linux/of_platform.h>
+#include <sound/control.h>
 #include <sound/soc.h>
 
 #include "meson-card.h"
@@ -259,6 +260,152 @@ static void meson_card_clean_references(struct meson_card *priv)
 	kfree(priv->link_data);
 }
 
+static int meson_card_alias_info(struct snd_kcontrol *kcontrol,
+				 struct snd_ctl_elem_info *uinfo)
+{
+	struct snd_kcontrol *target = snd_kcontrol_chip(kcontrol);
+	struct snd_ctl_elem_id id = uinfo->id;
+	int ret;
+
+	snd_ctl_build_ioff(&uinfo->id, target, snd_ctl_get_ioff(kcontrol, &id));
+	ret = target->info(target, uinfo);
+	uinfo->id = id;
+
+	return ret;
+}
+
+static int meson_card_alias_get(struct snd_kcontrol *kcontrol,
+				struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_kcontrol *target = snd_kcontrol_chip(kcontrol);
+	struct snd_ctl_elem_id id = ucontrol->id;
+	int ret;
+
+	snd_ctl_build_ioff(&ucontrol->id, target, snd_ctl_get_ioff(kcontrol, &id));
+	ret = target->get(target, ucontrol);
+	ucontrol->id = id;
+
+	return ret;
+}
+
+static int meson_card_alias_put(struct snd_kcontrol *kcontrol,
+				struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_kcontrol *target = snd_kcontrol_chip(kcontrol);
+	struct snd_ctl_elem_id id = ucontrol->id;
+	int ret;
+
+	snd_ctl_build_ioff(&ucontrol->id, target, snd_ctl_get_ioff(kcontrol, &id));
+	ret = target->put(target, ucontrol);
+	ucontrol->id = id;
+
+	return ret;
+}
+
+static int meson_card_alias_tlv(struct snd_kcontrol *kcontrol, int op_flag,
+				unsigned int size, unsigned int __user *tlv)
+{
+	struct snd_kcontrol *target = snd_kcontrol_chip(kcontrol);
+
+	return target->tlv.c(target, op_flag, size, tlv);
+}
+
+static int meson_card_alias_ctl(struct snd_card *card,
+				struct snd_kcontrol *target,
+				unsigned int device)
+{
+	struct snd_kcontrol_new knew = {
+		.iface		= target->id.iface,
+		.name		= target->id.name,
+		.device		= device,
+		.subdevice	= target->id.subdevice,
+		.index		= target->id.index,
+		.count		= target->count,
+		.access		= target->vd[0].access,
+		.info		= meson_card_alias_info,
+		.get		= meson_card_alias_get,
+	};
+	struct snd_ctl_elem_id id = target->id;
+	struct snd_kcontrol *kctl;
+
+	id.numid = 0;
+	id.device = device;
+	if (snd_ctl_find_id(card, &id))
+		return 0;
+
+	if (target->put)
+		knew.put = meson_card_alias_put;
+
+	if (knew.access & SNDRV_CTL_ELEM_ACCESS_TLV_CALLBACK)
+		knew.tlv.c = meson_card_alias_tlv;
+	else
+		knew.tlv.p = target->tlv.p;
+
+	kctl = snd_ctl_new1(&knew, target);
+	if (!kctl)
+		return -ENOMEM;
+
+	return snd_ctl_add(card, kctl);
+}
+
+static int meson_card_alias_be_ctls(struct snd_soc_card *card,
+				    struct snd_pcm *be)
+{
+	struct snd_card *snd_card = card->snd_card;
+	struct snd_soc_pcm_runtime *fe;
+	struct snd_kcontrol **targets, *kctl;
+	unsigned int i, n = 0;
+	int ret = 0;
+
+	targets = kcalloc(snd_card->controls_count, sizeof(*targets),
+			  GFP_KERNEL);
+	if (!targets)
+		return -ENOMEM;
+
+	scoped_guard(rwsem_read, &snd_card->controls_rwsem) {
+		list_for_each_entry(kctl, &snd_card->controls, list) {
+			if (kctl->id.iface == SNDRV_CTL_ELEM_IFACE_PCM &&
+			    kctl->id.device == be->device &&
+			    n < snd_card->controls_count)
+				targets[n++] = kctl;
+		}
+	}
+
+	for_each_card_rtds(card, fe) {
+		if (!fe->dai_link->dynamic || !fe->pcm ||
+		    !fe->pcm->streams[SNDRV_PCM_STREAM_PLAYBACK].substream_count)
+			continue;
+
+		for (i = 0; i < n; i++) {
+			ret = meson_card_alias_ctl(snd_card, targets[i],
+						   fe->pcm->device);
+			if (ret)
+				goto out;
+		}
+	}
+
+out:
+	kfree(targets);
+	return ret;
+}
+
+static int meson_card_late_probe(struct snd_soc_card *card)
+{
+	struct snd_soc_pcm_runtime *rtd;
+	int ret;
+
+	for_each_card_rtds(card, rtd) {
+		if (!rtd->pcm || !rtd->pcm->internal)
+			continue;
+
+		ret = meson_card_alias_be_ctls(card, rtd->pcm);
+		if (ret)
+			return ret;
+	}
+
+	return 0;
+}
+
 int meson_card_probe(struct platform_device *pdev)
 {
 	const struct meson_card_match_data *data;
@@ -282,6 +429,7 @@ int meson_card_probe(struct platform_device *pdev)
 	priv->card.owner = THIS_MODULE;
 	priv->card.dev = dev;
 	priv->card.driver_name = dev->driver->name;
+	priv->card.late_probe = meson_card_late_probe;
 	priv->match_data = data;
 
 	ret = snd_soc_of_parse_card_name(&priv->card, "model");
