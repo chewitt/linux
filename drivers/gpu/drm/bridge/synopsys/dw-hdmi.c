@@ -1209,8 +1209,11 @@ static void hdmi_video_csc(struct dw_hdmi *hdmi)
  * for example, if input is YCC422 mode or repeater is used,
  * data should be repacked this module can be bypassed.
  */
-static void hdmi_video_packetize(struct dw_hdmi *hdmi)
+static void hdmi_video_packetize(struct dw_hdmi *hdmi,
+				 const struct drm_display_mode *mode)
 {
+	unsigned int htotal = mode->htotal;
+	bool default_phase = true;
 	unsigned int color_depth = 0;
 	unsigned int remap_size = HDMI_VP_REMAP_YCC422_16bit;
 	unsigned int output_select = HDMI_VP_CONF_OUTPUT_SELECTOR_PP;
@@ -1218,6 +1221,8 @@ static void hdmi_video_packetize(struct dw_hdmi *hdmi)
 	u8 val, vp_conf;
 	u8 clear_gcp_auto = 0;
 
+	if (hdmi_bus_fmt_is_yuv420(hdmi->hdmi_data.enc_out_bus_format))
+		htotal /= 2;
 
 	if (hdmi_bus_fmt_is_rgb(hdmi->hdmi_data.enc_out_bus_format) ||
 	    hdmi_bus_fmt_is_yuv444(hdmi->hdmi_data.enc_out_bus_format) ||
@@ -1231,9 +1236,11 @@ static void hdmi_video_packetize(struct dw_hdmi *hdmi)
 			break;
 		case 10:
 			color_depth = 5;
+			default_phase = !(htotal % 4);
 			break;
 		case 12:
 			color_depth = 6;
+			default_phase = !(htotal % 2);
 			break;
 		case 16:
 			color_depth = 7;
@@ -1301,7 +1308,7 @@ static void hdmi_video_packetize(struct dw_hdmi *hdmi)
 		  HDMI_VP_CONF_PR_EN_MASK |
 		  HDMI_VP_CONF_BYPASS_SELECT_MASK, HDMI_VP_CONF);
 
-	hdmi_modb(hdmi, 1 << HDMI_VP_STUFF_IDEFAULT_PHASE_OFFSET,
+	hdmi_modb(hdmi, default_phase << HDMI_VP_STUFF_IDEFAULT_PHASE_OFFSET,
 		  HDMI_VP_STUFF_IDEFAULT_PHASE_MASK, HDMI_VP_STUFF);
 
 	hdmi_writeb(hdmi, remap_size, HDMI_VP_REMAP);
@@ -2319,7 +2326,7 @@ static int dw_hdmi_poweron(struct dw_hdmi *hdmi,
 		dev_dbg(hdmi->dev, "%s DVI mode\n", __func__);
 	}
 
-	hdmi_video_packetize(hdmi);
+	hdmi_video_packetize(hdmi, mode);
 	hdmi_video_csc(hdmi);
 	hdmi_video_sample(hdmi);
 	hdmi_tx_hdcp_config(hdmi);
