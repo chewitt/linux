@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: GPL-2.0-only
+
+config VIDEO_MESON_DI
+	tristate "Amlogic video deinterlacer"
+	depends on V4L_MEM2MEM_DRIVERS
+	depends on VIDEO_DEV
+	depends on ARCH_MESON || COMPILE_TEST
+	depends on MESON_CANVAS
+	select MFD_SYSCON
+	select VIDEOBUF2_DMA_CONTIG
+	select V4L2_MEM2MEM_DEV
+	help
+	  Support for the video deinterlacer (DI) of the Amlogic G12A, G12B
+	  and SM1 SoCs as a V4L2 memory-to-memory device.
+
+	  To compile this driver as a module, choose M here: the module will
+	  be called meson-di.
