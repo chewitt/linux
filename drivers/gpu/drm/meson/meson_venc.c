@@ -2002,7 +2002,6 @@ void meson_venc_enable_vsync(struct meson_drm *priv)
 
 void meson_venc_disable_vsync(struct meson_drm *priv)
 {
-	regmap_update_bits(priv->hhi, HHI_GCLK_MPEG2, BIT(25), 0);
 	writel_relaxed(0, priv->io_base + _REG(VENC_INTCTRL));
 }
 
