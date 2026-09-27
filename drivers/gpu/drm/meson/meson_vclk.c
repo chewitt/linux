@@ -614,7 +614,8 @@ static void meson_hdmi_pll_set_params(struct meson_drm *priv, unsigned int m,
 		else
 			regmap_write(priv->hhi, HHI_HDMI_PLL_CNTL2,
 				     0x00000000);
-		regmap_write(priv->hhi, HHI_HDMI_PLL_CNTL3, 0x0d5c5091);
+		regmap_write(priv->hhi, HHI_HDMI_PLL_CNTL3,
+			     m >= 0x5c ? 0x135c5091 : 0x0d5c5091);
 		regmap_write(priv->hhi, HHI_HDMI_PLL_CNTL4, 0x801da72c);
 		regmap_write(priv->hhi, HHI_HDMI_PLL_CNTL5, 0x71486980);
 		regmap_write(priv->hhi, HHI_HDMI_PLL_CNTL6, 0x00000e55);
