@@ -193,6 +193,10 @@
 	};
 };
 
+&di {
+	compatible = "amlogic,g12b-di";
+};
+
 &mali {
 	dma-coherent;
 };

@@ -554,6 +554,11 @@
 	};
 };
 
+&di {
+	compatible = "amlogic,sm1-di";
+	power-domains = <&pwrc PWRC_SM1_VPU_ID>;
+};
+
 &ethmac {
 	power-domains = <&pwrc PWRC_SM1_ETH_ID>;
 };
