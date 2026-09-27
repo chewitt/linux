@@ -625,8 +625,20 @@ static void meson_hdmi_pll_set_params(struct meson_drm *priv, unsigned int m,
 				   0x7 << 28, HHI_HDMI_PLL_CNTL_EN);
 
 		/* Poll for lock bit */
-		regmap_read_poll_timeout(priv->hhi, HHI_HDMI_PLL_CNTL,
-					 val, (val & HDMI_PLL_LOCK), 10, 0);
+		while (regmap_read_poll_timeout(priv->hhi, HHI_HDMI_PLL_CNTL,
+						val, (val & HDMI_PLL_LOCK),
+						10, 100)) {
+			if (!--lock_tries) {
+				pr_err("HDMI PLL failed to lock for m=0x%x frac=0x%x\n",
+				       m, frac);
+				break;
+			}
+
+			regmap_update_bits(priv->hhi, HHI_HDMI_PLL_CNTL,
+					   HDMI_PLL_RESET, HDMI_PLL_RESET);
+			regmap_update_bits(priv->hhi, HHI_HDMI_PLL_CNTL,
+					   HDMI_PLL_RESET, 0);
+		}
 	} else if (meson_vpu_is_compatible(priv, VPU_COMPATIBLE_GXM) ||
 		   meson_vpu_is_compatible(priv, VPU_COMPATIBLE_GXL)) {
 		regmap_write(priv->hhi, HHI_HDMI_PLL_CNTL, 0x40000200 | m);
