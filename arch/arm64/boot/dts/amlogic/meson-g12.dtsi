@@ -359,6 +359,10 @@
 	};
 };
 
+&di {
+	power-domains = <&pwrc PWRC_G12A_VPU_ID>;
+};
+
 &ethmac {
 	power-domains = <&pwrc PWRC_G12A_ETH_ID>;
 };
