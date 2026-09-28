@@ -66,13 +66,14 @@ struct codec_hevc_common {
 /* Whether framebuffer compression is required. */
 static inline int codec_hevc_use_fbc(u32 pixfmt, int is_10bit)
 {
-	return is_10bit || pixfmt == V4L2_PIX_FMT_AM21C;
+	return is_10bit || pixfmt == V4L2_PIX_FMT_AM21C ||
+	       pixfmt == V4L2_PIX_FMT_AM21B;
 }
 
 /* Whether 10-bit decode produces 8-bit NV12 output. */
 static inline int codec_hevc_use_downsample(u32 pixfmt, int is_10bit)
 {
-	return is_10bit && pixfmt != V4L2_PIX_FMT_AM21C;
+	return is_10bit && pixfmt == V4L2_PIX_FMT_NV12M;
 }
 
 /* Whether decoding uses the frame MMU. */

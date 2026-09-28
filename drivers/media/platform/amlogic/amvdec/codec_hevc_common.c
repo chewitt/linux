@@ -745,8 +745,10 @@ static bool codec_hevc_frame_buffer_backed(struct amvdec_session *sess,
 	const u32 revision = sess->core->platform->revision;
 	const u32 pixfmt = sess->pixfmt_cap;
 
-	if (!codec_hevc_use_fbc(pixfmt, is_10bit))
-		return true;	/* plain NV12: the vb2 planes are the frame */
+	if (!codec_hevc_use_fbc(pixfmt, is_10bit) ||
+	    (!codec_hevc_use_downsample(pixfmt, is_10bit) &&
+	     !codec_hevc_use_mmu(revision, pixfmt, is_10bit)))
+		return true;	/* the vb2 planes are the frame */
 
 	if (codec_hevc_use_downsample(pixfmt, is_10bit) &&
 	    codec_hevc_use_mmu(revision, pixfmt, is_10bit) &&
