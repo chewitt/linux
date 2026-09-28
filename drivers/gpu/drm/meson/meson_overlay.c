@@ -495,8 +495,8 @@ static void meson_overlay_atomic_update(struct drm_plane *plane,
 					  AFBC_HOLD_LINE_NUM(8) |
 					  AFBC_BURST_LEN(2);
 
-		if (fb->modifier & DRM_FORMAT_MOD_AMLOGIC_FBC(0,
-						AMLOGIC_FBC_OPTION_MEM_SAVING))
+		if ((fb->modifier >> __fourcc_mod_amlogic_options_shift) &
+		    AMLOGIC_FBC_OPTION_MEM_SAVING)
 			priv->viu.vd1_afbc_mode |= AFBC_BLK_MEM_MODE;
 
 		if ((fb->modifier & __fourcc_mod_amlogic_layout_mask) ==
