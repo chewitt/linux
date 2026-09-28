@@ -703,6 +703,10 @@ static void dst_buf_done(struct amvdec_session *sess,
 	case V4L2_PIX_FMT_AM21C:
 		vb2_set_plane_payload(&vbuf->vb2_buf, 0, AM21C_HEADER_SIZE);
 		break;
+	case V4L2_PIX_FMT_AM21B:
+		vb2_set_plane_payload(&vbuf->vb2_buf, 0,
+				      vb2_plane_size(&vbuf->vb2_buf, 0));
+		break;
 	}
 
 	vbuf->vb2_buf.timestamp = timestamp;

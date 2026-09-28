@@ -1121,6 +1121,8 @@ codec_hevc_set_sao(struct amvdec_session *sess, struct hevc_frame *frame)
 	if (core->platform->revision < AMVDEC_REVISION_G12A) {
 		if (!codec_hevc_use_fbc(sess->pixfmt_cap, hevc->is_10bit))
 			val |= BIT(0); /* disable cm compression */
+		if (sess->pixfmt_cap != V4L2_PIX_FMT_NV12M)
+			val |= BIT(1); /* disable double write */
 
 	}
 
