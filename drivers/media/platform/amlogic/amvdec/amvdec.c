@@ -274,6 +274,11 @@ static bool vdec_nv12m_needs_64k(struct amvdec_session *sess)
 	       pixfmt == V4L2_PIX_FMT_HEVC_SLICE;
 }
 
+static u32 vdec_am21b_size(u32 width, u32 height)
+{
+	return meson_amvdec_amfbc_size(width, height, 1, 0);
+}
+
 static u32 vdec_nv12m_plane_size(struct amvdec_session *sess, u32 size)
 {
 	return vdec_nv12m_needs_64k(sess) ? ALIGN(size, SZ_64K) : size;
@@ -313,6 +318,12 @@ static int vdec_queue_setup(struct vb2_queue *q, unsigned int *num_buffers,
 				    sizes[0] < AM21C_HEADER_SIZE)
 					return -EINVAL;
 				break;
+			case V4L2_PIX_FMT_AM21B:
+				if (*num_planes != 1 ||
+				    sizes[0] < vdec_am21b_size(sess->width,
+							       sess->height))
+					return -EINVAL;
+				break;
 			default:
 				return -EINVAL;
 			}
@@ -344,6 +355,10 @@ static int vdec_queue_setup(struct vb2_queue *q, unsigned int *num_buffers,
 			break;
 		case V4L2_PIX_FMT_AM21C:
 			sizes[0] = AM21C_HEADER_SIZE;
+			*num_planes = 1;
+			break;
+		case V4L2_PIX_FMT_AM21B:
+			sizes[0] = vdec_am21b_size(sess->width, sess->height);
 			*num_planes = 1;
 			break;
 		default:
@@ -704,6 +719,11 @@ vdec_try_fmt_common(struct amvdec_session *sess, u32 size,
 		} else if (pixmp->pixelformat == V4L2_PIX_FMT_AM21C) {
 			/* one plane: the FBC/MMU compression header */
 			pfmt[0].sizeimage = AM21C_HEADER_SIZE;
+			pfmt[0].bytesperline = 0;
+			pixmp->num_planes = 1;
+		} else if (pixmp->pixelformat == V4L2_PIX_FMT_AM21B) {
+			pfmt[0].sizeimage = vdec_am21b_size(pixmp->width,
+							    pixmp->height);
 			pfmt[0].bytesperline = 0;
 			pixmp->num_planes = 1;
 		}
