@@ -217,7 +217,8 @@ static const struct amvdec_format amvdec_formats_gxm[] = {
 		.vdec_ops = &meson_amvdec_hevc_ops,
 		.codec_ops = &meson_amvdec_codec_hevc_ops,
 		.firmware_path = "meson/vdec/gxl_hevc.bin",
-		.pixfmts_cap = { V4L2_PIX_FMT_NV12M, 0 },
+		.pixfmts_cap = { V4L2_PIX_FMT_NV12M,
+				 V4L2_PIX_FMT_AM21B, 0 },
 		.flags = V4L2_FMT_FLAG_COMPRESSED,
 	}, {
 		.pixfmt = V4L2_PIX_FMT_MPEG2_SLICE,
