@@ -22,7 +22,6 @@
 		mmc2 = &sdio; /* SDIO */
 		rtc0 = &rtc;
 		rtc1 = &vrtc;
-		serial0 = &uart_b;
 	};
 
 	chosen {
@@ -647,10 +646,6 @@
 		clocks = <&sdio_32k>;
 		clock-names = "lpo";
 	};
-};
-
-&uart_b {
-	status = "okay";
 };
 
 &usb {
