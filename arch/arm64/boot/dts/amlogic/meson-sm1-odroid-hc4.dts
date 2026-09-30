@@ -124,9 +124,19 @@
 	status = "disabled";
 };
 
+&periphs_pinctrl {
+	hc4_nor_hold_wp_pins: nor-hold-wp {
+		mux {
+			groups = "nor_hold", "nor_wp";
+			function = "nor";
+			bias-disable;
+		};
+	};
+};
+
 &spifc {
 	status = "okay";
-	pinctrl-0 = <&nor_pins>;
+	pinctrl-0 = <&nor_pins>, <&hc4_nor_hold_wp_pins>;
 	pinctrl-names = "default";
 
 	flash@0 {
