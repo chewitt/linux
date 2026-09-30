@@ -18,6 +18,17 @@ struct gx_formatter {
 	struct regmap *map;
 };
 
+static int gx_formatter_prepare(struct gx_formatter *formatter)
+{
+	/* Setup the stream parameter in the formatter */
+	if (!formatter->drv->ops->prepare)
+		return 0;
+
+	return formatter->drv->ops->prepare(formatter->map,
+					    formatter->drv->quirks,
+					    formatter->stream);
+}
+
 static int gx_formatter_enable(struct gx_formatter *formatter)
 {
 	int ret;
@@ -26,14 +37,9 @@ static int gx_formatter_enable(struct gx_formatter *formatter)
 	if (formatter->enabled)
 		return 0;
 
-	/* Setup the stream parameter in the formatter */
-	if (formatter->drv->ops->prepare) {
-		ret = formatter->drv->ops->prepare(formatter->map,
-					   formatter->drv->quirks,
-					   formatter->stream);
-		if (ret)
-			return ret;
-	}
+	ret = gx_formatter_prepare(formatter);
+	if (ret)
+		return ret;
 
 	/* Finally, actually enable the formatter */
 	if (formatter->drv->ops->enable)
