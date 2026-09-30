@@ -29,7 +29,7 @@ struct gx_stream {
 	unsigned int width;
 	unsigned int physical_width;
 	bool prepared;
-	bool ready;
+	bool running;
 
 	/* For continuous clock tracking */
 	bool clk_enabled;
