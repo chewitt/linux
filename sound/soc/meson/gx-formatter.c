@@ -29,25 +29,16 @@ static int gx_formatter_prepare(struct gx_formatter *formatter)
 					    formatter->stream);
 }
 
-static int gx_formatter_enable(struct gx_formatter *formatter)
+static void gx_formatter_enable(struct gx_formatter *formatter)
 {
-	int ret;
-
 	/* Do nothing if the formatter is already enabled */
 	if (formatter->enabled)
-		return 0;
+		return;
 
-	ret = gx_formatter_prepare(formatter);
-	if (ret)
-		return ret;
-
-	/* Finally, actually enable the formatter */
 	if (formatter->drv->ops->enable)
 		formatter->drv->ops->enable(formatter->map);
 
 	formatter->enabled = true;
-
-	return 0;
 }
 
 static void gx_formatter_disable(struct gx_formatter *formatter)
@@ -69,14 +60,18 @@ static int gx_formatter_attach(struct gx_formatter *formatter)
 
 	mutex_lock(&ts->lock);
 
-	/* Catch up if the stream is already running when we attach */
-	if (ts->ready) {
-		ret = gx_formatter_enable(formatter);
+	/* Catch up if the stream is already prepared when we attach */
+	if (ts->prepared) {
+		ret = gx_formatter_prepare(formatter);
 		if (ret) {
-			pr_err("failed to enable formatter\n");
+			pr_err("failed to prepare formatter\n");
 			goto out;
 		}
 	}
+
+	/* Catch up if the stream is already running when we attach */
+	if (ts->ready)
+		gx_formatter_enable(formatter);
 
 	list_add_tail(&formatter->list, &ts->formatter_list);
 out:
@@ -242,24 +237,17 @@ EXPORT_SYMBOL_GPL(gx_stream_prepare);
 int gx_stream_start(struct gx_stream *ts)
 {
 	struct gx_formatter *formatter;
-	int ret = 0;
 
 	mutex_lock(&ts->lock);
 
 	/* Start all the formatters attached to the stream */
-	list_for_each_entry(formatter, &ts->formatter_list, list) {
-		ret = gx_formatter_enable(formatter);
-		if (ret) {
-			pr_err("failed to enable formatter\n");
-			goto out;
-		}
-	}
+	list_for_each_entry(formatter, &ts->formatter_list, list)
+		gx_formatter_enable(formatter);
 
 	ts->ready = true;
 
-out:
 	mutex_unlock(&ts->lock);
-	return ret;
+	return 0;
 }
 EXPORT_SYMBOL_GPL(gx_stream_start);
 
