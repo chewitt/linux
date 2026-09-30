@@ -1299,19 +1299,25 @@ static struct clk_regmap gxbb_cts_amclk = {
 	},
 };
 
+static u32 gxbb_cts_mclk_i958_parents_val_table[] = { 2, 3 };
+static const struct clk_hw *gxbb_cts_mclk_i958_parents[] = {
+	&gxbb_mpll1.hw,
+	&gxbb_mpll2.hw,
+};
+
 static struct clk_regmap gxbb_cts_mclk_i958_sel = {
 	.data = &(struct clk_regmap_mux_data){
 		.offset = HHI_AUD_CLK_CNTL2,
 		.mask = 0x3,
 		.shift = 25,
-		.table = gxbb_cts_mclk_parents_val_table,
+		.table = gxbb_cts_mclk_i958_parents_val_table,
 		.flags = CLK_MUX_ROUND_CLOSEST,
 	},
 	.hw.init = &(struct clk_init_data) {
 		.name = "cts_mclk_i958_sel",
 		.ops = &clk_regmap_mux_ops,
-		.parent_hws = gxbb_cts_mclk_parents,
-		.num_parents = ARRAY_SIZE(gxbb_cts_mclk_parents),
+		.parent_hws = gxbb_cts_mclk_i958_parents,
+		.num_parents = ARRAY_SIZE(gxbb_cts_mclk_i958_parents),
 	},
 };
 
