@@ -28,6 +28,7 @@ struct gx_stream {
 	unsigned int channels;
 	unsigned int width;
 	unsigned int physical_width;
+	bool prepared;
 	bool ready;
 
 	/* For continuous clock tracking */
@@ -36,6 +37,7 @@ struct gx_stream {
 
 struct gx_stream *gx_stream_alloc(struct gx_iface *iface);
 void gx_stream_free(struct gx_stream *ts);
+int gx_stream_prepare(struct gx_stream *ts);
 int gx_stream_start(struct gx_stream *ts);
 void gx_stream_stop(struct gx_stream *ts);
 
