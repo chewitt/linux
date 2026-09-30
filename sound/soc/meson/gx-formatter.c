@@ -215,6 +215,30 @@ int gx_formatter_create(struct device *dev,
 }
 EXPORT_SYMBOL_GPL(gx_formatter_create);
 
+int gx_stream_prepare(struct gx_stream *ts)
+{
+	struct gx_formatter *formatter;
+	int ret = 0;
+
+	mutex_lock(&ts->lock);
+
+	/* Prepare all the formatters attached to the stream */
+	list_for_each_entry(formatter, &ts->formatter_list, list) {
+		ret = gx_formatter_prepare(formatter);
+		if (ret) {
+			pr_err("failed to prepare formatter\n");
+			goto out;
+		}
+	}
+
+	ts->prepared = true;
+
+out:
+	mutex_unlock(&ts->lock);
+	return ret;
+}
+EXPORT_SYMBOL_GPL(gx_stream_prepare);
+
 int gx_stream_start(struct gx_stream *ts)
 {
 	struct gx_formatter *formatter;
