@@ -70,7 +70,7 @@ static int gx_formatter_attach(struct gx_formatter *formatter)
 	}
 
 	/* Catch up if the stream is already running when we attach */
-	if (ts->ready)
+	if (ts->running)
 		gx_formatter_enable(formatter);
 
 	list_add_tail(&formatter->list, &ts->formatter_list);
@@ -245,7 +245,7 @@ int gx_stream_start(struct gx_stream *ts)
 	list_for_each_entry(formatter, &ts->formatter_list, list)
 		gx_formatter_enable(formatter);
 
-	ts->ready = true;
+	ts->running = true;
 
 	spin_unlock_irqrestore(&ts->lock, irq_flags);
 	return 0;
@@ -258,7 +258,7 @@ void gx_stream_stop(struct gx_stream *ts)
 	unsigned long irq_flags;
 
 	spin_lock_irqsave(&ts->lock, irq_flags);
-	ts->ready = false;
+	ts->running = false;
 
 	/* Stop all the formatters attached to the stream */
 	list_for_each_entry(formatter, &ts->formatter_list, list) {
