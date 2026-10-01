@@ -829,7 +829,9 @@
 				compatible = "amlogic,meson-s4-pwm";
 				reg = <0x0 0x58000 0x0 0x24>;
 				clocks = <&clkc_periphs CLKID_PWM_A>,
-					 <&clkc_periphs CLKID_PWM_B>;
+					 <&clkc_periphs CLKID_PWM_B>,
+					 <&clkc_periphs CLKID_PWM_AB>;
+				clock-names = "channel-a", "channel-b", "bus";
 				#pwm-cells = <3>;
 				status = "disabled";
 			};
@@ -838,7 +840,9 @@
 				compatible = "amlogic,meson-s4-pwm";
 				reg = <0x0 0x5a000 0x0 0x24>;
 				clocks = <&clkc_periphs CLKID_PWM_C>,
-					 <&clkc_periphs CLKID_PWM_D>;
+					 <&clkc_periphs CLKID_PWM_D>,
+					 <&clkc_periphs CLKID_PWM_CD>;
+				clock-names = "channel-a", "channel-b", "bus";
 				#pwm-cells = <3>;
 				status = "disabled";
 			};
@@ -847,7 +851,9 @@
 				compatible = "amlogic,meson-s4-pwm";
 				reg = <0x0 0x5c000 0x0 0x24>;
 				clocks = <&clkc_periphs CLKID_PWM_E>,
-					 <&clkc_periphs CLKID_PWM_F>;
+					 <&clkc_periphs CLKID_PWM_F>,
+					 <&clkc_periphs CLKID_PWM_EF>;
+				clock-names = "channel-a", "channel-b", "bus";
 				#pwm-cells = <3>;
 				status = "disabled";
 			};
@@ -856,7 +862,9 @@
 				compatible = "amlogic,meson-s4-pwm";
 				reg = <0x0 0x5e000 0x0 0x24>;
 				clocks = <&clkc_periphs CLKID_PWM_G>,
-					 <&clkc_periphs CLKID_PWM_H>;
+					 <&clkc_periphs CLKID_PWM_H>,
+					 <&clkc_periphs CLKID_PWM_GH>;
+				clock-names = "channel-a", "channel-b", "bus";
 				#pwm-cells = <3>;
 				status = "disabled";
 			};
@@ -865,7 +873,9 @@
 				compatible = "amlogic,meson-s4-pwm";
 				reg = <0x0 0x60000 0x0 0x24>;
 				clocks = <&clkc_periphs CLKID_PWM_I>,
-					 <&clkc_periphs CLKID_PWM_J>;
+					 <&clkc_periphs CLKID_PWM_J>,
+					 <&clkc_periphs CLKID_PWM_IJ>;
+				clock-names = "channel-a", "channel-b", "bus";
 				#pwm-cells = <3>;
 				status = "disabled";
 			};
