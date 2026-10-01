@@ -19,6 +19,7 @@
 #include <drm/drm_vblank.h>
 
 #include "meson_crtc.h"
+#include "meson_encoder_hdmi.h"
 #include "meson_plane.h"
 #include "meson_registers.h"
 #include "meson_venc.h"
@@ -224,6 +225,8 @@ static void meson_crtc_atomic_flush(struct drm_crtc *crtc,
 
 	priv->viu.osd1_commit = true;
 	priv->viu.vd1_commit = true;
+
+	meson_encoder_hdmi_update_hdr(priv, state);
 }
 
 static const struct drm_crtc_helper_funcs meson_crtc_helper_funcs = {
