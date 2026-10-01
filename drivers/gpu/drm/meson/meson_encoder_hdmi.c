@@ -23,6 +23,7 @@
 #include <drm/drm_edid.h>
 #include <drm/drm_probe_helper.h>
 #include <drm/drm_simple_kms_helper.h>
+#include <drm/display/drm_hdmi_helper.h>
 
 #include <linux/media-bus-format.h>
 #include <linux/videodev2.h>
@@ -431,8 +432,7 @@ static int meson_encoder_hdmi_atomic_check(struct drm_bridge *bridge,
 
 	dev_dbg(priv->dev, "output_bus_fmt %lx\n", encoder_hdmi->output_bus_fmt);
 
-	if (!drm_connector_atomic_hdr_metadata_equal(old_conn_state, conn_state) ||
-	    old_conn_state->colorspace != conn_state->colorspace)
+	if (old_conn_state->colorspace != conn_state->colorspace)
 		crtc_state->mode_changed = true;
 
 	return 0;
@@ -546,6 +546,51 @@ int meson_encoder_hdmi_probe(struct meson_drm *priv)
 	dev_dbg(priv->dev, "HDMI encoder initialized\n");
 
 	return 0;
+}
+
+void meson_encoder_hdmi_update_hdr(struct meson_drm *priv,
+				   struct drm_atomic_commit *state)
+{
+	struct meson_encoder_hdmi *encoder_hdmi = priv->encoders[MESON_ENC_HDMI];
+	struct drm_connector_state *old_conn_state, *new_conn_state;
+	u8 buffer[HDMI_INFOFRAME_SIZE(DRM)];
+	struct drm_crtc_state *crtc_state;
+	struct hdmi_drm_infoframe frame;
+	struct drm_bridge *next_bridge;
+	ssize_t len;
+
+	if (!encoder_hdmi)
+		return;
+
+	next_bridge = encoder_hdmi->bridge.next_bridge;
+	if (!(next_bridge->ops & DRM_BRIDGE_OP_HDMI_HDR_DRM_INFOFRAME))
+		return;
+
+	new_conn_state = drm_atomic_get_new_connector_state(state,
+							    encoder_hdmi->connector);
+	if (!new_conn_state || !new_conn_state->crtc)
+		return;
+
+	crtc_state = drm_atomic_get_new_crtc_state(state, new_conn_state->crtc);
+	if (!crtc_state || !crtc_state->active ||
+	    drm_atomic_crtc_needs_modeset(crtc_state))
+		return;
+
+	old_conn_state = drm_atomic_get_old_connector_state(state,
+							    encoder_hdmi->connector);
+	if (drm_connector_atomic_hdr_metadata_equal(old_conn_state, new_conn_state))
+		return;
+
+	if (drm_hdmi_infoframe_set_hdr_metadata(&frame, new_conn_state) < 0) {
+		next_bridge->funcs->hdmi_clear_hdr_drm_infoframe(next_bridge);
+		return;
+	}
+
+	len = hdmi_drm_infoframe_pack(&frame, buffer, sizeof(buffer));
+	if (len < 0)
+		return;
+
+	next_bridge->funcs->hdmi_write_hdr_drm_infoframe(next_bridge, buffer, len);
 }
 
 void meson_encoder_hdmi_remove(struct meson_drm *priv)
