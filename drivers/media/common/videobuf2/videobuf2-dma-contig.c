@@ -220,6 +220,7 @@ static int vb2_dc_alloc_non_coherent(struct vb2_dc_buf *buf)
 		return -ENOMEM;
 
 	buf->dma_addr = sg_dma_address(buf->dma_sgt->sgl);
+	dma_sync_sgtable_for_device(buf->dev, buf->dma_sgt, buf->dma_dir);
 
 	/*
 	 * For non-coherent buffers the kernel mapping is created on demand
@@ -428,6 +429,16 @@ static int
 vb2_dc_dmabuf_ops_begin_cpu_access(struct dma_buf *dbuf,
 				   enum dma_data_direction direction)
 {
+	struct vb2_dc_buf *buf = dbuf->priv;
+
+	if (!buf->non_coherent_mem)
+		return 0;
+
+	if (buf->vaddr)
+		invalidate_kernel_vmap_range(buf->vaddr, buf->size);
+
+	dma_sync_sgtable_for_cpu(buf->dev, buf->dma_sgt, buf->dma_dir);
+
 	return 0;
 }
 
@@ -435,6 +446,16 @@ static int
 vb2_dc_dmabuf_ops_end_cpu_access(struct dma_buf *dbuf,
 				 enum dma_data_direction direction)
 {
+	struct vb2_dc_buf *buf = dbuf->priv;
+
+	if (!buf->non_coherent_mem)
+		return 0;
+
+	if (buf->vaddr)
+		flush_kernel_vmap_range(buf->vaddr, buf->size);
+
+	dma_sync_sgtable_for_device(buf->dev, buf->dma_sgt, buf->dma_dir);
+
 	return 0;
 }
 
