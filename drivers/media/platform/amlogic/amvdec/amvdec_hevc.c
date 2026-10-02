@@ -47,6 +47,10 @@
 	 BIT(13) | BIT(14) | BIT(15) | BIT(17) | BIT(18) | BIT(19) |	\
 	 BIT(24) | BIT(26))
 
+#define DOS_SW_RESET3_HEVC_QUIESCE_GX					\
+	(BIT(3) | BIT(4) | BIT(8) | BIT(11) | BIT(12) | BIT(14) |	\
+	 BIT(15) | BIT(17) | BIT(18) | BIT(19))
+
 static int amvdec_hevc_load_firmware(struct amvdec_session *sess,
 				     const char *fwname)
 {
@@ -210,8 +214,13 @@ static int amvdec_hevc_core_scrub(struct amvdec_core *core)
 	u32 val;
 	int i;
 
-	if (!amvdec_is_g12(core))
+	if (!amvdec_is_g12(core)) {
+		meson_amvdec_write_dos(core, DOS_SW_RESET3,
+				       DOS_SW_RESET3_HEVC_QUIESCE_GX);
+		udelay(10);
+		meson_amvdec_write_dos(core, DOS_SW_RESET3, 0);
 		return 0;
+	}
 
 	if (!reset7_lvl)
 		reset7_lvl = ioremap(G12B_RESET7_LEVEL_ADDR, 4);
