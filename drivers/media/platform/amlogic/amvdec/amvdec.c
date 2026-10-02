@@ -1107,6 +1107,10 @@ static const struct v4l2_ctrl_mpeg2_sequence vdec_mpeg2_sequence_default = {
 static const struct v4l2_ctrl_vp9_frame vdec_vp9_frame_default = {
 	.flags = V4L2_VP9_FRAME_FLAG_X_SUBSAMPLING |
 		 V4L2_VP9_FRAME_FLAG_Y_SUBSAMPLING,
+	.frame_width_minus_1 = 7,
+	.frame_height_minus_1 = 7,
+	.render_width_minus_1 = 7,
+	.render_height_minus_1 = 7,
 	.bit_depth = 8,
 };
 
