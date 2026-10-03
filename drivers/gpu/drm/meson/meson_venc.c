@@ -1144,6 +1144,11 @@ static struct meson_hdmi_venc_vic_mode meson_s4_hdmi_venc_vic_modes[] = {
 	{ 34, &meson_hdmi_encp_mode_1080p30 },
 	{ 31, &meson_hdmi_encp_mode_1080p50 },
 	{ 16, &meson_hdmi_encp_mode_1080p60 },
+	{ 93, &meson_hdmi_encp_mode_2160p24 },
+	{ 94, &meson_hdmi_encp_mode_2160p25 },
+	{ 95, &meson_hdmi_encp_mode_2160p30 },
+	{ 96, &meson_hdmi_encp_mode_2160p25 },
+	{ 97, &meson_hdmi_encp_mode_2160p30 },
 	{ 0, NULL}, /* sentinel */
 };
 
