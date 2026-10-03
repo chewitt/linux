@@ -21,6 +21,9 @@ properties:
               - amlogic,g12a-cpu-thermal
               - amlogic,g12a-ddr-thermal
           - const: amlogic,g12a-thermal
+      - items:
+          - const: amlogic,s4-thermal
+          - const: amlogic,t7-thermal
       - enum:
           - amlogic,a1-cpu-thermal
           - amlogic,t7-thermal
