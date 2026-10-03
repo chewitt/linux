@@ -785,7 +785,7 @@ static unsigned int meson_hdmi_pll_get_frac(struct meson_drm *priv,
 		return frac_max;
 	frac -= frac_m;
 
-	return min((u16)frac, (u16)(frac_max - 1));
+	return min(frac, frac_max - 1);
 }
 
 static bool meson_hdmi_pll_validate_params(struct meson_drm *priv,
