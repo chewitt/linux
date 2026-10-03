@@ -445,8 +445,13 @@ static void meson_hdmi_phy_setup_mode(struct meson_dw_hdmi *dw_hdmi,
 			regmap_write(priv->hhi, HHI_HDMI_PHY_CNTL5, 0x00000003);
 		}
 	} else if (dw_hdmi_is_compatible(dw_hdmi, "amlogic,meson-s4-dw-hdmi")) {
-		if (pixel_clock >= 371250) {
-			/* 5.94Gbps, 4.5Gbps, 3.7125Gbps */
+		if (pixel_clock >= 594000) {
+			/* 5.94Gbps */
+			regmap_write(priv->hhi, ANACTRL_HDMIPHY_CTRL5, 0x0000080b);
+			regmap_write(priv->hhi, ANACTRL_HDMIPHY_CTRL0, 0x37eb6584);
+			regmap_write(priv->hhi, ANACTRL_HDMIPHY_CTRL3, 0x2ab0ff3b);
+		} else if (pixel_clock >= 371250) {
+			/* 4.5Gbps, 3.7125Gbps */
 			regmap_write(priv->hhi, ANACTRL_HDMIPHY_CTRL5, 0x0000080b);
 			regmap_write(priv->hhi, ANACTRL_HDMIPHY_CTRL0, 0x37eb65c4);
 			regmap_write(priv->hhi, ANACTRL_HDMIPHY_CTRL3, 0x2ab0ff3b);
