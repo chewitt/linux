@@ -737,8 +737,8 @@ static void meson_overlay_atomic_disable(struct drm_plane *plane,
 	if (meson_vpu_is_compatible(priv, VPU_COMPATIBLE_S4)) {
 		writel_relaxed(0, priv->io_base + _REG(VD1_BLEND_SRC_CTRL));
 		writel_relaxed(0, priv->io_base + _REG(VD2_BLEND_SRC_CTRL));
-		writel_relaxed(0, priv->io_base + _REG(VD1_IF0_GEN_REG + 0x2db0));
-		writel_relaxed(0, priv->io_base + _REG(VD2_IF0_GEN_REG + 0x2db0));
+		writel_relaxed(0, priv->io_base + _REG(VD1_IF0_GEN_REG_S4));
+		writel_relaxed(0, priv->io_base + _REG(VD2_IF0_GEN_REG_S4));
 	} else if (meson_vpu_is_compatible(priv, VPU_COMPATIBLE_G12A)) {
 		writel_relaxed(0, priv->io_base + _REG(VD1_BLEND_SRC_CTRL));
 		writel_relaxed(0, priv->io_base + _REG(VD2_BLEND_SRC_CTRL));

@@ -462,12 +462,19 @@ void meson_viu_init(struct meson_drm *priv)
 	/* di_mif0_en=0 mif0_to_vpp_en=0 di_mad_en=0 and afbc vd1 set=0*/
 	writel_bits_relaxed(VIU_CTRL0_VD1_AFBC_MASK, 0,
 			    priv->io_base + _REG(VIU_MISC_CTRL0));
-	writel_relaxed(0, priv->io_base + _REG(AFBC_ENABLE));
-
-	writel_relaxed(0x00FF00C0,
-			priv->io_base + _REG(VD1_IF0_LUMA_FIFO_SIZE));
-	writel_relaxed(0x00FF00C0,
-			priv->io_base + _REG(VD2_IF0_LUMA_FIFO_SIZE));
+	if (meson_vpu_is_compatible(priv, VPU_COMPATIBLE_S4)) {
+		writel_relaxed(0, priv->io_base + _REG(AFBC_ENABLE_S4));
+		writel_relaxed(0x00FF00C0,
+				priv->io_base + _REG(VD1_IF0_LUMA_FIFO_SIZE_S4));
+		writel_relaxed(0x00FF00C0,
+				priv->io_base + _REG(VD2_IF0_LUMA_FIFO_SIZE_S4));
+	} else {
+		writel_relaxed(0, priv->io_base + _REG(AFBC_ENABLE));
+		writel_relaxed(0x00FF00C0,
+				priv->io_base + _REG(VD1_IF0_LUMA_FIFO_SIZE));
+		writel_relaxed(0x00FF00C0,
+				priv->io_base + _REG(VD2_IF0_LUMA_FIFO_SIZE));
+	}
 
 	if (meson_vpu_is_compatible(priv, VPU_COMPATIBLE_G12A) ||
 	    meson_vpu_is_compatible(priv, VPU_COMPATIBLE_S4)) {
