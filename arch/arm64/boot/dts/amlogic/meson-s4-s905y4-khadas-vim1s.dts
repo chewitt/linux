@@ -166,6 +166,13 @@
 		regulator-always-on;
 	};
 
+	vdd_gpu: regulator-vdd-gpu {
+		compatible = "regulator-fixed";
+		regulator-name = "vdd-gpu";
+		regulator-min-microvolt = <800000>;
+		regulator-max-microvolt = <800000>;
+	};
+
 	/* SY8120B1ABC DC/DC Regulator. */
 	vddcpu: regulator-vddcpu {
 		compatible = "pwm-regulator";
@@ -285,6 +292,11 @@
 	status = "okay";
 	phy-handle = <&internal_ephy>;
 	phy-mode = "rmii";
+};
+
+&gpu {
+	mali-supply = <&vdd_gpu>;
+	status = "okay";
 };
 
 &i2c1 {
