@@ -365,7 +365,7 @@ static void meson_venci_cvbs_clock_config(struct meson_drm *priv)
 
 		/* Poll for lock bit */
 		regmap_read_poll_timeout(priv->hhi, ANACTRL_HDMIPLL_CTRL0, val,
-			((val & HDMI_PLL_LOCK) == HDMI_PLL_LOCK),
+			((val & HDMI_PLL_LOCK_S4) == HDMI_PLL_LOCK_S4),
 			10, 0);
 	}
 	if (meson_vpu_is_compatible(priv, VPU_COMPATIBLE_S4)) {
