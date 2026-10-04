@@ -39,5 +39,9 @@
 #define CLKID_MPLL2			29
 #define CLKID_MPLL3_DIV			30
 #define CLKID_MPLL3			31
+#define CLKID_SYS_PLL_DCO		32
+#define CLKID_SYS_PLL			33
+#define CLKID_CPU_DYN_CLK		34
+#define CLKID_CPU_CLK			35
 
 #endif /* _DT_BINDINGS_CLOCK_AMLOGIC_S4_PLL_CLKC_H */
