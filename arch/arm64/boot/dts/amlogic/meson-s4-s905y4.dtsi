@@ -1,0 +1,23 @@
+// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
+/*
+ * Copyright (c) 2026 Christian Hewitt <christianshewitt@gmail.com>
+ */
+
+#include "meson-s4.dtsi"
+
+&cpu_opp_table {
+	opp-1800000000 {
+		opp-hz = /bits/ 64 <1800000000>;
+		opp-microvolt = <959000>;
+	};
+
+	opp-1908000000 {
+		opp-hz = /bits/ 64 <1908000000>;
+		opp-microvolt = <979000>;
+	};
+
+	opp-2004000000 {
+		opp-hz = /bits/ 64 <2004000000>;
+		opp-microvolt = <1009000>;
+	};
+};

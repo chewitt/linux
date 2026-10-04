@@ -5,7 +5,7 @@
 
 /dts-v1/;
 
-#include "meson-s4.dtsi"
+#include "meson-s4-s905y4.dtsi"
 #include <dt-bindings/input/input.h>
 #include <dt-bindings/leds/common.h>
 
