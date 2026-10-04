@@ -48,6 +48,8 @@ static const struct meson_sm_chip gxbb_chip = {
 		CMD(SM_THERMAL_CALIB_READ,	0x82000047),
 		CMD(SM_A1_PWRC_SET,		0x82000093),
 		CMD(SM_A1_PWRC_GET,		0x82000095),
+		CMD(SM_PLL_CLK,			0x82000098),
+		CMD(SM_CPU_CLK,			0x82000099),
 		{ /* sentinel */ },
 	},
 };
