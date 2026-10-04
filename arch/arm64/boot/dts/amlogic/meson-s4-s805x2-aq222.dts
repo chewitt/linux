@@ -5,7 +5,7 @@
 
 /dts-v1/;
 
-#include "meson-s4.dtsi"
+#include "meson-s4-s805x2.dtsi"
 
 / {
 	model = "Amlogic Meson S4 AQ222 Development Board";
@@ -99,6 +99,7 @@
 
 		regulator-boot-on;
 		regulator-always-on;
+		regulator-ramp-delay = <150>;
 		/* Voltage Duty-Cycle */
 		voltage-table = <1049000 0>,
 				<1039000 3>,
@@ -344,6 +345,22 @@
 			};
 		};
 	};
+};
+
+&cpu0 {
+	cpu-supply = <&vddcpu>;
+};
+
+&cpu1 {
+	cpu-supply = <&vddcpu>;
+};
+
+&cpu2 {
+	cpu-supply = <&vddcpu>;
+};
+
+&cpu3 {
+	cpu-supply = <&vddcpu>;
 };
 
 &pwm_ef {
