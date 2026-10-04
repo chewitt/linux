@@ -349,6 +349,22 @@
 	};
 };
 
+&cpu0 {
+	cpu-supply = <&vddcpu>;
+};
+
+&cpu1 {
+	cpu-supply = <&vddcpu>;
+};
+
+&cpu2 {
+	cpu-supply = <&vddcpu>;
+};
+
+&cpu3 {
+	cpu-supply = <&vddcpu>;
+};
+
 &pwm_ef {
 	status = "okay";
 	pinctrl-0 = <&pwm_e_pins1>;
