@@ -1114,7 +1114,7 @@
 		};
 
 		sdio: mmc@fe088000 {
-			compatible = "amlogic,meson-axg-mmc";
+			compatible = "amlogic,s4-mmc", "amlogic,meson-axg-mmc";
 			reg = <0x0 0xfe088000 0x0 0x800>;
 			interrupts = <GIC_SPI 176 IRQ_TYPE_LEVEL_HIGH>;
 			clocks = <&clkc_periphs CLKID_SDEMMC_A>,
@@ -1131,7 +1131,7 @@
 		};
 
 		sd: mmc@fe08a000 {
-			compatible = "amlogic,meson-axg-mmc";
+			compatible = "amlogic,s4-mmc", "amlogic,meson-axg-mmc";
 			reg = <0x0 0xfe08a000 0x0 0x800>;
 			interrupts = <GIC_SPI 177 IRQ_TYPE_EDGE_RISING>;
 			clocks = <&clkc_periphs CLKID_SDEMMC_B>,
@@ -1146,7 +1146,7 @@
 		};
 
 		emmc: mmc@fe08c000 {
-			compatible = "amlogic,meson-axg-mmc";
+			compatible = "amlogic,s4-mmc", "amlogic,meson-axg-mmc";
 			reg = <0x0 0xfe08c000 0x0 0x800>;
 			interrupts = <GIC_SPI 178 IRQ_TYPE_EDGE_RISING>;
 			clocks = <&clkc_periphs CLKID_NAND>,
