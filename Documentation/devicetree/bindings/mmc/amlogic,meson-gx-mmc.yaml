@@ -21,6 +21,7 @@ properties:
     oneOf:
       - items:
           - enum:
+              - amlogic,s4-mmc
               - amlogic,t7-mmc
           - const: amlogic,meson-axg-mmc
       - const: amlogic,meson-axg-mmc
