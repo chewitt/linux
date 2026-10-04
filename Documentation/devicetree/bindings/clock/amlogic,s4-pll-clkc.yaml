@@ -27,6 +27,13 @@ properties:
   "#clock-cells":
     const: 1
 
+  amlogic,secure-monitor:
+    $ref: /schemas/types.yaml#/definitions/phandle
+    description:
+      Phandle to the secure monitor. The sys_pll and CPU clock registers
+      can only be written by the secure firmware, so the CPU clocks are
+      only provided when this property is present.
+
 required:
   - compatible
   - reg
@@ -44,6 +51,7 @@ examples:
       clocks = <&xtal>;
       clock-names = "xtal";
       #clock-cells = <1>;
+      amlogic,secure-monitor = <&sm>;
     };
 
 ...
