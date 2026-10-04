@@ -165,6 +165,17 @@
 		regulator-always-on;
 	};
 
+	hdmi_5v: regulator-hdmi-5v {
+		compatible = "regulator-fixed";
+		regulator-name = "HDMI_5V";
+		regulator-min-microvolt = <5000000>;
+		regulator-max-microvolt = <5000000>;
+		vin-supply = <&main_5v>;
+		gpio = <&gpio GPIOZ_7 GPIO_ACTIVE_HIGH>;
+		enable-active-high;
+		regulator-always-on;
+	};
+
 	vcc5v_reg: regulator-vcc-5v {
 		compatible = "regulator-fixed";
 		vin-supply = <&main_5v>;
@@ -533,6 +544,7 @@
 	status = "okay";
 	pinctrl-0 = <&hdmitx_hpd_pins>, <&hdmitx_ddc_pins>;
 	pinctrl-names = "default";
+	hdmi-supply = <&hdmi_5v>;
 };
 
 &emmc {
