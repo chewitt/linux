@@ -5,7 +5,7 @@
 
 /dts-v1/;
 
-#include "meson-s4.dtsi"
+#include "meson-s4-s905y4.dtsi"
 #include <dt-bindings/input/input.h>
 #include <dt-bindings/leds/common.h>
 
@@ -203,6 +203,7 @@
 
 		regulator-boot-on;
 		regulator-always-on;
+		regulator-ramp-delay = <150>;
 		/* Voltage Duty-Cycle */
 		voltage-table = <1049000 0>,
 				<1039000 3>,
@@ -494,6 +495,22 @@
 			};
 		};
 	};
+};
+
+&cpu0 {
+	cpu-supply = <&vddcpu>;
+};
+
+&cpu1 {
+	cpu-supply = <&vddcpu>;
+};
+
+&cpu2 {
+	cpu-supply = <&vddcpu>;
+};
+
+&cpu3 {
+	cpu-supply = <&vddcpu>;
 };
 
 &cvbs_vdac_port {
