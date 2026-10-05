@@ -63,24 +63,37 @@ struct codec_hevc_common {
 	struct amvdec_dma_guard mmu_map_guard;
 };
 
-/* Whether framebuffer compression is required. */
-static inline int codec_hevc_use_fbc(u32 pixfmt, int is_10bit)
+/*
+ * Microcode loaded through the secure world is an MMU build: it always needs
+ * compressed references in the frame MMU, with NV12 as a double write.
+ */
+static inline bool codec_hevc_mmu_microcode(const struct amvdec_session *sess)
 {
-	return is_10bit || pixfmt == V4L2_PIX_FMT_AM21C ||
-	       pixfmt == V4L2_PIX_FMT_AM21B;
+	return sess->fmt_out->tee_format;
 }
 
-/* Whether 10-bit decode produces 8-bit NV12 output. */
-static inline int codec_hevc_use_downsample(u32 pixfmt, int is_10bit)
+/* Whether framebuffer compression is required. */
+static inline int codec_hevc_use_fbc(const struct amvdec_session *sess,
+				     u32 pixfmt, int is_10bit)
 {
-	return is_10bit && pixfmt == V4L2_PIX_FMT_NV12M;
+	return is_10bit || pixfmt == V4L2_PIX_FMT_AM21C ||
+	       pixfmt == V4L2_PIX_FMT_AM21B || codec_hevc_mmu_microcode(sess);
+}
+
+/* Whether decoding writes NV12 output as a double write. */
+static inline int codec_hevc_use_downsample(const struct amvdec_session *sess,
+					    u32 pixfmt, int is_10bit)
+{
+	return (is_10bit || codec_hevc_mmu_microcode(sess)) &&
+	       pixfmt == V4L2_PIX_FMT_NV12M;
 }
 
 /* Whether decoding uses the frame MMU. */
-static inline int codec_hevc_use_mmu(u32 revision, u32 pixfmt, int is_10bit)
+static inline int codec_hevc_use_mmu(const struct amvdec_session *sess,
+				     u32 pixfmt, int is_10bit)
 {
-	return revision >= AMVDEC_REVISION_G12A &&
-	       codec_hevc_use_fbc(pixfmt, is_10bit);
+	return sess->core->platform->revision >= AMVDEC_REVISION_G12A &&
+	       codec_hevc_use_fbc(sess, pixfmt, is_10bit);
 }
 
 /* Configure decode head read mode */

@@ -1601,7 +1601,8 @@ static int codec_h264_start(struct amvdec_session *sess)
 	ret = codec_h264_multi_host_config(sess);
 	if (ret)
 		return ret;
-	meson_amvdec_write_dos(core, AV_SCRATCH_G, h264->ext_fw_paddr);
+	if (h264->ext_fw_vaddr)
+		meson_amvdec_write_dos(core, AV_SCRATCH_G, h264->ext_fw_paddr);
 	if (h264->lmem_vaddr)
 		meson_amvdec_write_dos(core, LMEM_DUMP_ADR, h264->lmem_paddr);
 
@@ -1673,7 +1674,7 @@ static int codec_h264_load_firmware(struct amvdec_session *sess,
 	struct amvdec_core *core = sess->core;
 	u32 ext_size = SIZE_EXT_FW_MULTI;
 
-	if (len < SIZE_MULTI_FW_MIN)
+	if (data && len < SIZE_MULTI_FW_MIN)
 		return -EINVAL;
 
 	h264 = kzalloc_obj(*h264);
@@ -1681,6 +1682,9 @@ static int codec_h264_load_firmware(struct amvdec_session *sess,
 		return -ENOMEM;
 
 	spin_lock_init(&h264->multi_field_lock);
+	if (!data)
+		goto done;
+
 	h264->ext_fw_size = ext_size;
 	h264->ext_fw_vaddr = dma_alloc_coherent(core->dev, ext_size,
 						&h264->ext_fw_paddr,
@@ -1711,6 +1715,7 @@ static int codec_h264_load_firmware(struct amvdec_session *sess,
 		"h264 fw layout: multi size=%u ext_size=%u\n",
 		 len, ext_size);
 
+done:
 	sess->priv = h264;
 
 	return 0;

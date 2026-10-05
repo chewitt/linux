@@ -13,5 +13,6 @@
 extern struct amvdec_ops meson_amvdec_hevc_ops;
 
 int meson_amvdec_hevc_restream(struct amvdec_session *sess);
+void meson_amvdec_hevc_release(struct amvdec_session *sess);
 
 #endif
