@@ -364,6 +364,28 @@
 				};
 			};
 
+			vdec: video-decoder@320000 {
+				compatible = "amlogic,s4-vdec";
+				reg = <0x0 0x320000 0x0 0x10000>,
+				      <0x0 0x36000 0x0 0x400>;
+				reg-names = "dos", "dmc";
+				interrupts = <GIC_SPI 92 IRQ_TYPE_EDGE_RISING>;
+				interrupt-names = "vdec";
+				clocks = <&clkc_periphs CLKID_DOS>,
+					 <&clkc_periphs CLKID_VDEC_SEL>,
+					 <&clkc_periphs CLKID_HEVCF_SEL>;
+				clock-names = "dos", "vdec_1", "vdec_hevc";
+				power-domains = <&pwrc PWRC_S4_DOS_VDEC_ID>,
+						<&pwrc PWRC_S4_DOS_HEVC_ID>;
+				power-domain-names = "vdec", "hevc";
+				resets = <&reset RESET_BRG_HEVCF_PIPL0>,
+					 <&reset RESET_BRG_HEVCF_PIPL1>,
+					 <&reset RESET_BRG_HEVCB_PIPL1>;
+				reset-names = "hevcf-pipl0", "hevcf-pipl1",
+					      "hevcb-pipl1";
+				amlogic,canvas = <&canvas>;
+			};
+
 			clkc_periphs: clock-controller@0 {
 				compatible = "amlogic,s4-peripherals-clkc";
 				reg = <0x0 0x0 0x0 0x49c>;
