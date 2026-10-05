@@ -8,9 +8,14 @@
 
 #include <linux/gcd.h>
 #include <linux/delay.h>
+#include <linux/firmware.h>
 #include <linux/io.h>
+#include <linux/platform_device.h>
+#include <linux/pm_domain.h>
+#include <linux/pm_runtime.h>
 #include <linux/moduleparam.h>
 #include <linux/slab.h>
+#include <linux/unaligned.h>
 #include <media/v4l2-mem2mem.h>
 #include <media/v4l2-event.h>
 #include <media/videobuf2-dma-contig.h>
@@ -169,11 +174,38 @@ int meson_amvdec_dma_verify_guard(struct device *dev, const char *name,
 #define G12A_DMC_BASE		0xff638000
 #define G12A_DMC_SIZE		0x100
 	#define DMC_REQ_CTRL	0x00
-	#define DMC_CHAN_STS	0xd8
+	#define G12A_DMC_CHAN_STS	0xd8
+	#define S4_DMC_CHAN_STS	0x338
 
 /* RESET7 pulse register; bits 15:11 are the DMC decode pipelines */
 #define G12A_RESET7_ADDR	0xffd01020
 	#define RESET7_DMC_PIPEL	GENMASK(15, 11)
+
+/*
+ * The DMC window shares its bus with the canvas, so map it without claiming
+ * the region.
+ */
+int meson_amvdec_dmc_init(struct platform_device *pdev, struct amvdec_core *core)
+{
+	struct device *dev = &pdev->dev;
+	struct resource *res;
+
+	if (core->platform->revision == AMVDEC_REVISION_S4) {
+		res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "dmc");
+		if (!res)
+			return -EINVAL;
+
+		core->dmc_base = devm_ioremap(dev, res->start, resource_size(res));
+		core->dmc_chan_sts = S4_DMC_CHAN_STS;
+	} else if (amvdec_is_g12(core)) {
+		core->dmc_base = devm_ioremap(dev, G12A_DMC_BASE, G12A_DMC_SIZE);
+		core->dmc_chan_sts = G12A_DMC_CHAN_STS;
+	} else {
+		return 0;
+	}
+
+	return core->dmc_base ? 0 : -ENOMEM;
+}
 
 static void __iomem *amvdec_map(u64 addr, u32 size, void __iomem **cache)
 {
@@ -184,22 +216,17 @@ static void __iomem *amvdec_map(u64 addr, u32 size, void __iomem **cache)
 
 int meson_amvdec_dmc_park(struct amvdec_core *core, u32 mask)
 {
-	static void __iomem *dmc_base;
 	u32 val;
 	int i;
 
-	/* G12 physical addresses: not the reset/DMC blocks of older SoCs */
-	if (!amvdec_is_g12(core))
+	if (!amvdec_has_dmc(core))
 		return -EOPNOTSUPP;
 
-	if (!amvdec_map(G12A_DMC_BASE, G12A_DMC_SIZE, &dmc_base))
-		return -ENOMEM;
-
-	val = readl(dmc_base + DMC_REQ_CTRL);
-	writel(val & ~mask, dmc_base + DMC_REQ_CTRL);
+	val = readl(core->dmc_base + DMC_REQ_CTRL);
+	writel(val & ~mask, core->dmc_base + DMC_REQ_CTRL);
 
 	for (i = 0; i < 100; i++) {
-		if ((readl(dmc_base + DMC_CHAN_STS) & mask) == mask)
+		if ((readl(core->dmc_base + core->dmc_chan_sts) & mask) == mask)
 			return 0;
 		udelay(10);
 	}
@@ -210,18 +237,13 @@ int meson_amvdec_dmc_park(struct amvdec_core *core, u32 mask)
 
 void meson_amvdec_dmc_unpark(struct amvdec_core *core, u32 mask)
 {
-	static void __iomem *dmc_base;
 	u32 val;
 
-	/* G12 physical addresses: not the reset/DMC blocks of older SoCs */
-	if (!amvdec_is_g12(core))
+	if (!amvdec_has_dmc(core))
 		return;
 
-	if (!amvdec_map(G12A_DMC_BASE, G12A_DMC_SIZE, &dmc_base))
-		return;
-
-	val = readl(dmc_base + DMC_REQ_CTRL);
-	writel(val | mask, dmc_base + DMC_REQ_CTRL);
+	val = readl(core->dmc_base + DMC_REQ_CTRL);
+	writel(val | mask, core->dmc_base + DMC_REQ_CTRL);
 }
 
 void meson_amvdec_dmc_pipeline_reset(struct amvdec_core *core)
@@ -236,6 +258,51 @@ void meson_amvdec_dmc_pipeline_reset(struct amvdec_core *core)
 		return;
 
 	writel(RESET7_DMC_PIPEL, reset7);
+}
+
+int meson_amvdec_power_domain_on(struct amvdec_core *core,
+				 enum amvdec_power_domain pd)
+{
+	return pm_runtime_resume_and_get(core->pd_list->pd_devs[pd]);
+}
+
+void meson_amvdec_power_domain_off(struct amvdec_core *core,
+				   enum amvdec_power_domain pd)
+{
+	pm_runtime_put_sync(core->pd_list->pd_devs[pd]);
+}
+
+/*
+ * Amlogic microcode images may carry a 512-byte header: a little-endian
+ * "CODE" magic, with the payload size at offset 0xc8.
+ */
+#define AMVDEC_FW_HEADER_SIZE	512
+#define AMVDEC_FW_HEADER_MAGIC	0x434f4445
+#define AMVDEC_FW_HEADER_DATA_SIZE	0xc8
+
+int meson_amvdec_firmware_payload(struct device *dev, const struct firmware *fw,
+				  const u8 **data, size_t *size)
+{
+	u32 data_size;
+
+	*data = fw->data;
+	*size = fw->size;
+
+	if (fw->size < AMVDEC_FW_HEADER_SIZE ||
+	    get_unaligned_le32(fw->data) != AMVDEC_FW_HEADER_MAGIC)
+		return 0;
+
+	data_size = get_unaligned_le32(fw->data + AMVDEC_FW_HEADER_DATA_SIZE);
+	if (data_size > fw->size - AMVDEC_FW_HEADER_SIZE) {
+		dev_err(dev, "Firmware payload size %u exceeds the image\n",
+			data_size);
+		return -EINVAL;
+	}
+
+	*data = fw->data + AMVDEC_FW_HEADER_SIZE;
+	*size = data_size;
+
+	return 0;
 }
 
 u32 meson_amvdec_read_dos(struct amvdec_core *core, u32 reg)
