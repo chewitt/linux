@@ -190,6 +190,28 @@ static int vp9_update_header(struct amvdec_core *core, struct vb2_buffer *buf)
 	return new_frame_size;
 }
 
+/*
+ * Without an ESPARSER, copy the payload into the VIFIFO ring and publish the
+ * new write pointer. The caller has checked that the ring has room.
+ */
+static int esparser_sw_write(struct amvdec_session *sess, const u8 *data,
+			     u32 size)
+{
+	struct amvdec_ops *vdec_ops = sess->fmt_out->vdec_ops;
+	u32 first = min(size, sess->vififo_size - sess->sw_wp);
+
+	memcpy(sess->vififo_vaddr + sess->sw_wp, data, first);
+	if (size > first)
+		memcpy(sess->vififo_vaddr, data + first, size - first);
+	sess->sw_wp = (sess->sw_wp + size) % sess->vififo_size;
+
+	/* Make the data visible before the decoder sees the new pointer. */
+	dma_wmb();
+	vdec_ops->set_vififo_wp(sess, sess->vififo_paddr + sess->sw_wp);
+
+	return 1;
+}
+
 static int
 esparser_write_data(struct amvdec_core *core, dma_addr_t addr, u32 size)
 {
@@ -220,7 +242,8 @@ static u32 esparser_vififo_get_free_space(struct amvdec_session *sess)
 	struct amvdec_core *core = sess->core;
 
 	vififo_usage  = vdec_ops->vififo_level(sess);
-	vififo_usage += meson_amvdec_read_parser(core, PARSER_VIDEO_HOLE);
+	if (amvdec_has_esparser(core))
+		vififo_usage += meson_amvdec_read_parser(core, PARSER_VIDEO_HOLE);
 	vififo_usage += (6 * SZ_1K); // 6 KiB internal fifo
 
 	dev_dbg(core->dev,
@@ -241,8 +264,13 @@ static u32 esparser_vififo_get_free_space(struct amvdec_session *sess)
 static u32 esparser_get_offset(struct amvdec_session *sess)
 {
 	struct amvdec_core *core = sess->core;
-	u32 offset = meson_amvdec_read_parser(core, PARSER_VIDEO_WP) -
-		     sess->vififo_paddr;
+	u32 offset;
+
+	if (amvdec_has_esparser(core))
+		offset = meson_amvdec_read_parser(core, PARSER_VIDEO_WP) -
+			 sess->vififo_paddr;
+	else
+		offset = sess->sw_wp;
 
 	if (offset < sess->last_offset)
 		sess->wrap_count++;
@@ -355,7 +383,7 @@ esparser_queue(struct amvdec_session *sess, struct vb2_v4l2_buffer *vbuf)
 		return -EAGAIN;
 	v4l2_m2m_src_buf_remove_by_buf(sess->m2m_ctx, vbuf);
 
-	offset = esparser_get_offset(sess);
+	offset = direct_h264 ? 0 : esparser_get_offset(sess);
 
 	struct media_request *req = vb->req_obj.req;
 	struct v4l2_ctrl *ctrl;
@@ -957,9 +985,14 @@ esparser_queue(struct amvdec_session *sess, struct vb2_v4l2_buffer *vbuf)
 	atomic_inc(&sess->esparser_queued_bufs);
 	meson_amvdec_trace(sess, AMVDEC_TR_FEED, offset, payload_size + pad_size,
 		     (u32)(vb->timestamp / 1000));
-	ret = esparser_write_data(core, phy, payload_size + pad_size);
+	if (amvdec_has_esparser(core))
+		ret = esparser_write_data(core, phy, payload_size + pad_size);
+	else
+		ret = esparser_sw_write(sess, data, payload_size + pad_size);
 	meson_amvdec_trace(sess, AMVDEC_TR_FED, ret,
-		     meson_amvdec_read_parser(core, PARSER_VIDEO_WP), 0);
+		     amvdec_has_esparser(core) ?
+		     meson_amvdec_read_parser(core, PARSER_VIDEO_WP) :
+		     sess->vififo_paddr + sess->sw_wp, 0);
 
 	if (ret > 0) {
 		/* Only a successful feed establishes the firmware's cached headers. */
@@ -976,7 +1009,8 @@ esparser_queue(struct amvdec_session *sess, struct vb2_v4l2_buffer *vbuf)
 		dev_warn_ratelimited(core->dev, "esparser: input parsing error\n");
 		meson_amvdec_remove_ts(sess, vb->timestamp);
 		esparser_src_error(sess, vbuf);
-		meson_amvdec_write_parser(core, PARSER_FETCH_CMD, 0);
+		if (amvdec_has_esparser(core))
+			meson_amvdec_write_parser(core, PARSER_FETCH_CMD, 0);
 
 		return 0;
 	}
@@ -986,6 +1020,9 @@ esparser_queue(struct amvdec_session *sess, struct vb2_v4l2_buffer *vbuf)
 		 sess->fmt_out->pixfmt, vb->index, vb->timestamp, payload_size, ret,
 		 atomic_read(&sess->esparser_queued_bufs));
 
+	if (sess->fmt_out->pixfmt == V4L2_PIX_FMT_HEVC_SLICE ||
+	    sess->fmt_out->pixfmt == V4L2_PIX_FMT_VP9_FRAME)
+		meson_amvdec_hevc_release(sess);
 	if (sess->fmt_out->pixfmt == V4L2_PIX_FMT_HEVC_SLICE)
 		meson_amvdec_codec_hevc_request_input_ready(sess, vb->timestamp,
 							  offset + payload_size);
@@ -1078,6 +1115,13 @@ int meson_amvdec_esparser_power_up(struct amvdec_session *sess)
 {
 	struct amvdec_core *core = sess->core;
 	struct amvdec_ops *vdec_ops = sess->fmt_out->vdec_ops;
+
+	if (!amvdec_has_esparser(core)) {
+		sess->sw_wp = 0;
+		if (vdec_ops->conf_esparser)
+			vdec_ops->conf_esparser(sess);
+		return 0;
+	}
 
 	reset_control_reset(core->esparser_reset);
 	meson_amvdec_write_parser(core, PARSER_CONFIG,

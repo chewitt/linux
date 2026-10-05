@@ -11,6 +11,9 @@
 
 #include "amvdec.h"
 
+struct firmware;
+struct platform_device;
+
 /*
  * G12A, G12B and SM1 route decoder DDR requests through the DMC and provide
  * RESET7 pipeline resets; GXBB/GXL/GXM do not.
@@ -20,6 +23,22 @@ static inline bool amvdec_is_g12(struct amvdec_core *core)
 	return core->platform->revision == AMVDEC_REVISION_G12A ||
 	       core->platform->revision == AMVDEC_REVISION_SM1;
 }
+
+/* S4 and later have no ESPARSER and switch power through the secure monitor */
+static inline bool amvdec_has_esparser(struct amvdec_core *core)
+{
+	return core->platform->revision < AMVDEC_REVISION_S4;
+}
+
+static inline bool amvdec_has_dmc(struct amvdec_core *core)
+{
+	return core->dmc_base;
+}
+
+enum amvdec_power_domain {
+	AMVDEC_PD_VDEC_1,
+	AMVDEC_PD_HEVC,
+};
 
 void *meson_amvdec_dma_alloc_guarded(struct device *dev, size_t size,
 			       dma_addr_t *dma_handle, gfp_t gfp,
@@ -86,10 +105,17 @@ void meson_amvdec_write_parser(struct amvdec_core *core, u32 reg, u32 val);
  * DMC registers are outside the decoder power domains; DOS registers require
  * powered memories and removed isolation.
  */
+int meson_amvdec_dmc_init(struct platform_device *pdev, struct amvdec_core *core);
 int meson_amvdec_dmc_park(struct amvdec_core *core, u32 mask);
 void meson_amvdec_dmc_unpark(struct amvdec_core *core, u32 mask);
 /* G12B latches DMC-side decode pipeline state; pulse it before unparking */
 void meson_amvdec_dmc_pipeline_reset(struct amvdec_core *core);
+int meson_amvdec_power_domain_on(struct amvdec_core *core,
+				 enum amvdec_power_domain pd);
+void meson_amvdec_power_domain_off(struct amvdec_core *core,
+				   enum amvdec_power_domain pd);
+int meson_amvdec_firmware_payload(struct device *dev, const struct firmware *fw,
+				  const u8 **data, size_t *size);
 
 /* Helpers for the Amlogic compressed framebuffer format */
 u32 meson_amvdec_amfbc_body_size(u32 width, u32 height, u32 is_10bit, u32 use_mmu);

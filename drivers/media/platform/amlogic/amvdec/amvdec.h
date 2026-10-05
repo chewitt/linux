@@ -80,7 +80,10 @@ struct amvdec_session;
  *
  * @dos_base: DOS memory base address
  * @esparser_base: PARSER memory base address
+ * @dmc_base: DMC request control base address
+ * @dmc_chan_sts: offset of the DMC channel status register
  * @regmap_ao: regmap for the AO bus
+ * @pd_list: VDEC_1 and VDEC_HEVC power domains
  * @dev: core device
  * @dev_dec: decoder device
  * @platform: platform-specific data
@@ -92,6 +95,7 @@ struct amvdec_session;
  * @amvdec_hevcf_clk: VDEC_HEVCF clock
  * @esparser_completion: completion of the current parser DMA fetch
  * @esparser_reset: RESET for the PARSER
+ * @hevc_pipe_reset: DMC-side HEVC pipeline resets, on SoCs that expose them
  * @vdev_dec: video device for the decoder
  * @v4l2_dev: v4l2 device
  * @cur_sess: current decoding session
@@ -100,7 +104,10 @@ struct amvdec_session;
 struct amvdec_core {
 	void __iomem *dos_base;
 	void __iomem *esparser_base;
+	void __iomem *dmc_base;
+	u32 dmc_chan_sts;
 	struct regmap *regmap_ao;
+	struct dev_pm_domain_list *pd_list;
 
 	struct device *dev;
 	struct device *dev_dec;
@@ -123,6 +130,7 @@ struct amvdec_core {
 
 	struct completion esparser_completion;
 	struct reset_control *esparser_reset;
+	struct reset_control *hevc_pipe_reset;
 
 	struct video_device *vdev_dec;
 	struct v4l2_device v4l2_dev;
@@ -150,12 +158,15 @@ struct amvdec_core {
  * @conf_esparser: mandatory call to let the vdec configure the ESPARSER
  * @vififo_level: mandatory call to get the current amount of data
  *		  in the VIFIFO
+ * @set_vififo_wp: publish the VIFIFO write pointer when the host fills the
+ *		   FIFO itself, on SoCs without an ESPARSER
  */
 struct amvdec_ops {
 	int (*start)(struct amvdec_session *sess);
 	int (*stop)(struct amvdec_session *sess);
 	void (*conf_esparser)(struct amvdec_session *sess);
 	u32 (*vififo_level)(struct amvdec_session *sess);
+	void (*set_vififo_wp)(struct amvdec_session *sess, u32 wp);
 };
 
 /**
@@ -230,6 +241,10 @@ struct amvdec_format {
 	struct amvdec_codec_ops *codec_ops;
 
 	char *firmware_path;
+	/* Secure-world microcode index; zero loads firmware_path by DMA. */
+	u32 tee_format;
+	/* Optional secure-world microcode to try first, with swap enabled. */
+	u32 tee_format_swap;
 	u32 pixfmts_cap[4];
 };
 
@@ -316,6 +331,7 @@ struct amvdec_feed_scratch {
  * @ts_spinlock: spinlock for the timestamps list
  * @last_irq_jiffies: tracks last time the vdec triggered an IRQ
  * @last_offset: tracks last offset of vififo
+ * @sw_wp: VIFIFO write offset kept by the CPU when there is no ESPARSER
  * @wrap_count: number of times the vififo wrapped around
  * @fw_idx_to_vb2_idx: firmware buffer index to vb2 buffer index
  * @vb2_idx_to_fw_idx: vb2 buffer index to firmware buffer index, the
@@ -387,6 +403,8 @@ struct amvdec_session {
 	u8 hevc_cached_headers[8192];
 	u32 hevc_cached_headers_len;
 	bool hevc_headers_valid;
+	/* HEVC core loaded and configured, held until its first input */
+	bool hevc_start_deferred;
 
 	unsigned int streamon_cap, streamon_out;
 	unsigned int sequence_cap, sequence_out;
@@ -407,6 +425,7 @@ struct amvdec_session {
 
 	u64 last_irq_jiffies;
 	u32 last_offset;
+	u32 sw_wp;
 	u32 wrap_count;
 	u32 fw_idx_to_vb2_idx[32];
 	u32 vb2_idx_to_fw_idx[32];

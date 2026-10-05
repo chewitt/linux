@@ -7,6 +7,7 @@
  */
 
 #include "amvdec_platform.h"
+#include "amvdec_tee.h"
 #include "amvdec.h"
 
 #include "amvdec_1.h"
@@ -384,6 +385,74 @@ static const struct amvdec_format amvdec_formats_sm1[] = {
 	},
 };
 
+static const struct amvdec_format amvdec_formats_s4[] = {
+	{
+		.pixfmt = V4L2_PIX_FMT_H264_SLICE,
+		.profile_ctrl = V4L2_CID_MPEG_VIDEO_H264_PROFILE,
+		.default_profile = V4L2_MPEG_VIDEO_H264_PROFILE_MAIN,
+		.level_ctrl = V4L2_CID_MPEG_VIDEO_H264_LEVEL,
+		.default_level = V4L2_MPEG_VIDEO_H264_LEVEL_4_1,
+		.profiles = AMVDEC_H264_PROFILES,
+		.max_level = V4L2_MPEG_VIDEO_H264_LEVEL_5_1,
+		.max_bit_depth = 8,
+		.min_buffers = 16,
+		.max_buffers = 32,
+		.max_width = 3840,
+		.max_height = 2160,
+		.vdec_ops = &meson_amvdec_1_ops,
+		.codec_ops = &meson_amvdec_codec_h264_multi_ops,
+		.tee_format = AMVDEC_TEE_FW_H264_MULTI,
+		.pixfmts_cap = { V4L2_PIX_FMT_NV12M, 0 },
+		.flags = V4L2_FMT_FLAG_COMPRESSED,
+	}, {
+		.pixfmt = V4L2_PIX_FMT_MPEG2_SLICE,
+		.min_buffers = 2,
+		.max_buffers = 24,
+		.max_width = 1920,
+		.max_height = 1088,
+		.vdec_ops = &meson_amvdec_1_ops,
+		.codec_ops = &meson_amvdec_codec_mpeg12_sl_ops,
+		.tee_format = AMVDEC_TEE_FW_MPEG12_MULTI,
+		.pixfmts_cap = { V4L2_PIX_FMT_NV12M, 0 },
+		.flags = V4L2_FMT_FLAG_COMPRESSED,
+	}, {
+		.pixfmt = V4L2_PIX_FMT_HEVC_SLICE,
+		.profile_ctrl = V4L2_CID_MPEG_VIDEO_HEVC_PROFILE,
+		.default_profile = V4L2_MPEG_VIDEO_HEVC_PROFILE_MAIN,
+		.profiles = BIT(V4L2_MPEG_VIDEO_HEVC_PROFILE_MAIN) |
+			    BIT(V4L2_MPEG_VIDEO_HEVC_PROFILE_MAIN_10),
+		.max_bit_depth = 10,
+		.min_buffers = 16,
+		.max_buffers = 24,
+		.max_width = 4096,
+		.max_height = 2304,
+		.vdec_ops = &meson_amvdec_hevc_ops,
+		.codec_ops = &meson_amvdec_codec_hevc_ops,
+		.tee_format = AMVDEC_TEE_FW_HEVC_MMU,
+		.tee_format_swap = AMVDEC_TEE_FW_HEVC_MMU_SWAP,
+		.pixfmts_cap = { V4L2_PIX_FMT_NV12M,
+				 V4L2_PIX_FMT_AM21C, 0 },
+		.flags = V4L2_FMT_FLAG_COMPRESSED,
+	}, {
+		.pixfmt = V4L2_PIX_FMT_VP9_FRAME,
+		.profile_ctrl = V4L2_CID_MPEG_VIDEO_VP9_PROFILE,
+		.default_profile = V4L2_MPEG_VIDEO_VP9_PROFILE_0,
+		.profiles = BIT(V4L2_MPEG_VIDEO_VP9_PROFILE_0) |
+			    BIT(V4L2_MPEG_VIDEO_VP9_PROFILE_2),
+		.max_bit_depth = 10,
+		.min_buffers = 16,
+		.max_buffers = 24,
+		.max_width = 3840,
+		.max_height = 2160,
+		.vdec_ops = &meson_amvdec_hevc_ops,
+		.codec_ops = &meson_amvdec_codec_vp9_ops,
+		.tee_format = AMVDEC_TEE_FW_VP9_MMU,
+		.pixfmts_cap = { V4L2_PIX_FMT_NV12M,
+				 V4L2_PIX_FMT_AM21C, 0 },
+		.flags = V4L2_FMT_FLAG_COMPRESSED,
+	},
+};
+
 const struct amvdec_platform meson_amvdec_platform_gxbb = {
 	.formats = amvdec_formats_gxbb,
 	.num_formats = ARRAY_SIZE(amvdec_formats_gxbb),
@@ -418,6 +487,12 @@ const struct amvdec_platform meson_amvdec_platform_sm1 = {
 	.formats = amvdec_formats_sm1,
 	.num_formats = ARRAY_SIZE(amvdec_formats_sm1),
 	.revision = AMVDEC_REVISION_SM1,
+};
+
+const struct amvdec_platform meson_amvdec_platform_s4 = {
+	.formats = amvdec_formats_s4,
+	.num_formats = ARRAY_SIZE(amvdec_formats_s4),
+	.revision = AMVDEC_REVISION_S4,
 };
 
 MODULE_FIRMWARE("meson/vdec/g12a_h264_multi.bin");

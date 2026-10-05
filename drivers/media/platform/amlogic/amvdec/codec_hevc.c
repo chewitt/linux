@@ -496,7 +496,7 @@ codec_hevc_setup_workspace(struct amvdec_session *sess,
 	meson_amvdec_write_dos(core, HEVC_PPS_BUFFER, wkaddr + PPS_OFFSET);
 	meson_amvdec_write_dos(core, HEVC_SAO_UP, wkaddr + SAO_UP_OFFSET);
 
-	if (codec_hevc_use_mmu(revision, sess->pixfmt_cap, hevc->is_10bit)) {
+	if (codec_hevc_use_mmu(sess, sess->pixfmt_cap, hevc->is_10bit)) {
 		meson_amvdec_write_dos(core, HEVC_SAO_MMU_VH0_ADDR,
 				 wkaddr + MMU_VBH_OFFSET);
 		meson_amvdec_write_dos(core, HEVC_SAO_MMU_VH1_ADDR,
@@ -905,8 +905,8 @@ codec_hevc_set_sao(struct amvdec_session *sess, struct hevc_frame *frame)
 	meson_amvdec_write_dos(core, HEVC_SAO_PIC_SIZE_LCU,
 			 (hevc->lcu_x_num - 1) | (hevc->lcu_y_num - 1) << 16);
 
-	if (codec_hevc_use_downsample(sess->pixfmt_cap, hevc->is_10bit) ||
-	    codec_hevc_use_mmu(core->platform->revision, sess->pixfmt_cap,
+	if (codec_hevc_use_downsample(sess, sess->pixfmt_cap, hevc->is_10bit) ||
+	    codec_hevc_use_mmu(sess, sess->pixfmt_cap,
 			       hevc->is_10bit))
 		buf_y_paddr =
 		     meson_amvdec_codec_hevc_fbc_body_addr(&hevc->common, vb->index);
@@ -914,7 +914,7 @@ codec_hevc_set_sao(struct amvdec_session *sess, struct hevc_frame *frame)
 		buf_y_paddr =
 		       vb2_dma_contig_plane_dma_addr(vb, 0);
 
-	if (codec_hevc_use_fbc(sess->pixfmt_cap, hevc->is_10bit)) {
+	if (codec_hevc_use_fbc(sess, sess->pixfmt_cap, hevc->is_10bit)) {
 		if (!buf_y_paddr)
 			return -EINVAL;
 		val = meson_amvdec_read_dos(core, HEVC_SAO_CTRL5) & ~0xff0000;
@@ -936,11 +936,11 @@ codec_hevc_set_sao(struct amvdec_session *sess, struct hevc_frame *frame)
 		meson_amvdec_write_dos(core, HEVC_SAO_C_WPTR, buf_u_v_paddr);
 	}
 
-	if (codec_hevc_use_mmu(core->platform->revision, sess->pixfmt_cap,
+	if (codec_hevc_use_mmu(sess, sess->pixfmt_cap,
 			       hevc->is_10bit)) {
 		dma_addr_t header_adr = vb2_dma_contig_plane_dma_addr(vb, 0);
 
-		if (codec_hevc_use_downsample(sess->pixfmt_cap, hevc->is_10bit))
+		if (codec_hevc_use_downsample(sess, sess->pixfmt_cap, hevc->is_10bit))
 			header_adr = hevc->common.mmu_header_paddr[vb->index];
 		if (!header_adr)
 			return -EINVAL;
@@ -963,7 +963,7 @@ codec_hevc_set_sao(struct amvdec_session *sess, struct hevc_frame *frame)
 				val = 0x54 << 8;
 
 			/* enable first, compressed write */
-			if (codec_hevc_use_fbc(sess->pixfmt_cap,
+			if (codec_hevc_use_fbc(sess, sess->pixfmt_cap,
 					       hevc->is_10bit))
 				val |= BIT(8);
 
@@ -997,7 +997,7 @@ codec_hevc_set_sao(struct amvdec_session *sess, struct hevc_frame *frame)
 	val = meson_amvdec_read_dos(core, HEVC_SAO_CTRL1) & ~0x3ff3;
 	val |= 0xff0; /* Set endianness for 2-bytes swaps (nv12) */
 	if (core->platform->revision < AMVDEC_REVISION_G12A) {
-		if (!codec_hevc_use_fbc(sess->pixfmt_cap, hevc->is_10bit))
+		if (!codec_hevc_use_fbc(sess, sess->pixfmt_cap, hevc->is_10bit))
 			val |= BIT(0); /* disable cm compression */
 		if (sess->pixfmt_cap != V4L2_PIX_FMT_NV12M)
 			val |= BIT(1); /* disable double write */
@@ -1006,7 +1006,7 @@ codec_hevc_set_sao(struct amvdec_session *sess, struct hevc_frame *frame)
 
 	meson_amvdec_write_dos(core, HEVC_SAO_CTRL1, val);
 
-	if (!codec_hevc_use_fbc(sess->pixfmt_cap, hevc->is_10bit)) {
+	if (!codec_hevc_use_fbc(sess, sess->pixfmt_cap, hevc->is_10bit)) {
 		/* no downscale for NV12 */
 		val = meson_amvdec_read_dos(core, HEVC_SAO_CTRL5) & ~0xff0000;
 		meson_amvdec_write_dos(core, HEVC_SAO_CTRL5, val);
@@ -1363,7 +1363,7 @@ static void codec_hevc_set_mcrcc(struct amvdec_session *sess)
 	int l0_cnt = 0;
 	int l1_cnt = 0x7fff;
 
-	if (!codec_hevc_use_fbc(sess->pixfmt_cap, hevc->is_10bit)) {
+	if (!codec_hevc_use_fbc(sess, sess->pixfmt_cap, hevc->is_10bit)) {
 		l0_cnt = hevc->cur_frame->ref_num[0];
 		l1_cnt = hevc->cur_frame->ref_num[1];
 	}
@@ -1446,7 +1446,7 @@ static void codec_hevc_set_ref_list(struct amvdec_session *sess,
 				ref_frame = cur_frame;
 		}
 
-		if (codec_hevc_use_fbc(sess->pixfmt_cap, hevc->is_10bit)) {
+		if (codec_hevc_use_fbc(sess, sess->pixfmt_cap, hevc->is_10bit)) {
 			buf_id_y = ref_frame->vbuf->vb2_buf.index;
 			buf_id_uv = buf_id_y;
 		} else {
@@ -1913,7 +1913,7 @@ static int codec_hevc_process_segment(struct amvdec_session *sess)
 		return -EINVAL;
 	}
 	codec_hevc_update_ldc_flag(hevc);
-	if (codec_hevc_use_mmu(core->platform->revision, sess->pixfmt_cap,
+	if (codec_hevc_use_mmu(sess, sess->pixfmt_cap,
 			       hevc->is_10bit) &&
 	    meson_amvdec_codec_hevc_fill_mmu_map(sess, &hevc->common,
 				    &hevc->cur_frame->vbuf->vb2_buf,
@@ -2099,6 +2099,19 @@ static void codec_hevc_fetch_rpm(struct amvdec_session *sess)
 			hevc->rpm_param.l.data[i + j] =
 				rpm_vaddr[i + 3 - j];
 	}
+
+	/*
+	 * Current vendor microcode, as loaded through the secure world, has
+	 * room for 12 tile columns. Drop the extra entries to match the layout
+	 * of the older images.
+	 */
+	if (sess->fmt_out->tee_format) {
+		u16 *data = hevc->rpm_param.l.data;
+		size_t tw = offsetof(union rpm_param, p.tile_width) / sizeof(u16);
+
+		memmove(&data[tw + 8], &data[tw + 12],
+			(RPM_SIZE - tw - 12) * sizeof(u16));
+	}
 }
 
 static void codec_hevc_configure(struct amvdec_session *sess)
@@ -2109,9 +2122,9 @@ static void codec_hevc_configure(struct amvdec_session *sess)
 	dev_dbg(core->dev,
 		"storage depth=%u rpm_depth=%u mmu=%u fbc=%u downsample=%u width=%u height=%u\n",
 		 sess->bitdepth, hevc->rpm_param.p.bit_depth,
-		 codec_hevc_use_mmu(core->platform->revision, sess->pixfmt_cap, hevc->is_10bit),
-		 codec_hevc_use_fbc(sess->pixfmt_cap, hevc->is_10bit),
-		 codec_hevc_use_downsample(sess->pixfmt_cap, hevc->is_10bit),
+		 codec_hevc_use_mmu(sess, sess->pixfmt_cap, hevc->is_10bit),
+		 codec_hevc_use_fbc(sess, sess->pixfmt_cap, hevc->is_10bit),
+		 codec_hevc_use_downsample(sess, sess->pixfmt_cap, hevc->is_10bit),
 		 sess->width, sess->height);
 
 	if (meson_amvdec_codec_hevc_setup_buffers(sess, &hevc->common, hevc->is_10bit)) {
@@ -2121,10 +2134,10 @@ static void codec_hevc_configure(struct amvdec_session *sess)
 
 	/*
 	 * GXBB, GXL and GXM firmware moves RPM from scratch 1 to scratch 8 during
-	 * boot and reuses scratch 1 as parser state. Only G12A, G12B and SM1 need
-	 * the workspace map replay after MMU allocation.
+	 * boot and reuses scratch 1 as parser state. G12A and later need the
+	 * workspace map replay after MMU allocation.
 	 */
-	if (amvdec_is_g12(core))
+	if (core->platform->revision >= AMVDEC_REVISION_G12A)
 		codec_hevc_setup_workspace(sess, hevc);
 	meson_amvdec_codec_hevc_setup_decode_head(sess, hevc->is_10bit);
 	codec_hevc_process_segment_header(sess);

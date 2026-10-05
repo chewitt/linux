@@ -11,6 +11,8 @@
 #include <linux/io.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>
+#include <linux/pm_domain.h>
+#include <linux/reset.h>
 #include <linux/mfd/syscon.h>
 #include <linux/slab.h>
 #include <linux/interrupt.h>
@@ -119,7 +121,8 @@ static int vdec_poweroff(struct amvdec_session *sess)
 	sess->should_stop = 1;
 	vdec_wait_inactive(sess);
 
-	meson_amvdec_esparser_quiesce(sess->core);
+	if (amvdec_has_esparser(sess->core))
+		meson_amvdec_esparser_quiesce(sess->core);
 
 	/*
 	 * Detach the session and synchronize its IRQ before freeing codec memory.
@@ -1402,6 +1405,8 @@ static const struct of_device_id vdec_dt_match[] = {
 	  .data = &meson_amvdec_platform_g12a },
 	{ .compatible = "amlogic,sm1-vdec",
 	  .data = &meson_amvdec_platform_sm1 },
+	{ .compatible = "amlogic,s4-vdec",
+	  .data = &meson_amvdec_platform_s4 },
 	{}
 };
 MODULE_DEVICE_TABLE(of, vdec_dt_match);
@@ -1421,6 +1426,17 @@ static int vdec_request_validate(struct media_request *req)
 static const struct media_device_ops vdec_media_ops = {
 	.req_validate = vdec_request_validate,
 	.req_queue = v4l2_m2m_request_queue,
+};
+
+static const char * const vdec_pd_names[] = {
+	[AMVDEC_PD_VDEC_1] = "vdec",
+	[AMVDEC_PD_HEVC] = "hevc",
+};
+
+static const struct dev_pm_domain_attach_data vdec_pd_data = {
+	.pd_names = vdec_pd_names,
+	.num_pd_names = ARRAY_SIZE(vdec_pd_names),
+	.pd_flags = PD_FLAG_NO_DEV_LINK,
 };
 
 static int vdec_probe(struct platform_device *pdev)
@@ -1444,28 +1460,47 @@ static int vdec_probe(struct platform_device *pdev)
 	if (!core->fw_vaddr)
 		return -ENOMEM;
 
+	of_id = of_match_node(vdec_dt_match, dev->of_node);
+	core->platform = of_id->data;
+
 	core->dos_base = devm_platform_ioremap_resource_byname(pdev, "dos");
 	if (IS_ERR(core->dos_base))
 		return PTR_ERR(core->dos_base);
 
-	core->esparser_base = devm_platform_ioremap_resource_byname(pdev, "esparser");
-	if (IS_ERR(core->esparser_base))
-		return PTR_ERR(core->esparser_base);
+	if (amvdec_has_esparser(core)) {
+		core->esparser_base =
+			devm_platform_ioremap_resource_byname(pdev, "esparser");
+		if (IS_ERR(core->esparser_base))
+			return PTR_ERR(core->esparser_base);
 
-	core->regmap_ao =
-		syscon_regmap_lookup_by_phandle(dev->of_node,
-						"amlogic,ao-sysctrl");
-	if (IS_ERR(core->regmap_ao)) {
-		dev_err(dev, "Couldn't regmap AO sysctrl\n");
-		return PTR_ERR(core->regmap_ao);
+		core->regmap_ao =
+			syscon_regmap_lookup_by_phandle(dev->of_node,
+							"amlogic,ao-sysctrl");
+		if (IS_ERR(core->regmap_ao)) {
+			dev_err(dev, "Couldn't regmap AO sysctrl\n");
+			return PTR_ERR(core->regmap_ao);
+		}
+	} else {
+		ret = devm_pm_domain_attach_list(dev, &vdec_pd_data,
+						 &core->pd_list);
+		if (ret < 0)
+			return dev_err_probe(dev, ret,
+					     "Couldn't attach power domains\n");
+
+		core->hevc_pipe_reset =
+			devm_reset_control_array_get_optional_exclusive(dev);
+		if (IS_ERR(core->hevc_pipe_reset))
+			return dev_err_probe(dev, PTR_ERR(core->hevc_pipe_reset),
+					     "Couldn't get HEVC pipeline resets\n");
 	}
+
+	ret = meson_amvdec_dmc_init(pdev, core);
+	if (ret)
+		return dev_err_probe(dev, ret, "Couldn't map the DMC\n");
 
 	core->canvas = meson_canvas_get(dev);
 	if (IS_ERR(core->canvas))
 		return PTR_ERR(core->canvas);
-
-	of_id = of_match_node(vdec_dt_match, dev->of_node);
-	core->platform = of_id->data;
 
 	if (core->platform->revision == AMVDEC_REVISION_G12A ||
 	    core->platform->revision == AMVDEC_REVISION_SM1) {
@@ -1474,9 +1509,11 @@ static int vdec_probe(struct platform_device *pdev)
 			return -EPROBE_DEFER;
 	}
 
-	core->dos_parser_clk = devm_clk_get(dev, "dos_parser");
-	if (IS_ERR(core->dos_parser_clk))
-		return -EPROBE_DEFER;
+	if (amvdec_has_esparser(core)) {
+		core->dos_parser_clk = devm_clk_get(dev, "dos_parser");
+		if (IS_ERR(core->dos_parser_clk))
+			return -EPROBE_DEFER;
+	}
 
 	core->dos_clk = devm_clk_get(dev, "dos");
 	if (IS_ERR(core->dos_clk))
@@ -1501,9 +1538,11 @@ static int vdec_probe(struct platform_device *pdev)
 	if (ret)
 		return ret;
 
-	ret = meson_amvdec_esparser_init(pdev, core);
-	if (ret)
-		return ret;
+	if (amvdec_has_esparser(core)) {
+		ret = meson_amvdec_esparser_init(pdev, core);
+		if (ret)
+			return ret;
+	}
 
 	ret = v4l2_device_register(dev, &core->v4l2_dev);
 	if (ret) {
