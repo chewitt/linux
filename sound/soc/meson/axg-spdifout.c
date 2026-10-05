@@ -5,6 +5,7 @@
 
 #include <linux/clk.h>
 #include <linux/module.h>
+#include <linux/of.h>
 #include <linux/of_platform.h>
 #include <linux/regmap.h>
 #include <sound/soc.h>
@@ -35,7 +36,7 @@
 #define  SPDIFOUT_CTRL0_VSEL		BIT(18)
 #define  SPDIFOUT_CTRL0_VSET		BIT(17)
 #define  SPDIFOUT_CTRL0_MASK_MASK	GENMASK(11, 4)
-#define  SPDIFOUT_CTRL0_MASK(x)		((x) << 4)
+#define  SPDIFOUT_CTRL0_S4_MASK_MASK	GENMASK(15, 0)
 #define SPDIFOUT_CTRL1			0x10
 #define  SPDIFOUT_CTRL1_MSB_POS_MASK	GENMASK(12, 8)
 #define  SPDIFOUT_CTRL1_MSB_POS(x)	((x) << 8)
@@ -59,10 +60,15 @@
 
 #define SPDIFOUT_CH_MAX			8
 
+struct axg_spdifout_match_data {
+	u32 ctrl0_mask;
+};
+
 struct axg_spdifout {
 	struct regmap *map;
 	struct clk *mclk;
 	struct clk *pclk;
+	const struct axg_spdifout_match_data *data;
 	u8 iec_status[AES_IEC958_STATUS_SIZE];
 };
 
@@ -137,10 +143,11 @@ static int axg_spdifout_sample_fmt(struct snd_pcm_hw_params *params,
 		return -EINVAL;
 	}
 
-	val = SPDIFOUT_CTRL0_MASK(params_channels(params) > 1 ? 0x3 : 0x1);
+	val = (params_channels(params) > 1 ? 0x3 : 0x1) <<
+	      __ffs(priv->data->ctrl0_mask);
 
 	regmap_update_bits(priv->map, SPDIFOUT_CTRL0,
-			   SPDIFOUT_CTRL0_MASK_MASK, val);
+			   priv->data->ctrl0_mask, val);
 
 	/* FIFO data are arranged in chunks of 64bits */
 	switch (params_physical_width(params)) {
@@ -468,8 +475,22 @@ static const struct regmap_config axg_spdifout_regmap_cfg = {
 	.max_register	= SPDIFOUT_MUTE_VAL,
 };
 
+static const struct axg_spdifout_match_data axg_spdifout_match_data = {
+	.ctrl0_mask = SPDIFOUT_CTRL0_MASK_MASK,
+};
+
+static const struct axg_spdifout_match_data s4_spdifout_match_data = {
+	.ctrl0_mask = SPDIFOUT_CTRL0_S4_MASK_MASK,
+};
+
 static const struct of_device_id axg_spdifout_of_match[] = {
-	{ .compatible = "amlogic,axg-spdifout", },
+	{
+		.compatible = "amlogic,axg-spdifout",
+		.data = &axg_spdifout_match_data,
+	}, {
+		.compatible = "amlogic,s4-spdifout",
+		.data = &s4_spdifout_match_data,
+	},
 	{}
 };
 MODULE_DEVICE_TABLE(of, axg_spdifout_of_match);
@@ -485,6 +506,8 @@ static int axg_spdifout_probe(struct platform_device *pdev)
 	if (!priv)
 		return -ENOMEM;
 	platform_set_drvdata(pdev, priv);
+
+	priv->data = of_device_get_match_data(dev);
 
 	ret = snd_pcm_create_iec958_consumer_default(priv->iec_status,
 						     sizeof(priv->iec_status));
