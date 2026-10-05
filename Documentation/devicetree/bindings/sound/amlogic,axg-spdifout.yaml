@@ -16,6 +16,7 @@ properties:
       - items:
           - enum:
               - amlogic,g12a-spdifout
+              - amlogic,s4-spdifout
               - amlogic,sm1-spdifout
           - const: amlogic,axg-spdifout
 
@@ -54,6 +55,7 @@ allOf:
           contains:
             enum:
               - amlogic,g12a-spdifout
+              - amlogic,s4-spdifout
               - amlogic,sm1-spdifout
     then:
       required:
