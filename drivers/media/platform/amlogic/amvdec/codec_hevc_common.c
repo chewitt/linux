@@ -204,17 +204,23 @@ const u16 meson_amvdec_hevc_parser_cmd[] = {
 void meson_amvdec_codec_hevc_setup_decode_head(struct amvdec_session *sess, int is_10bit)
 {
 	struct amvdec_core *core = sess->core;
-	u32 use_mmu = codec_hevc_use_mmu(core->platform->revision,
-					 sess->pixfmt_cap, is_10bit);
+	u32 use_mmu = codec_hevc_use_mmu(sess, sess->pixfmt_cap, is_10bit);
 	u32 body_size = meson_amvdec_amfbc_body_size(sess->width, sess->height,
 					       is_10bit, use_mmu);
 	u32 head_size = meson_amvdec_amfbc_head_size(sess->width, sess->height);
 
-	if (!codec_hevc_use_fbc(sess->pixfmt_cap, is_10bit)) {
+	if (!codec_hevc_use_fbc(sess, sess->pixfmt_cap, is_10bit)) {
 		/* Enable 2-plane reference read mode */
 		meson_amvdec_write_dos(core, HEVCD_MPP_DECOMP_CTL1, BIT(31));
 		return;
 	}
+
+	/*
+	 * Keep the double write out of the second MMU that newer cores have:
+	 * its page map is never programmed.
+	 */
+	meson_amvdec_clear_dos_bits(core, HEVC_SAO_CTRL5, BIT(15));
+	meson_amvdec_clear_dos_bits(core, HEVC_SAO_CTRL9, BIT(10));
 
 	/* enable mem saving mode for 8-bit */
 	if (!is_10bit)
@@ -222,8 +228,7 @@ void meson_amvdec_codec_hevc_setup_decode_head(struct amvdec_session *sess, int 
 	else
 		meson_amvdec_clear_dos_bits(core, HEVC_SAO_CTRL5, BIT(9));
 
-	if (codec_hevc_use_mmu(core->platform->revision,
-			       sess->pixfmt_cap, is_10bit))
+	if (codec_hevc_use_mmu(sess, sess->pixfmt_cap, is_10bit))
 		meson_amvdec_write_dos(core, HEVCD_MPP_DECOMP_CTL1, BIT(4));
 	else if (!is_10bit)
 		meson_amvdec_write_dos(core, HEVCD_MPP_DECOMP_CTL1, BIT(3));
@@ -246,7 +251,7 @@ static int codec_hevc_setup_buffers_gxbb(struct amvdec_session *sess,
 {
 	struct amvdec_core *core = sess->core;
 	struct vb2_buffer *bufs[MAX_REF_PIC_NUM];
-	const bool fbc = codec_hevc_use_fbc(sess->pixfmt_cap, is_10bit);
+	const bool fbc = codec_hevc_use_fbc(sess, sess->pixfmt_cap, is_10bit);
 	dma_addr_t fill_y = 0, fill_uv = 0;
 	unsigned int idx, n;
 	u32 val;
@@ -328,8 +333,7 @@ static void codec_hevc_setup_buffers_gxl(struct amvdec_session *sess,
 	struct amvdec_core *core = sess->core;
 	struct vb2_buffer *bufs[MAX_REF_PIC_NUM];
 	u32 pixfmt_cap = sess->pixfmt_cap;
-	const u32 revision = core->platform->revision;
-	const bool fbc = codec_hevc_use_fbc(pixfmt_cap, is_10bit);
+	const bool fbc = codec_hevc_use_fbc(sess, pixfmt_cap, is_10bit);
 	dma_addr_t fill_y = 0, fill_uv = 0;
 	unsigned int idx, n;
 	int i;
@@ -353,8 +357,8 @@ static void codec_hevc_setup_buffers_gxl(struct amvdec_session *sess,
 		dma_addr_t buf_y_paddr, buf_uv_paddr = 0;
 
 		if (vb) {
-			if (codec_hevc_use_downsample(pixfmt_cap, is_10bit)) {
-				if (codec_hevc_use_mmu(revision, pixfmt_cap,
+			if (codec_hevc_use_downsample(sess, pixfmt_cap, is_10bit)) {
+				if (codec_hevc_use_mmu(sess, pixfmt_cap,
 						       is_10bit))
 					buf_y_paddr = comm->mmu_header_paddr[idx];
 				else
@@ -541,7 +545,7 @@ void meson_amvdec_codec_hevc_free_fbc_buffers(struct amvdec_session *sess,
 	fbc_pool.dev = dev;
 
 	if (sess->sequence_cap == 0 ||
-	    codec_hevc_use_downsample(sess->pixfmt_cap, sess->bitdepth == 10)) {
+	    codec_hevc_use_downsample(sess, sess->pixfmt_cap, sess->bitdepth == 10)) {
 		/*
 		 * Reuse private downsampling bodies and bodies from sessions that produce
 		 * no frame. Only AM21C bodies can remain on the display.
@@ -590,11 +594,10 @@ static int codec_hevc_alloc_fbc_buffers(struct amvdec_session *sess,
 	u32 use_mmu;
 	u32 am21_size;
 	u32 nr_chunks;
-	const u32 revision = sess->core->platform->revision;
 	const u32 is_10bit = sess->bitdepth == 10 ? 1 : 0;
 	int ret;
 
-	use_mmu = codec_hevc_use_mmu(revision, sess->pixfmt_cap, is_10bit);
+	use_mmu = codec_hevc_use_mmu(sess, sess->pixfmt_cap, is_10bit);
 
 	am21_size = meson_amvdec_amfbc_size(sess->width, sess->height, is_10bit,
 				      use_mmu);
@@ -692,7 +695,7 @@ static int codec_hevc_alloc_fbc_buffers(struct amvdec_session *sess,
 		}
 	}
 
-	if (codec_hevc_use_downsample(sess->pixfmt_cap, is_10bit)) {
+	if (codec_hevc_use_downsample(sess, sess->pixfmt_cap, is_10bit)) {
 		ret = codec_hevc_alloc_mmu_headers(sess, comm);
 		if (ret) {
 			meson_amvdec_codec_hevc_free_fbc_buffers(sess, comm);
@@ -712,8 +715,7 @@ int meson_amvdec_codec_hevc_setup_buffers(struct amvdec_session *sess,
 	int ret;
 
 	/* Allocate the frame MMU map once per session. */
-	if (codec_hevc_use_mmu(core->platform->revision,
-			       sess->pixfmt_cap, is_10bit) &&
+	if (codec_hevc_use_mmu(sess, sess->pixfmt_cap, is_10bit) &&
 	    !comm->mmu_map_vaddr) {
 		comm->mmu_map_vaddr = meson_amvdec_dma_alloc_guarded(dev, MMU_MAP_SIZE,
 							       &comm->mmu_map_paddr,
@@ -723,9 +725,8 @@ int meson_amvdec_codec_hevc_setup_buffers(struct amvdec_session *sess,
 			return -ENOMEM;
 	}
 
-	if (codec_hevc_use_mmu(core->platform->revision,
-			       sess->pixfmt_cap, is_10bit) ||
-	    codec_hevc_use_downsample(sess->pixfmt_cap, is_10bit)) {
+	if (codec_hevc_use_mmu(sess, sess->pixfmt_cap, is_10bit) ||
+	    codec_hevc_use_downsample(sess, sess->pixfmt_cap, is_10bit)) {
 		ret = codec_hevc_alloc_fbc_buffers(sess, comm);
 		if (ret)
 			return ret;
@@ -742,16 +743,15 @@ static bool codec_hevc_frame_buffer_backed(struct amvdec_session *sess,
 					   struct codec_hevc_common *comm,
 					   u32 idx, int is_10bit)
 {
-	const u32 revision = sess->core->platform->revision;
 	const u32 pixfmt = sess->pixfmt_cap;
 
-	if (!codec_hevc_use_fbc(pixfmt, is_10bit) ||
-	    (!codec_hevc_use_downsample(pixfmt, is_10bit) &&
-	     !codec_hevc_use_mmu(revision, pixfmt, is_10bit)))
+	if (!codec_hevc_use_fbc(sess, pixfmt, is_10bit) ||
+	    (!codec_hevc_use_downsample(sess, pixfmt, is_10bit) &&
+	     !codec_hevc_use_mmu(sess, pixfmt, is_10bit)))
 		return true;	/* the vb2 planes are the frame */
 
-	if (codec_hevc_use_downsample(pixfmt, is_10bit) &&
-	    codec_hevc_use_mmu(revision, pixfmt, is_10bit) &&
+	if (codec_hevc_use_downsample(sess, pixfmt, is_10bit) &&
+	    codec_hevc_use_mmu(sess, pixfmt, is_10bit) &&
 	    !comm->mmu_header_paddr[idx])
 		return false;
 
@@ -767,14 +767,14 @@ static dma_addr_t codec_hevc_anc_y_addr(struct amvdec_session *sess,
 	u32 idx = vb->index;
 
 	if (revision == AMVDEC_REVISION_GXBB)
-		return codec_hevc_use_fbc(sess->pixfmt_cap, is_10bit) ?
+		return codec_hevc_use_fbc(sess, sess->pixfmt_cap, is_10bit) ?
 			comm->fbc_buffer_paddr[idx] :
 			vb2_dma_contig_plane_dma_addr(vb, 0);
 
-	if (!codec_hevc_use_downsample(sess->pixfmt_cap, is_10bit))
+	if (!codec_hevc_use_downsample(sess, sess->pixfmt_cap, is_10bit))
 		return vb2_dma_contig_plane_dma_addr(vb, 0);
 
-	return codec_hevc_use_mmu(revision, sess->pixfmt_cap, is_10bit) ?
+	return codec_hevc_use_mmu(sess, sess->pixfmt_cap, is_10bit) ?
 		comm->mmu_header_paddr[idx] : comm->fbc_buffer_paddr[idx];
 }
 
@@ -820,8 +820,7 @@ int meson_amvdec_codec_hevc_fill_mmu_map(struct amvdec_session *sess,
 	if (vb->index >= MAX_REF_PIC_NUM || !mmu_map)
 		return -EINVAL;
 
-	use_mmu = codec_hevc_use_mmu(sess->core->platform->revision,
-				     sess->pixfmt_cap, is_10bit);
+	use_mmu = codec_hevc_use_mmu(sess, sess->pixfmt_cap, is_10bit);
 	if (!use_mmu)
 		return 0;
 
