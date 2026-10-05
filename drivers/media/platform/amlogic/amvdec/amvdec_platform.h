@@ -20,6 +20,7 @@ enum amvdec_revision {
 	AMVDEC_REVISION_GXM,
 	AMVDEC_REVISION_G12A,
 	AMVDEC_REVISION_SM1,
+	AMVDEC_REVISION_S4,
 };
 
 struct amvdec_platform {
@@ -34,5 +35,6 @@ extern const struct amvdec_platform meson_amvdec_platform_gxl;
 extern const struct amvdec_platform meson_amvdec_platform_gxlx;
 extern const struct amvdec_platform meson_amvdec_platform_g12a;
 extern const struct amvdec_platform meson_amvdec_platform_sm1;
+extern const struct amvdec_platform meson_amvdec_platform_s4;
 
 #endif
