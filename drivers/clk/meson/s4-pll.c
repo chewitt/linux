@@ -459,11 +459,12 @@ static struct clk_regmap s4_hdmi_pll_dco = {
 	},
 	.hw.init = &(struct clk_init_data){
 		.name = "hdmi_pll_dco",
-		.ops = &meson_clk_pll_ops,
+		.ops = &meson_clk_pll_ro_ops,
 		.parent_data = (const struct clk_parent_data []) {
 			{ .fw_name = "xtal", }
 		},
 		.num_parents = 1,
+		.flags = CLK_GET_RATE_NOCACHE,
 	},
 };
 
@@ -476,12 +477,12 @@ static struct clk_regmap s4_hdmi_pll_od = {
 	},
 	.hw.init = &(struct clk_init_data){
 		.name = "hdmi_pll_od",
-		.ops = &clk_regmap_divider_ops,
+		.ops = &clk_regmap_divider_ro_ops,
 		.parent_hws = (const struct clk_hw *[]) {
 			&s4_hdmi_pll_dco.hw
 		},
 		.num_parents = 1,
-		.flags = CLK_SET_RATE_PARENT,
+		.flags = CLK_GET_RATE_NOCACHE | CLK_SET_RATE_PARENT,
 	},
 };
 
@@ -494,12 +495,12 @@ static struct clk_regmap s4_hdmi_pll = {
 	},
 	.hw.init = &(struct clk_init_data){
 		.name = "hdmi_pll",
-		.ops = &clk_regmap_divider_ops,
+		.ops = &clk_regmap_divider_ro_ops,
 		.parent_hws = (const struct clk_hw *[]) {
 			&s4_hdmi_pll_od.hw
 		},
 		.num_parents = 1,
-		.flags = CLK_SET_RATE_PARENT,
+		.flags = CLK_GET_RATE_NOCACHE | CLK_SET_RATE_PARENT,
 	},
 };
 
