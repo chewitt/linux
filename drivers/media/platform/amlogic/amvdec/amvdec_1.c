@@ -12,6 +12,7 @@
 
 #include "amvdec_1.h"
 #include "amvdec_helpers.h"
+#include "amvdec_tee.h"
 #include "dos_regs.h"
 
 /* AO Registers */
@@ -69,7 +70,7 @@ static void amvdec_1_core_scrub(struct amvdec_core *core)
 /* Quiesce the powered VDEC_1 core. */
 static void amvdec_1_quiesce_reset(struct amvdec_core *core)
 {
-	if (!amvdec_is_g12(core)) {
+	if (!amvdec_has_dmc(core)) {
 		amvdec_1_core_scrub(core);
 		return;
 	}
@@ -79,6 +80,75 @@ static void amvdec_1_quiesce_reset(struct amvdec_core *core)
 	meson_amvdec_dmc_unpark(core, DMC_REQ_VDEC_1);
 }
 
+static int amvdec_1_power_on(struct amvdec_core *core)
+{
+	if (core->pd_list)
+		return meson_amvdec_power_domain_on(core, AMVDEC_PD_VDEC_1);
+
+	if (core->platform->revision == AMVDEC_REVISION_SM1)
+		regmap_update_bits(core->regmap_ao, AO_RTI_GEN_PWR_SLEEP0,
+				   GEN_PWR_VDEC_1_SM1, 0);
+	else
+		regmap_update_bits(core->regmap_ao, AO_RTI_GEN_PWR_SLEEP0,
+				   GEN_PWR_VDEC_1, 0);
+
+	return 0;
+}
+
+static void amvdec_1_power_off(struct amvdec_core *core)
+{
+	if (core->pd_list) {
+		meson_amvdec_power_domain_off(core, AMVDEC_PD_VDEC_1);
+		return;
+	}
+
+	if (core->platform->revision == AMVDEC_REVISION_SM1)
+		regmap_update_bits(core->regmap_ao, AO_RTI_GEN_PWR_SLEEP0,
+				   GEN_PWR_VDEC_1_SM1, GEN_PWR_VDEC_1_SM1);
+	else
+		regmap_update_bits(core->regmap_ao, AO_RTI_GEN_PWR_SLEEP0,
+				   GEN_PWR_VDEC_1, GEN_PWR_VDEC_1);
+}
+
+/* The secure monitor handles isolation along with the power domain */
+static void amvdec_1_isolate(struct amvdec_core *core, bool isolate)
+{
+	u32 mask;
+
+	if (core->pd_list)
+		return;
+
+	if (core->platform->revision == AMVDEC_REVISION_SM1)
+		mask = GEN_PWR_VDEC_1_SM1;
+	else
+		mask = GEN_PWR_VDEC_1_ISO;
+
+	regmap_update_bits(core->regmap_ao, AO_RTI_GEN_PWR_ISO0, mask,
+			   isolate ? mask : 0);
+}
+
+static int amvdec_1_load_tee_firmware(struct amvdec_session *sess)
+{
+	struct amvdec_core *core = sess->core;
+	struct amvdec_codec_ops *codec_ops = sess->fmt_out->codec_ops;
+	int ret;
+
+	meson_amvdec_write_dos(core, MPSR, 0);
+	meson_amvdec_write_dos(core, CPSR, 0);
+
+	meson_amvdec_clear_dos_bits(core, MDEC_PIC_DC_CTRL, BIT(31));
+
+	ret = meson_amvdec_tee_load(core, sess->fmt_out->tee_format,
+				    AMVDEC_TEE_CORE_VDEC, false);
+	if (ret)
+		return ret;
+
+	if (codec_ops->load_firmware)
+		ret = codec_ops->load_firmware(sess, NULL, 0);
+
+	return ret;
+}
+
 static int
 amvdec_1_load_firmware(struct amvdec_session *sess, const char *fwname)
 {
@@ -86,6 +156,8 @@ amvdec_1_load_firmware(struct amvdec_session *sess, const char *fwname)
 	struct amvdec_core *core = sess->core;
 	struct device *dev = core->dev_dec;
 	struct amvdec_codec_ops *codec_ops = sess->fmt_out->codec_ops;
+	const u8 *data;
+	size_t size;
 	int ret;
 	u32 i = 1000;
 
@@ -93,16 +165,20 @@ amvdec_1_load_firmware(struct amvdec_session *sess, const char *fwname)
 	if (ret < 0)
 		return -EINVAL;
 
+	ret = meson_amvdec_firmware_payload(dev, fw, &data, &size);
+	if (ret)
+		goto release_firmware;
+
 	/* Pad 8 KiB firmware images to the 16 KiB IMEM transfer size. */
-	if (fw->size < MC_SIZE && fw->size != MC_SIZE / 2) {
+	if (size < MC_SIZE && size != MC_SIZE / 2) {
 		dev_err(dev, "Firmware %s size %zu is too small. Expected %u.\n",
-			fwname, fw->size, MC_SIZE);
+			fwname, size, MC_SIZE);
 		ret = -EINVAL;
 		goto release_firmware;
 	}
 
 	memset(core->fw_vaddr, 0, MC_SIZE);
-	memcpy(core->fw_vaddr, fw->data, min_t(size_t, fw->size, MC_SIZE));
+	memcpy(core->fw_vaddr, data, min_t(size_t, size, MC_SIZE));
 
 	meson_amvdec_write_dos(core, MPSR, 0);
 	meson_amvdec_write_dos(core, CPSR, 0);
@@ -127,11 +203,10 @@ amvdec_1_load_firmware(struct amvdec_session *sess, const char *fwname)
 	}
 
 	if (codec_ops->load_firmware)
-		ret = codec_ops->load_firmware(sess, fw->data, fw->size);
+		ret = codec_ops->load_firmware(sess, data, size);
 	else if (codec_ops->load_extended_firmware)
-		ret = codec_ops->load_extended_firmware(sess,
-						fw->data + MC_SIZE,
-						fw->size - MC_SIZE);
+		ret = codec_ops->load_extended_firmware(sess, data + MC_SIZE,
+							size - MC_SIZE);
 
 release_firmware:
 	release_firmware(fw);
@@ -174,10 +249,19 @@ static void amvdec_1_conf_esparser(struct amvdec_session *sess)
 {
 	struct amvdec_core *core = sess->core;
 
+	/* Without an ESPARSER the host writes the FIFO and its write pointer. */
+	if (!amvdec_has_esparser(core))
+		return;
+
 	/* VDEC_1 specific ESPARSER stuff */
 	meson_amvdec_write_dos(core, DOS_GEN_CTRL0, 0);
 	meson_amvdec_write_dos(core, VLD_MEM_VIFIFO_BUF_CNTL, 1);
 	meson_amvdec_clear_dos_bits(core, VLD_MEM_VIFIFO_BUF_CNTL, 1);
+}
+
+static void amvdec_1_set_vififo_wp(struct amvdec_session *sess, u32 wp)
+{
+	meson_amvdec_write_dos(sess->core, VLD_MEM_VIFIFO_WP, wp);
 }
 
 static u32 amvdec_1_vififo_level(struct amvdec_session *sess)
@@ -211,21 +295,11 @@ static void __vdec_1_stop(struct amvdec_session *sess)
 	amvdec_1_quiesce_reset(core);
 
 	/* enable vdec1 isolation */
-	if (core->platform->revision == AMVDEC_REVISION_SM1)
-		regmap_update_bits(core->regmap_ao, AO_RTI_GEN_PWR_ISO0,
-				   GEN_PWR_VDEC_1_SM1, GEN_PWR_VDEC_1_SM1);
-	else
-		regmap_update_bits(core->regmap_ao, AO_RTI_GEN_PWR_ISO0,
-				   GEN_PWR_VDEC_1_ISO, GEN_PWR_VDEC_1_ISO);
+	amvdec_1_isolate(core, true);
 	/* power off vdec1 memories */
 	meson_amvdec_write_dos(core, DOS_MEM_PD_VDEC, 0xffffffff);
 	/* power off vdec1 */
-	if (core->platform->revision == AMVDEC_REVISION_SM1)
-		regmap_update_bits(core->regmap_ao, AO_RTI_GEN_PWR_SLEEP0,
-				   GEN_PWR_VDEC_1_SM1, GEN_PWR_VDEC_1_SM1);
-	else
-		regmap_update_bits(core->regmap_ao, AO_RTI_GEN_PWR_SLEEP0,
-				   GEN_PWR_VDEC_1, GEN_PWR_VDEC_1);
+	amvdec_1_power_off(core);
 
 	if (sess->priv)
 		codec_ops->stop(sess);
@@ -255,40 +329,45 @@ static int amvdec_1_start(struct amvdec_session *sess)
 		return ret;
 
 	/* Enable power for VDEC_1 */
-	if (core->platform->revision == AMVDEC_REVISION_SM1)
-		regmap_update_bits(core->regmap_ao, AO_RTI_GEN_PWR_SLEEP0,
-				   GEN_PWR_VDEC_1_SM1, 0);
-	else
-		regmap_update_bits(core->regmap_ao, AO_RTI_GEN_PWR_SLEEP0,
-				   GEN_PWR_VDEC_1, 0);
+	ret = amvdec_1_power_on(core);
+	if (ret) {
+		clk_disable_unprepare(core->amvdec_1_clk);
+		return ret;
+	}
 	usleep_range(10, 20);
 
 	/*
 	 * Park the DMC port before powering up. Access DOS registers only after
 	 * the memories are powered and isolation is removed, then reset the core.
 	 */
-	if (amvdec_is_g12(core))
+	if (amvdec_has_dmc(core))
 		meson_amvdec_dmc_park(core, DMC_REQ_VDEC_1);
 
-	/* Reset VDEC1 */
-	meson_amvdec_write_dos(core, DOS_SW_RESET0, 0xfffffffc);
-	meson_amvdec_write_dos(core, DOS_SW_RESET0, 0x00000000);
+	if (core->pd_list) {
+		/* Power the memories before the reset, and hold the reset */
+		meson_amvdec_write_dos(core, DOS_MEM_PD_VDEC, 0);
+		meson_amvdec_write_dos(core, DOS_SW_RESET0, 0xfffffffc);
+		usleep_range(20, 100);
+		meson_amvdec_write_dos(core, DOS_SW_RESET0, 0x00000000);
+		usleep_range(20, 100);
+		meson_amvdec_write_dos(core, DOS_MEM_PD_VDEC, 0);
+		meson_amvdec_write_dos_bits(core, DOS_GCLK_EN0, 0x3ff);
+	} else {
+		/* Reset VDEC1 */
+		meson_amvdec_write_dos(core, DOS_SW_RESET0, 0xfffffffc);
+		meson_amvdec_write_dos(core, DOS_SW_RESET0, 0x00000000);
 
-	meson_amvdec_write_dos(core, DOS_GCLK_EN0, 0x3ff);
+		meson_amvdec_write_dos(core, DOS_GCLK_EN0, 0x3ff);
 
-	/* enable VDEC Memories */
-	meson_amvdec_write_dos(core, DOS_MEM_PD_VDEC, 0);
+		/* enable VDEC Memories */
+		meson_amvdec_write_dos(core, DOS_MEM_PD_VDEC, 0);
+	}
 	/* Remove VDEC1 Isolation */
-	if (core->platform->revision == AMVDEC_REVISION_SM1)
-		regmap_update_bits(core->regmap_ao, AO_RTI_GEN_PWR_ISO0,
-				   GEN_PWR_VDEC_1_SM1, 0);
-	else
-		regmap_update_bits(core->regmap_ao, AO_RTI_GEN_PWR_ISO0,
-				   GEN_PWR_VDEC_1_ISO, 0);
+	amvdec_1_isolate(core, false);
 
 	/* Domain fully up: scrub the sub-engines, then reconnect DDR */
 	amvdec_1_core_scrub(core);
-	if (amvdec_is_g12(core))
+	if (amvdec_has_dmc(core))
 		meson_amvdec_dmc_unpark(core, DMC_REQ_VDEC_1);
 
 	/* Reset DOS top registers */
@@ -299,7 +378,10 @@ static int amvdec_1_start(struct amvdec_session *sess)
 
 	amvdec_1_stbuf_power_up(sess);
 
-	ret = amvdec_1_load_firmware(sess, sess->fmt_out->firmware_path);
+	if (sess->fmt_out->tee_format)
+		ret = amvdec_1_load_tee_firmware(sess);
+	else
+		ret = amvdec_1_load_firmware(sess, sess->fmt_out->firmware_path);
 	if (ret)
 		goto stop;
 
@@ -342,5 +424,6 @@ struct amvdec_ops meson_amvdec_1_ops = {
 	.start = amvdec_1_start,
 	.stop = amvdec_1_stop,
 	.conf_esparser = amvdec_1_conf_esparser,
+	.set_vififo_wp = amvdec_1_set_vififo_wp,
 	.vififo_level = amvdec_1_vififo_level,
 };

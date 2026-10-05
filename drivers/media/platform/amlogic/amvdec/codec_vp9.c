@@ -727,7 +727,7 @@ static void codec_vp9_setup_workspace(struct amvdec_session *sess,
 	meson_amvdec_write_dos(core, VP9_COUNT_SWAP_BUFFER, wkaddr + COUNT_OFFSET);
 	meson_amvdec_write_dos(core, LMEM_DUMP_ADR, wkaddr + LMEM_OFFSET);
 
-	if (codec_hevc_use_mmu(revision, sess->pixfmt_cap, vp9->is_10bit)) {
+	if (codec_hevc_use_mmu(sess, sess->pixfmt_cap, vp9->is_10bit)) {
 		meson_amvdec_write_dos(core, HEVC_SAO_MMU_VH0_ADDR,
 				 wkaddr + MMU_VBH_OFFSET);
 		meson_amvdec_write_dos(core, HEVC_SAO_MMU_VH1_ADDR,
@@ -802,7 +802,9 @@ static void codec_vp9_hw_init(struct amvdec_session *sess, struct codec_vp9 *vp9
 		 meson_amvdec_read_dos(core, HEVC_DECODE_COUNT),
 		 meson_amvdec_read_dos(core, HEVC_DECODE_SIZE));
 
-	meson_amvdec_write_dos(core, HEVC_DECODE_SIZE, 0);
+	/* Current microcode treats a zero size as a limit, not as unlimited. */
+	meson_amvdec_write_dos(core, HEVC_DECODE_SIZE,
+			       sess->fmt_out->tee_format ? 0x7fffffff : 0);
 	vp9_loop_filter_init(core, vp9);
 }
 
@@ -962,8 +964,8 @@ static int codec_vp9_set_sao(struct amvdec_session *sess,
 		return -EINVAL;
 
 	/* Driver-owned compressed body, as for HEVC: AM21C's one plane is the header */
-	if (codec_hevc_use_downsample(sess->pixfmt_cap, vp9->is_10bit) ||
-	    codec_hevc_use_mmu(core->platform->revision, sess->pixfmt_cap,
+	if (codec_hevc_use_downsample(sess, sess->pixfmt_cap, vp9->is_10bit) ||
+	    codec_hevc_use_mmu(sess, sess->pixfmt_cap,
 			       vp9->is_10bit))
 		buf_y_paddr =
 			meson_amvdec_codec_hevc_fbc_body_addr(&vp9->common, vb->index);
@@ -971,7 +973,7 @@ static int codec_vp9_set_sao(struct amvdec_session *sess,
 		buf_y_paddr =
 		       vb2_dma_contig_plane_dma_addr(vb, 0);
 
-	if (codec_hevc_use_fbc(sess->pixfmt_cap, vp9->is_10bit)) {
+	if (codec_hevc_use_fbc(sess, sess->pixfmt_cap, vp9->is_10bit)) {
 		if (!buf_y_paddr)
 			return -EINVAL;
 		meson_amvdec_write_dos(core, HEVC_CM_BODY_START_ADDR, buf_y_paddr);
@@ -991,11 +993,11 @@ static int codec_vp9_set_sao(struct amvdec_session *sess,
 		meson_amvdec_write_dos(core, HEVC_SAO_C_WPTR, buf_u_v_paddr);
 	}
 
-	if (codec_hevc_use_mmu(core->platform->revision, sess->pixfmt_cap,
+	if (codec_hevc_use_mmu(sess, sess->pixfmt_cap,
 			       vp9->is_10bit)) {
 		dma_addr_t header_adr;
 
-		if (codec_hevc_use_downsample(sess->pixfmt_cap, vp9->is_10bit))
+		if (codec_hevc_use_downsample(sess, sess->pixfmt_cap, vp9->is_10bit))
 			header_adr = vp9->common.mmu_header_paddr[vb->index];
 		else
 			header_adr = vb2_dma_contig_plane_dma_addr(vb, 0);
@@ -1015,7 +1017,7 @@ static int codec_vp9_set_sao(struct amvdec_session *sess,
 		meson_amvdec_clear_dos_bits(core, HEVC_DBLK_CFGB,
 				      BIT(4) | BIT(5) | BIT(8) | BIT(9));
 		/* enable first, compressed write */
-		if (codec_hevc_use_fbc(sess->pixfmt_cap, vp9->is_10bit))
+		if (codec_hevc_use_fbc(sess, sess->pixfmt_cap, vp9->is_10bit))
 			meson_amvdec_write_dos_bits(core, HEVC_DBLK_CFGB, BIT(8));
 
 		/* enable second, uncompressed write */
@@ -1034,7 +1036,7 @@ static int codec_vp9_set_sao(struct amvdec_session *sess,
 	val |= 0xff0; /* Set endianness for 2-bytes swaps (nv12) */
 	if (core->platform->revision < AMVDEC_REVISION_G12A) {
 		val &= ~0x3;
-		if (!codec_hevc_use_fbc(sess->pixfmt_cap, vp9->is_10bit))
+		if (!codec_hevc_use_fbc(sess, sess->pixfmt_cap, vp9->is_10bit))
 			val |= BIT(0); /* disable cm compression */
 
 	}
@@ -1233,7 +1235,7 @@ static void codec_vp9_set_refs(struct amvdec_session *sess,
 		if (!frame)
 			continue;
 
-		if (codec_hevc_use_fbc(sess->pixfmt_cap, vp9->is_10bit)) {
+		if (codec_hevc_use_fbc(sess, sess->pixfmt_cap, vp9->is_10bit)) {
 			id_y = frame->index;
 			id_u_v = id_y;
 		} else {
@@ -1255,8 +1257,7 @@ static void codec_vp9_set_mc(struct amvdec_session *sess,
 	u32 sz;
 	int i;
 
-	use_mmu = codec_hevc_use_mmu(core->platform->revision,
-				     sess->pixfmt_cap, vp9->is_10bit);
+	use_mmu = codec_hevc_use_mmu(sess, sess->pixfmt_cap, vp9->is_10bit);
 
 	meson_amvdec_write_dos(core, HEVCD_MPP_ANC_CANVAS_ACCCONFIG_ADDR, 1);
 	codec_vp9_set_refs(sess, vp9);
@@ -1412,7 +1413,7 @@ static void codec_vp9_process_frame(struct amvdec_session *sess)
 
 	codec_vp9_show_existing_frame(vp9);
 
-	if (codec_hevc_use_mmu(core->platform->revision, sess->pixfmt_cap,
+	if (codec_hevc_use_mmu(sess, sess->pixfmt_cap,
 			       vp9->is_10bit) &&
 	    meson_amvdec_codec_hevc_fill_mmu_map(sess, &vp9->common,
 				    &vp9->cur_frame->vbuf->vb2_buf,
