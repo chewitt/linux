@@ -9,9 +9,11 @@
 #include <linux/clk.h>
 #include <linux/delay.h>
 #include <linux/io.h>
+#include <linux/reset.h>
 
 #include "amvdec_1.h"
 #include "amvdec_helpers.h"
+#include "amvdec_tee.h"
 #include "amvdec_hevc.h"
 #include "esparser.h"
 #include "codec_hevc.h"
@@ -59,6 +61,20 @@ static int amvdec_hevc_load_firmware(struct amvdec_session *sess,
 	const struct firmware *fw;
 	int ret;
 	u32 i = 100;
+
+	if (sess->fmt_out->tee_format) {
+		meson_amvdec_write_dos(core, HEVC_MPSR, 0);
+		meson_amvdec_write_dos(core, HEVC_CPSR, 0);
+
+		/* Prefer the swap build, as the vendor driver does. */
+		if (sess->fmt_out->tee_format_swap &&
+		    !meson_amvdec_tee_load(core, sess->fmt_out->tee_format_swap,
+					   AMVDEC_TEE_CORE_HEVC, true))
+			return 0;
+
+		return meson_amvdec_tee_load(core, sess->fmt_out->tee_format,
+					     AMVDEC_TEE_CORE_HEVC, false);
+	}
 
 	ret = request_firmware(&fw, fwname, dev);
 	if (ret < 0)  {
@@ -117,6 +133,17 @@ static void amvdec_hevc_conf_esparser(struct amvdec_session *sess)
 {
 	struct amvdec_core *core = sess->core;
 
+	/* Without an ESPARSER the host writes the FIFO and its write pointer. */
+	if (!amvdec_has_esparser(core)) {
+		meson_amvdec_write_dos(core, HEVC_STREAM_CONTROL,
+				       meson_amvdec_read_dos(core, HEVC_STREAM_CONTROL) |
+				       (7 << 4) | 1);
+		meson_amvdec_write_dos(core, HEVC_STREAM_FIFO_CTL,
+				       meson_amvdec_read_dos(core, HEVC_STREAM_FIFO_CTL) |
+				       BIT(29));
+		return;
+	}
+
 	/* set vififo_vbuf_rp_sel=>vdec_hevc */
 	meson_amvdec_write_dos(core, DOS_GEN_CTRL0, 3 << 1);
 	meson_amvdec_write_dos(core, HEVC_STREAM_CONTROL,
@@ -125,6 +152,11 @@ static void amvdec_hevc_conf_esparser(struct amvdec_session *sess)
 			 meson_amvdec_read_dos(core, HEVC_STREAM_CONTROL) | 1);
 	meson_amvdec_write_dos(core, HEVC_STREAM_FIFO_CTL,
 			 meson_amvdec_read_dos(core, HEVC_STREAM_FIFO_CTL) | BIT(29));
+}
+
+static void amvdec_hevc_set_vififo_wp(struct amvdec_session *sess, u32 wp)
+{
+	meson_amvdec_write_dos(sess->core, HEVC_STREAM_WR_PTR, wp);
 }
 
 static u32 amvdec_hevc_vififo_level(struct amvdec_session *sess)
@@ -190,7 +222,7 @@ static void amvdec_hevc_stop_stream_fetch(struct amvdec_core *core)
  */
 static int amvdec_hevc_dmc_park(struct amvdec_core *core)
 {
-	if (!amvdec_is_g12(core))
+	if (!amvdec_has_dmc(core))
 		return 0;
 
 	return meson_amvdec_dmc_park(core, DMC_REQ_HEVC);
@@ -198,7 +230,7 @@ static int amvdec_hevc_dmc_park(struct amvdec_core *core)
 
 static void amvdec_hevc_dmc_unpark(struct amvdec_core *core)
 {
-	if (!amvdec_is_g12(core))
+	if (!amvdec_has_dmc(core))
 		return;
 
 	meson_amvdec_dmc_unpark(core, DMC_REQ_HEVC);
@@ -214,7 +246,7 @@ static int amvdec_hevc_core_scrub(struct amvdec_core *core)
 	u32 val;
 	int i;
 
-	if (!amvdec_is_g12(core)) {
+	if (!amvdec_is_g12(core) && !core->pd_list) {
 		meson_amvdec_write_dos(core, DOS_SW_RESET3,
 				       DOS_SW_RESET3_HEVC_QUIESCE_GX);
 		udelay(10);
@@ -222,9 +254,9 @@ static int amvdec_hevc_core_scrub(struct amvdec_core *core)
 		return 0;
 	}
 
-	if (!reset7_lvl)
+	if (!core->pd_list && !reset7_lvl)
 		reset7_lvl = ioremap(G12B_RESET7_LEVEL_ADDR, 4);
-	if (!reset7_lvl)
+	if (!core->pd_list && !reset7_lvl)
 		return -ENOMEM;
 
 	/* Hold the SAO/MMU in reset across the sub-engine reset */
@@ -249,6 +281,13 @@ static int amvdec_hevc_core_scrub(struct amvdec_core *core)
 
 	val = meson_amvdec_read_dos(core, HEVC_SAO_MMU_RESET_CTRL);
 	meson_amvdec_write_dos(core, HEVC_SAO_MMU_RESET_CTRL, val & ~1);
+
+	/* Newer SoCs expose the DMC-side HEVC pipeline resets. */
+	if (core->pd_list) {
+		reset_control_assert(core->hevc_pipe_reset);
+		reset_control_deassert(core->hevc_pipe_reset);
+		return 0;
+	}
 
 	/*
 	 * G12B: the DMC-side decode pipelines latch state.  Toggle the
@@ -325,6 +364,12 @@ static int __vdec_hevc_stop(struct amvdec_session *sess)
 	if (sess->priv)
 		codec_ops->stop(sess);
 
+	if (core->pd_list) {
+		meson_amvdec_write_dos(core, DOS_MEM_PD_HEVC, 0xffffffffUL);
+		meson_amvdec_power_domain_off(core, AMVDEC_PD_HEVC);
+		return 0;
+	}
+
 	/* Enable VDEC_HEVC Isolation */
 	if (core->platform->revision == AMVDEC_REVISION_SM1)
 		regmap_update_bits(core->regmap_ao, AO_RTI_GEN_PWR_ISO0,
@@ -380,12 +425,19 @@ static int __vdec_hevc_start(struct amvdec_session *sess)
 		return ret;
 	}
 
-	if (core->platform->revision == AMVDEC_REVISION_SM1)
+	if (core->pd_list) {
+		ret = meson_amvdec_power_domain_on(core, AMVDEC_PD_HEVC);
+		if (ret) {
+			clk_disable_unprepare(core->amvdec_hevc_clk);
+			return ret;
+		}
+	} else if (core->platform->revision == AMVDEC_REVISION_SM1) {
 		regmap_update_bits(core->regmap_ao, AO_RTI_GEN_PWR_SLEEP0,
 				   GEN_PWR_VDEC_HEVC_SM1, 0);
-	else
+	} else {
 		regmap_update_bits(core->regmap_ao, AO_RTI_GEN_PWR_SLEEP0,
 				   GEN_PWR_VDEC_HEVC, 0);
+	}
 	usleep_range(10, 20);
 
 	/*
@@ -396,23 +448,34 @@ static int __vdec_hevc_start(struct amvdec_session *sess)
 	if (ret)
 		goto stop;
 
-	/* Reset VDEC_HEVC*/
-	meson_amvdec_write_dos(core, DOS_SW_RESET3, 0xffffffff);
-	udelay(10);
-	meson_amvdec_write_dos(core, DOS_SW_RESET3, 0x00000000);
+	if (core->pd_list) {
+		/* Power the memories before the reset, and hold the reset */
+		meson_amvdec_write_dos(core, DOS_MEM_PD_HEVC, 0);
+		meson_amvdec_write_dos(core, DOS_SW_RESET3, 0xffffffff);
+		usleep_range(20, 100);
+		meson_amvdec_write_dos(core, DOS_SW_RESET3, 0x00000000);
+		usleep_range(20, 100);
+		meson_amvdec_write_dos(core, DOS_MEM_PD_HEVC, 0);
+		meson_amvdec_write_dos(core, DOS_GCLK_EN3, 0xffffffff);
+	} else {
+		/* Reset VDEC_HEVC*/
+		meson_amvdec_write_dos(core, DOS_SW_RESET3, 0xffffffff);
+		udelay(10);
+		meson_amvdec_write_dos(core, DOS_SW_RESET3, 0x00000000);
 
-	meson_amvdec_write_dos(core, DOS_GCLK_EN3, 0xffffffff);
+		meson_amvdec_write_dos(core, DOS_GCLK_EN3, 0xffffffff);
 
-	/* VDEC_HEVC Memories */
-	meson_amvdec_write_dos(core, DOS_MEM_PD_HEVC, 0x00000000);
+		/* VDEC_HEVC Memories */
+		meson_amvdec_write_dos(core, DOS_MEM_PD_HEVC, 0x00000000);
 
-	/* Remove VDEC_HEVC Isolation */
-	if (core->platform->revision == AMVDEC_REVISION_SM1)
-		regmap_update_bits(core->regmap_ao, AO_RTI_GEN_PWR_ISO0,
-				   GEN_PWR_VDEC_HEVC_SM1, 0);
-	else
-		regmap_update_bits(core->regmap_ao, AO_RTI_GEN_PWR_ISO0,
-				   0xc00, 0);
+		/* Remove VDEC_HEVC Isolation */
+		if (core->platform->revision == AMVDEC_REVISION_SM1)
+			regmap_update_bits(core->regmap_ao, AO_RTI_GEN_PWR_ISO0,
+					   GEN_PWR_VDEC_HEVC_SM1, 0);
+		else
+			regmap_update_bits(core->regmap_ao, AO_RTI_GEN_PWR_ISO0,
+					   0xc00, 0);
+	}
 
 	meson_amvdec_write_dos(core, DOS_SW_RESET3, 0xffffffff);
 	udelay(10);
@@ -440,6 +503,11 @@ static int __vdec_hevc_start(struct amvdec_session *sess)
 	meson_amvdec_write_dos(core, DOS_SW_RESET3, BIT(12) | BIT(11));
 	meson_amvdec_write_dos(core, DOS_SW_RESET3, 0);
 	meson_amvdec_read_dos(core, DOS_SW_RESET3);
+
+	if (!amvdec_has_esparser(core)) {
+		sess->hevc_start_deferred = true;
+		return 0;
+	}
 
 	meson_amvdec_write_dos(core, HEVC_MPSR, 1);
 	/* Let the firmware settle */
@@ -488,8 +556,12 @@ int meson_amvdec_hevc_restream(struct amvdec_session *sess)
 	meson_amvdec_write_dos(core, DOS_SW_RESET3, 0);
 	meson_amvdec_read_dos(core, DOS_SW_RESET3);
 
-	meson_amvdec_write_dos(core, HEVC_MPSR, 1);
-	usleep_range(10, 20);
+	if (amvdec_has_esparser(core)) {
+		meson_amvdec_write_dos(core, HEVC_MPSR, 1);
+		usleep_range(10, 20);
+	} else {
+		sess->hevc_start_deferred = true;
+	}
 
 	/* The stream restarts at the beginning of the VIFIFO: the host's
 	 * cumulative offsets must restart with it.
@@ -501,6 +573,20 @@ int meson_amvdec_hevc_restream(struct amvdec_session *sess)
 	dev_dbg(core->dev, "HEVC core restreamed: positions restart at 0, %u stale snapshots dropped\n",
 		dropped);
 	return 0;
+}
+
+/*
+ * Without an ESPARSER the host fills the FIFO.  A firmware started before
+ * the first input is there can report it empty and then wait for a host
+ * that never answers, so start it once the input is published.
+ */
+void meson_amvdec_hevc_release(struct amvdec_session *sess)
+{
+	if (!sess->hevc_start_deferred)
+		return;
+	sess->hevc_start_deferred = false;
+	meson_amvdec_write_dos(sess->core, HEVC_MPSR, 1);
+	usleep_range(10, 20);
 }
 
 static int amvdec_hevc_start(struct amvdec_session *sess)
@@ -528,5 +614,6 @@ struct amvdec_ops meson_amvdec_hevc_ops = {
 	.start = amvdec_hevc_start,
 	.stop = amvdec_hevc_stop,
 	.conf_esparser = amvdec_hevc_conf_esparser,
+	.set_vififo_wp = amvdec_hevc_set_vififo_wp,
 	.vififo_level = amvdec_hevc_vififo_level,
 };
