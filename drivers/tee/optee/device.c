@@ -47,6 +47,14 @@ static int get_devices(struct tee_context *ctx, u32 session,
 		 */
 		if (inv_arg.ret == TEE_ERROR_STORAGE_NOT_AVAILABLE)
 			return -ENODEV;
+		/*
+		 * Older OP-TEE releases implement the pseudo TA but not
+		 * every enumeration command, so treat that as no devices.
+		 */
+		if (inv_arg.ret == TEEC_ERROR_NOT_IMPLEMENTED) {
+			*shm_size = 0;
+			return 0;
+		}
 		pr_err("PTA_CMD_GET_DEVICES invoke function err: %x\n",
 		       inv_arg.ret);
 		return -EINVAL;
