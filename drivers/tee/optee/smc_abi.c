@@ -1777,6 +1777,21 @@ static int optee_probe(struct platform_device *pdev)
 		sec_caps &= ~OPTEE_SMC_SEC_CAP_DYNAMIC_SHM;
 
 	/*
+	 * The Amlogic vendor OP-TEE refuses to load trusted applications
+	 * ("ree system is not ready") until told that the normal world has
+	 * booted. The vendor tee-supplicant does this on start.
+	 */
+	if (of_machine_is_compatible("amlogic,s4")) {
+		struct arm_smccc_res res;
+
+		invoke_fn(OPTEE_SMC_AMLOGIC_SYS_BOOT_COMPLETE,
+			  0, 0, 0, 0, 0, 0, 0, &res);
+		if (res.a0)
+			pr_warn("boot complete notification failed: %#lx\n",
+				res.a0);
+	}
+
+	/*
 	 * Try to use dynamic shared memory if possible
 	 */
 	if (sec_caps & OPTEE_SMC_SEC_CAP_DYNAMIC_SHM) {
