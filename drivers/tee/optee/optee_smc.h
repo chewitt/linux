@@ -637,4 +637,10 @@ static inline bool __optee_smc_return_is_rpc(u32 ret)
 			OPTEE_SMC_RETURN_RPC_PREFIX;
 }
 
+/*
+ * Amlogic vendor fast call: tell the secure OS that the normal world has
+ * finished booting, so that it starts accepting trusted application loads.
+ */
+#define OPTEE_SMC_AMLOGIC_SYS_BOOT_COMPLETE	OPTEE_SMC_FAST_CALL_VAL(0xe060)
+
 #endif /* OPTEE_SMC_H */
