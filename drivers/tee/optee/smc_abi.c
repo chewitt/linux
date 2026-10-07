@@ -1768,6 +1768,15 @@ static int optee_probe(struct platform_device *pdev)
 	}
 
 	/*
+	 * The Amlogic vendor OP-TEE rejects non-secure buffers in the low part
+	 * of DRAM, so dynamic shared memory fails depending on where pages
+	 * land. Use the reserved pool it also provides.
+	 */
+	if ((sec_caps & OPTEE_SMC_SEC_CAP_HAVE_RESERVED_SHM) &&
+	    of_machine_is_compatible("amlogic,s4"))
+		sec_caps &= ~OPTEE_SMC_SEC_CAP_DYNAMIC_SHM;
+
+	/*
 	 * Try to use dynamic shared memory if possible
 	 */
 	if (sec_caps & OPTEE_SMC_SEC_CAP_DYNAMIC_SHM) {
