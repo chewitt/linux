@@ -24,6 +24,20 @@ config ARM_AIROHA_SOC_CPUFREQ
 	help
 	  This adds the CPUFreq driver for Airoha EN7581 SoCs.
 
+config ARM_AMLOGIC_SOC_CPUFREQ
+	tristate "Amlogic binned CPUFreq driver"
+	depends on ARCH_MESON || COMPILE_TEST
+	depends on MESON_SM
+	depends on CPUFREQ_DT
+	select PM_OPP
+	default ARCH_MESON
+	help
+	  This adds the CPUFreq driver for Amlogic SoCs that read the
+	  silicon bin from the secure monitor to select CPU voltages.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called amlogic-cpufreq.
+
 config ARM_APPLE_SOC_CPUFREQ
 	tristate "Apple Silicon SoC CPUFreq support"
 	depends on ARCH_APPLE || (COMPILE_TEST && 64BIT)
