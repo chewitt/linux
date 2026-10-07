@@ -112,6 +112,11 @@
 	};
 
 	firmware {
+		optee {
+			compatible = "linaro,optee-tz";
+			method = "smc";
+		};
+
 		sm: secure-monitor {
 			compatible = "amlogic,meson-gxbb-sm";
 
