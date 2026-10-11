@@ -2597,7 +2597,10 @@ dw_hdmi_bridge_tmds_char_rate_valid(const struct drm_bridge *bridge,
 	struct dw_hdmi *hdmi = bridge->driver_private;
 	const struct dw_hdmi_plat_data *pdata = hdmi->plat_data;
 
-	if (pdata->mode_valid)
+	if (pdata->tmds_char_rate_valid)
+		return pdata->tmds_char_rate_valid(hdmi, pdata->priv_data,
+						   mode, tmds_rate);
+	else if (pdata->mode_valid)
 		return pdata->mode_valid(hdmi, pdata->priv_data, NULL, mode);
 
 	return MODE_OK;
@@ -3071,6 +3074,7 @@ struct dw_hdmi *dw_hdmi_probe(struct platform_device *pdev,
 			 | DRM_BRIDGE_OP_HDMI_SPD_INFOFRAME;
 	hdmi->bridge.supported_hdmi_ver = hdmi->version >= 0x200a && hdmi->ddc ?
 					  HDMI_VERSION_2_0 : HDMI_VERSION_1_4;
+	hdmi->bridge.max_tmds_char_rate = plat_data->max_tmds_char_rate;
 	hdmi->bridge.interlace_allowed = true;
 	hdmi->bridge.ddc = hdmi->ddc;
 	hdmi->bridge.of_node = pdev->dev.of_node;
