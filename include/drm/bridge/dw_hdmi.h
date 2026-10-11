@@ -137,10 +137,11 @@ struct dw_hdmi_plat_data {
 	unsigned int supported_formats;
 	/* Maximum bits per color channel: 8, 10, 12 or 16 */
 	unsigned int max_bpc;
+	unsigned long long max_tmds_char_rate;
 
 	/*
-	 * Private data passed to all the .mode_valid() and .configure_phy()
-	 * callback functions.
+	 * Private data passed to all the .mode_valid(), .tmds_char_rate_valid()
+	 * and .configure_phy() callback functions.
 	 */
 	void *priv_data;
 
@@ -148,6 +149,9 @@ struct dw_hdmi_plat_data {
 	enum drm_mode_status (*mode_valid)(struct dw_hdmi *hdmi, void *data,
 					   const struct drm_display_info *info,
 					   const struct drm_display_mode *mode);
+	enum drm_mode_status (*tmds_char_rate_valid)(struct dw_hdmi *hdmi, void *data,
+						     const struct drm_display_mode *mode,
+						     unsigned long long tmds_rate);
 
 	/*
 	 * priv_audio is specially used for additional audio device to get
