@@ -629,9 +629,11 @@ static int rockchip_sai_hw_params(struct snd_pcm_substream *substream,
 
 	regmap_update_bits(sai->regmap, reg, SAI_XCR_VDW_MASK | SAI_XCR_CSR_MASK, val);
 
-	if (!sai->is_tdm)
+	if (!sai->is_tdm) {
+		slot_width = sai->is_master_mode ? 32 : params_physical_width(params);
 		regmap_update_bits(sai->regmap, reg, SAI_XCR_SBW_MASK,
-				   SAI_XCR_SBW(params_physical_width(params)));
+				   SAI_XCR_SBW(slot_width));
+	}
 
 	regmap_read(sai->regmap, reg, &val);
 
