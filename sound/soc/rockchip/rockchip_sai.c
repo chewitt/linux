@@ -1155,7 +1155,7 @@ static int rockchip_sai_init_dai(struct rk_sai_dev *sai, struct resource *res,
 	}
 
 	regmap_update_bits(sai->regmap, SAI_DMACR, SAI_DMACR_TDL_MASK,
-			   SAI_DMACR_TDL(16));
+			   SAI_DMACR_TDL(28));
 	regmap_update_bits(sai->regmap, SAI_DMACR, SAI_DMACR_RDL_MASK,
 			   SAI_DMACR_RDL(16));
 
