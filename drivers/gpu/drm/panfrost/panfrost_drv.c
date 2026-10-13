@@ -914,13 +914,6 @@ static const struct panfrost_compatible amlogic_data = {
 	.vendor_quirk = panfrost_gpu_amlogic_quirk,
 };
 
-static const struct panfrost_compatible amlogic_gxm_data = {
-	.num_supplies = ARRAY_SIZE(default_supplies) - 1,
-	.supply_names = default_supplies,
-	.vendor_quirk = panfrost_gpu_amlogic_quirk,
-	.pm_features = BIT(GPU_PM_RT),
-};
-
 static const char * const mediatek_pm_domains[] = { "core0", "core1", "core2",
 						    "core3", "core4" };
 /*
@@ -985,7 +978,7 @@ static const struct panfrost_compatible mediatek_mt8370_data = {
 static const struct of_device_id dt_match[] = {
 	/* Set first to probe before the generic compatibles */
 	{ .compatible = "amlogic,meson-gxm-mali",
-	  .data = &amlogic_gxm_data, },
+	  .data = &amlogic_data, },
 	{ .compatible = "amlogic,meson-g12a-mali",
 	  .data = &amlogic_data, },
 	{ .compatible = "amlogic,meson-s4-mali",
