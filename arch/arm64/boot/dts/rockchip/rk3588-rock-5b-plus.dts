@@ -69,6 +69,14 @@
 	};
 };
 
+&hdmi_receiver {
+	status = "okay";
+};
+
+&hdmi_receiver_sound {
+	status = "okay";
+};
+
 &i2c1 {
 	eeprom@50 {
 		compatible = "belling,bl24c16a", "atmel,24c16";
@@ -77,6 +85,10 @@
 		read-only;
 		vcc-supply = <&vcc_3v3_s3>;
 	};
+};
+
+&i2s7_8ch {
+	status = "okay";
 };
 
 &pcie30phy {
