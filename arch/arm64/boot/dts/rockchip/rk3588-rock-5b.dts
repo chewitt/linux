@@ -9,6 +9,31 @@
 	compatible = "radxa,rock-5b", "rockchip,rk3588";
 };
 
+&hdmi_receiver {
+	status = "okay";
+};
+
+&hdmi_receiver_sound {
+	status = "okay";
+};
+
+&i2s7_8ch {
+	status = "okay";
+};
+
+&pinctrl {
+	usb {
+		usbc_sbu_dc: usbc-sbu-dc {
+			rockchip,pins = <4 RK_PA6 RK_FUNC_GPIO &pcfg_pull_none>,
+					<4 RK_PA7 RK_FUNC_GPIO &pcfg_pull_none>;
+		};
+
+		vcc5v0_host_en: vcc5v0-host-en {
+			rockchip,pins = <4 RK_PB0 RK_FUNC_GPIO &pcfg_pull_none>;
+		};
+	};
+};
+
 &sdio {
 	max-frequency = <200000000>;
 	no-sd;
@@ -34,19 +59,6 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&uart6m1_xfer &uart6m1_ctsn &uart6m1_rtsn>;
 	status = "okay";
-};
-
-&pinctrl {
-	usb {
-		usbc_sbu_dc: usbc-sbu-dc {
-			rockchip,pins = <4 RK_PA6 RK_FUNC_GPIO &pcfg_pull_none>,
-					<4 RK_PA7 RK_FUNC_GPIO &pcfg_pull_none>;
-		};
-
-		vcc5v0_host_en: vcc5v0-host-en {
-			rockchip,pins = <4 RK_PB0 RK_FUNC_GPIO &pcfg_pull_none>;
-		};
-	};
 };
 
 &usb_con {
