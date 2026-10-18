@@ -1179,6 +1179,9 @@ struct dw_hdmi_qp *dw_hdmi_qp_bind(struct platform_device *pdev,
 	if (plat_data->supported_formats)
 		hdmi->bridge.supported_formats = plat_data->supported_formats;
 
+	if (plat_data->supported_colorspaces)
+		hdmi->bridge.supported_colorspaces = plat_data->supported_colorspaces;
+
 	if (plat_data->max_bpc)
 		hdmi->bridge.max_bpc = plat_data->max_bpc;
 
