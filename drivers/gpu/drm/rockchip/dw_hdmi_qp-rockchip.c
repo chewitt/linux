@@ -667,6 +667,10 @@ static int dw_hdmi_qp_rockchip_bind(struct device *dev, struct device *master,
 				      BIT(DRM_OUTPUT_COLOR_FORMAT_YCBCR422) |
 				      BIT(DRM_OUTPUT_COLOR_FORMAT_YCBCR420);
 
+	plat_data.supported_colorspaces = BIT(DRM_MODE_COLORIMETRY_BT709_YCC) |
+				      BIT(DRM_MODE_COLORIMETRY_BT2020_RGB) |
+				      BIT(DRM_MODE_COLORIMETRY_BT2020_YCC);
+
 	encoder = &hdmi->encoder.encoder;
 	encoder->possible_crtcs = drm_of_find_possible_crtcs(drm, dev->of_node);
 
