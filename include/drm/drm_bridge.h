@@ -1130,6 +1130,13 @@ struct drm_bridge {
 	unsigned int supported_formats;
 
 	/**
+	 * @supported_colorspaces: Bitmask of &enum drm_colorspace listing
+	 * supported color spaces. This is only relevant if @DRM_BRIDGE_OP_HDMI
+	 * is set.
+	 */
+	unsigned int supported_colorspaces;
+
+	/**
 	 * @max_tmds_char_rate: Maximum TMDS character rate, in Hz, the HDMI
 	 * bridge supports. A value of 0 means the core should use the default
 	 * limit implied by @supported_hdmi_ver. This is only relevant if
