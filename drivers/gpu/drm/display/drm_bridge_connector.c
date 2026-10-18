@@ -1041,6 +1041,10 @@ struct drm_connector *drm_bridge_connector_init(struct drm_device *drm,
 			bridge_connector->hdmi_funcs.supported_formats =
 				bridge_connector->bridge_hdmi->supported_formats;
 
+		if (bridge_connector->bridge_hdmi->supported_colorspaces)
+			bridge_connector->hdmi_funcs.supported_colorspaces =
+				bridge_connector->bridge_hdmi->supported_colorspaces;
+
 		if (!connector->ycbcr_420_allowed)
 			bridge_connector->hdmi_funcs.supported_formats &=
 				~BIT(DRM_OUTPUT_COLOR_FORMAT_YCBCR420);
