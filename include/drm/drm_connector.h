@@ -1455,6 +1455,13 @@ struct drm_connector_hdmi_funcs {
 	unsigned long supported_formats;
 
 	/**
+	 * @supported_colorspaces:
+	 *
+	 * Bitmask of &enum drm_colorspace listing supported color spaces.
+	 */
+	unsigned long supported_colorspaces;
+
+	/**
 	 * @max_bpc: Maximum bits per char the HDMI connector supports.
 	 */
 	unsigned int max_bpc;
