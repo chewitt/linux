@@ -1198,6 +1198,28 @@ static int rk_hdptx_frl_lcpll_ropll_cmn_config(struct rk_hdptx_phy *hdptx)
 	return rk_hdptx_post_enable_pll(hdptx);
 }
 
+static char ropll_override[128];
+module_param_string(ropll_override, ropll_override, sizeof(ropll_override), 0644);
+MODULE_PARM_DESC(ropll_override,
+		 "rate,mdiv,mdafc,pdiv,rdiv,sdiv,en,deno,nsig,num,n,num,deno");
+
+static bool rk_hdptx_ropll_override(unsigned long long rate,
+				    struct ropll_config *cfg)
+{
+	unsigned long long orate;
+
+	if (sscanf(ropll_override,
+		   "%llu,%hhu,%hhu,%hhu,%hhu,%hhu,%hhu,%hhu,%hhu,%hhu,%hhu,%hhu,%hhu",
+		   &orate, &cfg->pms_mdiv, &cfg->pms_mdiv_afc, &cfg->pms_pdiv,
+		   &cfg->pms_refdiv, &cfg->pms_sdiv, &cfg->sdm_en, &cfg->sdm_deno,
+		   &cfg->sdm_num_sign, &cfg->sdm_num, &cfg->sdc_n, &cfg->sdc_num,
+		   &cfg->sdc_deno) != 13)
+		return false;
+
+	cfg->rate = orate;
+	return orate == rate;
+}
+
 static int rk_hdptx_tmds_ropll_cmn_config(struct rk_hdptx_phy *hdptx)
 {
 	const struct ropll_config *cfg = NULL;
@@ -1207,7 +1229,12 @@ static int rk_hdptx_tmds_ropll_cmn_config(struct rk_hdptx_phy *hdptx)
 	if (!hdptx->hdmi_cfg.rate)
 		return 0;
 
-	for (i = 0; i < ARRAY_SIZE(rk_hdptx_tmds_ropll_cfg); i++)
+	if (rk_hdptx_ropll_override(hdptx->hdmi_cfg.rate, &rc)) {
+		cfg = &rc;
+		dev_info(hdptx->dev, "ropll override: %s\n", ropll_override);
+	}
+
+	for (i = 0; !cfg && i < ARRAY_SIZE(rk_hdptx_tmds_ropll_cfg); i++)
 		if (hdptx->hdmi_cfg.rate == rk_hdptx_tmds_ropll_cfg[i].rate) {
 			cfg = &rk_hdptx_tmds_ropll_cfg[i];
 			break;
