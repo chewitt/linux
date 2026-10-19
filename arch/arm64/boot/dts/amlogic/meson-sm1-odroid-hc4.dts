@@ -105,6 +105,8 @@
 		status = "okay";
 		compatible = "nxp,pcf8563";
 		reg = <0x51>;
+		interrupt-parent = <&gpio_intc>;
+		interrupts = <IRQID_GPIOX_5 IRQ_TYPE_LEVEL_LOW>;
 		wakeup-source;
 	};
 };
