@@ -555,6 +555,8 @@ static void dw_hdmi_qp_bridge_atomic_enable(struct drm_bridge *bridge,
 	if (WARN_ON(!conn_state))
 		return;
 
+	drm_connector_hdmi_disable_scrambling(connector);
+
 	if (connector->display_info.is_hdmi) {
 		crtc_state = drm_atomic_get_new_crtc_state(state, conn_state->crtc);
 		mode = &crtc_state->mode;
@@ -594,6 +596,8 @@ static void dw_hdmi_qp_bridge_atomic_disable(struct drm_bridge *bridge,
 					     struct drm_atomic_commit *state)
 {
 	struct dw_hdmi_qp *hdmi = bridge->driver_private;
+	struct drm_connector_state *conn_state;
+	struct drm_crtc_state *crtc_state = NULL;
 	struct drm_connector *connector;
 
 	scoped_guard(mutex, &hdmi->mutex) {
@@ -606,7 +610,12 @@ static void dw_hdmi_qp_bridge_atomic_disable(struct drm_bridge *bridge,
 	hdmi->tmds_char_rate = 0;
 
 	connector = drm_atomic_get_old_connector_for_encoder(state, bridge->encoder);
-	drm_connector_hdmi_disable_scrambling(connector);
+	conn_state = drm_atomic_get_new_connector_state(state, connector);
+	if (conn_state && conn_state->crtc)
+		crtc_state = drm_atomic_get_new_crtc_state(state, conn_state->crtc);
+
+	if (!crtc_state || !crtc_state->active)
+		drm_connector_hdmi_disable_scrambling(connector);
 
 	hdmi->phy.ops->disable(hdmi, hdmi->phy.data);
 }
