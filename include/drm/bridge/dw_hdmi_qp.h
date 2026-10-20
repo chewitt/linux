@@ -32,6 +32,8 @@ struct dw_hdmi_qp_plat_data {
 	unsigned int supported_colorspaces;
 	/* Maximum bits per color channel: 8, 10 or 12 */
 	unsigned int max_bpc;
+	/* The CRTC guarantees bit-exact scanout for Dolby Vision tunnelling */
+	bool dolby_vision;
 };
 
 struct dw_hdmi_qp *dw_hdmi_qp_bind(struct platform_device *pdev,
