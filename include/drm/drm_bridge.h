@@ -1053,6 +1053,14 @@ struct drm_bridge {
 	 */
 	bool ycbcr_420_allowed;
 	/**
+	 * @hdmi_dolby_vision: Set by HDMI bridges (&DRM_BRIDGE_OP_HDMI) whose
+	 * display pipeline can deliver an RGB 8 bpc framebuffer to the sink
+	 * bit-exact, i.e. whose CRTC driver calls
+	 * drm_atomic_helper_check_crtc_dolby_vision(). The bridge connector
+	 * then exposes the experimental Dolby Vision connector property.
+	 */
+	bool hdmi_dolby_vision;
+	/**
 	 * @pre_enable_prev_first: The bridge requires that the prev
 	 * bridge @pre_enable function is called before its @pre_enable,
 	 * and conversely for post_disable. This is most frequently a
