@@ -2271,7 +2271,12 @@ static int vop2_crtc_atomic_check(struct drm_crtc *crtc,
 	if (nplanes > vp->nlayers)
 		return -EINVAL;
 
-	return 0;
+	/*
+	 * HDMI RGB 8 bpc leaves the VP on its 10-bit AAAA bus with no dither or
+	 * colour space conversion for an RGB plane, so the remaining processing
+	 * that could alter Dolby Vision's tunnelled bits is common to all CRTCs.
+	 */
+	return drm_atomic_helper_check_crtc_dolby_vision(state, crtc);
 }
 
 static void vop2_crtc_atomic_begin(struct drm_crtc *crtc,
