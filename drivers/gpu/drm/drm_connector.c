@@ -2998,6 +2998,39 @@ int drm_connector_attach_broadcast_rgb_property(struct drm_connector *connector)
 EXPORT_SYMBOL(drm_connector_attach_broadcast_rgb_property);
 
 /**
+ * drm_connector_attach_hdmi_dolby_vision_property - attach the Dolby Vision property
+ * @connector: HDMI connector using the HDMI state helpers
+ *
+ * Experimental. Creates and attaches the boolean "DVBRIDGE_DV_STANDARD_LAB"
+ * property (the name used by the CB1 player). Setting it requests standard
+ * (sink-led) Dolby Vision: drm_atomic_helper_connector_hdmi_check() then
+ * validates the link, replaces the HDMI 1.4 vendor-specific InfoFrame with the
+ * Dolby one and requires bit-exact scanout, see
+ * drm_atomic_helper_hdmi_dolby_vision_check_crtc(). Only drivers whose CRTC
+ * output path can guarantee bit-exact RGB 8 bpc delivery may attach it.
+ *
+ * Returns:
+ * Zero on success, negative errno on failure.
+ */
+int drm_connector_attach_hdmi_dolby_vision_property(struct drm_connector *connector)
+{
+	struct drm_property *prop = connector->dolby_vision_property;
+
+	if (!prop) {
+		prop = drm_property_create_bool(connector->dev, DRM_MODE_PROP_ATOMIC,
+						"DVBRIDGE_DV_STANDARD_LAB");
+		if (!prop)
+			return -ENOMEM;
+		connector->dolby_vision_property = prop;
+	}
+
+	drm_object_attach_property(&connector->base, prop, 0);
+
+	return 0;
+}
+EXPORT_SYMBOL(drm_connector_attach_hdmi_dolby_vision_property);
+
+/**
  * drm_connector_attach_colorspace_property - attach "Colorspace" property
  * @connector: connector to attach the property on.
  *
