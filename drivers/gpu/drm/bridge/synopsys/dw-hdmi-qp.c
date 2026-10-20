@@ -1200,6 +1200,9 @@ struct dw_hdmi_qp *dw_hdmi_qp_bind(struct platform_device *pdev,
 	if (plat_data->supported_formats)
 		hdmi->bridge.supported_formats = plat_data->supported_formats;
 
+	/* The Dolby VSIF (27 bytes) fits the VSI packet registers. */
+	hdmi->bridge.hdmi_dolby_vision = plat_data->dolby_vision;
+
 	if (plat_data->max_bpc)
 		hdmi->bridge.max_bpc = plat_data->max_bpc;
 
