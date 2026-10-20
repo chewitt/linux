@@ -1119,6 +1119,14 @@ struct drm_connector_hdmi_state {
 	bool is_limited_range;
 
 	/**
+	 * @dolby_vision: Userspace requested standard (sink-led) Dolby
+	 * Vision signalling: the Dolby vendor-specific InfoFrame replaces
+	 * the HDMI 1.4 one and the scanout must reach the sink bit-exact,
+	 * see drm_connector_attach_hdmi_dolby_vision_property().
+	 */
+	bool dolby_vision;
+
+	/**
 	 * @output_bpc: Bits per color channel to output.
 	 */
 	unsigned int output_bpc;
@@ -2449,6 +2457,12 @@ struct drm_connector {
 	 */
 	struct drm_property *broadcast_rgb_property;
 
+	/**
+	 * @dolby_vision_property: Experimental connector property to request
+	 * standard Dolby Vision signalling on an HDMI connector.
+	 */
+	struct drm_property *dolby_vision_property;
+
 #define DRM_CONNECTOR_POLL_HPD (1 << 0)
 #define DRM_CONNECTOR_POLL_CONNECT (1 << 1)
 #define DRM_CONNECTOR_POLL_DISCONNECT (1 << 2)
@@ -2825,6 +2839,7 @@ int drm_connector_attach_vrr_capable_property(
 		struct drm_connector *connector);
 void drm_connector_attach_panel_type_property(struct drm_connector *connector);
 int drm_connector_attach_broadcast_rgb_property(struct drm_connector *connector);
+int drm_connector_attach_hdmi_dolby_vision_property(struct drm_connector *connector);
 int drm_connector_attach_colorspace_property(struct drm_connector *connector);
 void drm_connector_attach_hdr_output_metadata_property(struct drm_connector *connector);
 bool drm_connector_atomic_hdr_metadata_equal(struct drm_connector_state *old_state,
