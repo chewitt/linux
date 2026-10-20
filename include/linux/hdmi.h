@@ -70,12 +70,14 @@ enum hdmi_infoframe_type {
 
 #define HDMI_IEEE_OUI 0x000c03
 #define HDMI_FORUM_IEEE_OUI 0xc45dd8
+#define HDMI_DOLBY_IEEE_OUI 0x00d046
 #define HDMI_INFOFRAME_HEADER_SIZE  4
 #define HDMI_AVI_INFOFRAME_SIZE    13
 #define HDMI_SPD_INFOFRAME_SIZE    25
 #define HDMI_AUDIO_INFOFRAME_SIZE  10
 #define HDMI_DRM_INFOFRAME_SIZE    26
 #define HDMI_VENDOR_INFOFRAME_SIZE  4
+#define HDMI_DOLBY_VENDOR_INFOFRAME_SIZE 27
 
 /*
  * HDMI 1.3a table 5-14 states that the largest InfoFrame_length is 27,
@@ -427,6 +429,34 @@ ssize_t hdmi_vendor_infoframe_pack_only(const struct hdmi_vendor_infoframe *fram
 					void *buffer, size_t size);
 int hdmi_vendor_infoframe_check(struct hdmi_vendor_infoframe *frame);
 
+/* Modern Dolby VSIF only. This is not the per-frame movie RPU payload. */
+struct hdmi_dolby_vendor_infoframe {
+	enum hdmi_infoframe_type type;
+	unsigned char version;
+	unsigned char length;
+	unsigned int oui;
+	bool signal;
+	bool low_latency;
+	bool backlight_present;
+	bool auxiliary_present;
+	bool l11_present;
+	u16 effective_tmax_pq;
+	u8 auxiliary_runmode;
+	u8 auxiliary_version;
+	u8 auxiliary_debug;
+	u8 content_type;
+	u8 content_subtype;
+	u8 intended_white_point;
+	u8 crf;
+	u8 l11_byte2;
+	u8 l11_byte3;
+};
+
+void hdmi_dolby_vendor_infoframe_init(struct hdmi_dolby_vendor_infoframe *frame);
+int hdmi_dolby_vendor_infoframe_check(const struct hdmi_dolby_vendor_infoframe *frame);
+ssize_t hdmi_dolby_vendor_infoframe_pack(const struct hdmi_dolby_vendor_infoframe *frame,
+				       void *buffer, size_t size);
+
 union hdmi_vendor_any_infoframe {
 	struct {
 		enum hdmi_infoframe_type type;
@@ -435,6 +465,7 @@ union hdmi_vendor_any_infoframe {
 		unsigned int oui;
 	} any;
 	struct hdmi_vendor_infoframe hdmi;
+	struct hdmi_dolby_vendor_infoframe dolby;
 };
 
 /**
