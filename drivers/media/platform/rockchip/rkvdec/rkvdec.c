@@ -1479,6 +1479,7 @@ static int rkvdec_queue_init(void *priv,
 	dst_vq->timestamp_flags = V4L2_BUF_FLAG_TIMESTAMP_COPY;
 	dst_vq->lock = &rkvdec->vdev_lock;
 	dst_vq->dev = rkvdec->v4l2_dev.dev;
+	dst_vq->max_num_buffers = 64;
 
 	return vb2_queue_init(dst_vq);
 }
