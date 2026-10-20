@@ -87,6 +87,13 @@ struct dw_hdmi_qp {
 	struct drm_connector *curr_conn;
 	unsigned long tmds_char_rate;
 	unsigned int sample_rate;
+
+	/* Guards the audio state below against the atomic enable/disable hooks */
+	struct mutex audio_mutex;
+	struct hdmi_codec_daifmt audio_fmt;
+	struct hdmi_codec_params audio_params;
+	bool audio_pending;
+	bool reenabling;
 	bool no_hpd;
 };
 
@@ -275,12 +282,28 @@ static int dw_hdmi_qp_audio_enable(struct drm_bridge *bridge,
 {
 	struct dw_hdmi_qp *hdmi = dw_hdmi_qp_from_bridge(bridge);
 
-	if (!hdmi->tmds_char_rate)
+	guard(mutex)(&hdmi->audio_mutex);
+
+	if (!hdmi->tmds_char_rate && !hdmi->reenabling)
 		return -EOPNOTSUPP;
 
 	dw_hdmi_qp_mod(hdmi, 0, AVP_DATAPATH_PACKET_AUDIO_SWDISABLE, GLOBAL_SWDISABLE);
 
 	return 0;
+}
+
+static void dw_hdmi_qp_audio_apply(struct dw_hdmi_qp *hdmi,
+				   struct drm_connector *connector)
+{
+	struct hdmi_codec_params *hparms = &hdmi->audio_params;
+	bool ref2stream = hdmi->audio_fmt.bit_fmt == SNDRV_PCM_FORMAT_IEC958_SUBFRAME_LE;
+
+	dw_hdmi_qp_set_audio_interface(hdmi, &hdmi->audio_fmt, hparms);
+	dw_hdmi_qp_set_sample_rate(hdmi, hdmi->tmds_char_rate, hparms->sample_rate);
+	hdmi->sample_rate = hparms->sample_rate;
+	dw_hdmi_qp_set_channel_status(hdmi, hparms->iec.status, ref2stream);
+	drm_atomic_helper_connector_hdmi_update_audio_infoframe(connector, &hparms->cea);
+	hdmi->audio_pending = false;
 }
 
 static int dw_hdmi_qp_audio_prepare(struct drm_bridge *bridge,
@@ -289,24 +312,24 @@ static int dw_hdmi_qp_audio_prepare(struct drm_bridge *bridge,
 				    struct hdmi_codec_params *hparms)
 {
 	struct dw_hdmi_qp *hdmi = dw_hdmi_qp_from_bridge(bridge);
-	bool ref2stream = false;
-
-	if (!hdmi->tmds_char_rate)
-		return -EOPNOTSUPP;
 
 	if (fmt->bit_clk_provider | fmt->frame_clk_provider) {
 		dev_err(hdmi->dev, "unsupported clock settings\n");
 		return -EINVAL;
 	}
 
-	if (fmt->bit_fmt == SNDRV_PCM_FORMAT_IEC958_SUBFRAME_LE)
-		ref2stream = true;
+	guard(mutex)(&hdmi->audio_mutex);
 
-	dw_hdmi_qp_set_audio_interface(hdmi, fmt, hparms);
-	dw_hdmi_qp_set_sample_rate(hdmi, hdmi->tmds_char_rate, hparms->sample_rate);
-	hdmi->sample_rate = hparms->sample_rate;
-	dw_hdmi_qp_set_channel_status(hdmi, hparms->iec.status, ref2stream);
-	drm_atomic_helper_connector_hdmi_update_audio_infoframe(connector, &hparms->cea);
+	if (!hdmi->tmds_char_rate && !hdmi->reenabling)
+		return -EOPNOTSUPP;
+
+	hdmi->audio_fmt = *fmt;
+	hdmi->audio_params = *hparms;
+
+	if (hdmi->tmds_char_rate)
+		dw_hdmi_qp_audio_apply(hdmi, connector);
+	else
+		hdmi->audio_pending = true;
 
 	return 0;
 }
@@ -337,7 +360,10 @@ static void dw_hdmi_qp_audio_disable(struct drm_bridge *bridge,
 
 	drm_atomic_helper_connector_hdmi_clear_audio_infoframe(connector);
 
+	guard(mutex)(&hdmi->audio_mutex);
+
 	hdmi->sample_rate = 0;
+	hdmi->audio_pending = false;
 
 	if (hdmi->tmds_char_rate)
 		dw_hdmi_qp_audio_disable_regs(hdmi);
@@ -575,11 +601,17 @@ static void dw_hdmi_qp_bridge_atomic_enable(struct drm_bridge *bridge,
 
 	if (connector->display_info.is_hdmi) {
 		op_mode = 0;
-		hdmi->tmds_char_rate = conn_state->hdmi.tmds_char_rate;
 
-		if (hdmi->sample_rate)
-			dw_hdmi_qp_set_sample_rate(hdmi, hdmi->tmds_char_rate,
-						   hdmi->sample_rate);
+		scoped_guard(mutex, &hdmi->audio_mutex) {
+			hdmi->tmds_char_rate = conn_state->hdmi.tmds_char_rate;
+			hdmi->reenabling = false;
+
+			if (hdmi->audio_pending)
+				dw_hdmi_qp_audio_apply(hdmi, connector);
+			else if (hdmi->sample_rate)
+				dw_hdmi_qp_set_sample_rate(hdmi, hdmi->tmds_char_rate,
+							   hdmi->sample_rate);
+		}
 
 		ret = drm_connector_hdmi_enable_scrambling(connector, conn_state);
 		if (ret)
@@ -597,6 +629,11 @@ static void dw_hdmi_qp_bridge_atomic_enable(struct drm_bridge *bridge,
 	} else {
 		op_mode = OPMODE_DVI;
 		dev_dbg(hdmi->dev, "%s mode=DVI\n", __func__);
+
+		scoped_guard(mutex, &hdmi->audio_mutex) {
+			hdmi->reenabling = false;
+			hdmi->audio_pending = false;
+		}
 	}
 
 	drm_connector_get(connector);
@@ -626,12 +663,15 @@ static void dw_hdmi_qp_bridge_atomic_disable(struct drm_bridge *bridge,
 		}
 	}
 
-	hdmi->tmds_char_rate = 0;
-
 	connector = drm_atomic_get_old_connector_for_encoder(state, bridge->encoder);
 	conn_state = drm_atomic_get_new_connector_state(state, connector);
 	if (conn_state && conn_state->crtc)
 		crtc_state = drm_atomic_get_new_crtc_state(state, conn_state->crtc);
+
+	scoped_guard(mutex, &hdmi->audio_mutex) {
+		hdmi->tmds_char_rate = 0;
+		hdmi->reenabling = crtc_state && crtc_state->active;
+	}
 
 	if (!crtc_state || !crtc_state->active)
 		drm_connector_hdmi_disable_scrambling(connector);
@@ -1150,6 +1190,10 @@ struct dw_hdmi_qp *dw_hdmi_qp_bind(struct platform_device *pdev,
 		return ERR_CAST(hdmi);
 
 	ret = devm_mutex_init(dev, &hdmi->mutex);
+	if (ret)
+		return ERR_PTR(ret);
+
+	ret = devm_mutex_init(dev, &hdmi->audio_mutex);
 	if (ret)
 		return ERR_PTR(ret);
 
