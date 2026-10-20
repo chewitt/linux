@@ -60,6 +60,8 @@ int drm_atomic_helper_check_plane_state(struct drm_plane_state *plane_state,
 int drm_atomic_helper_check_planes(struct drm_device *dev,
 			       struct drm_atomic_commit *state);
 int drm_atomic_helper_check_crtc_primary_plane(struct drm_crtc_state *crtc_state);
+int drm_atomic_helper_check_crtc_dolby_vision(struct drm_atomic_commit *state,
+					      struct drm_crtc *crtc);
 void drm_atomic_helper_commit_encoder_bridge_disable(struct drm_device *dev,
 						     struct drm_atomic_commit *state);
 void drm_atomic_helper_commit_crtc_disable(struct drm_device *dev,
