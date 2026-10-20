@@ -86,6 +86,7 @@ struct dw_hdmi_qp {
 	struct mutex mutex;
 	struct drm_connector *curr_conn;
 	unsigned long tmds_char_rate;
+	unsigned int sample_rate;
 	bool no_hpd;
 };
 
@@ -303,6 +304,7 @@ static int dw_hdmi_qp_audio_prepare(struct drm_bridge *bridge,
 
 	dw_hdmi_qp_set_audio_interface(hdmi, fmt, hparms);
 	dw_hdmi_qp_set_sample_rate(hdmi, hdmi->tmds_char_rate, hparms->sample_rate);
+	hdmi->sample_rate = hparms->sample_rate;
 	dw_hdmi_qp_set_channel_status(hdmi, hparms->iec.status, ref2stream);
 	drm_atomic_helper_connector_hdmi_update_audio_infoframe(connector, &hparms->cea);
 
@@ -334,6 +336,8 @@ static void dw_hdmi_qp_audio_disable(struct drm_bridge *bridge,
 	struct dw_hdmi_qp *hdmi = dw_hdmi_qp_from_bridge(bridge);
 
 	drm_atomic_helper_connector_hdmi_clear_audio_infoframe(connector);
+
+	hdmi->sample_rate = 0;
 
 	if (hdmi->tmds_char_rate)
 		dw_hdmi_qp_audio_disable_regs(hdmi);
@@ -572,6 +576,10 @@ static void dw_hdmi_qp_bridge_atomic_enable(struct drm_bridge *bridge,
 	if (connector->display_info.is_hdmi) {
 		op_mode = 0;
 		hdmi->tmds_char_rate = conn_state->hdmi.tmds_char_rate;
+
+		if (hdmi->sample_rate)
+			dw_hdmi_qp_set_sample_rate(hdmi, hdmi->tmds_char_rate,
+						   hdmi->sample_rate);
 
 		ret = drm_connector_hdmi_enable_scrambling(connector, conn_state);
 		if (ret)
