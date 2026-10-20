@@ -661,6 +661,8 @@ static int dw_hdmi_qp_rockchip_bind(struct device *dev, struct device *master,
 	plat_data.phy_ops = cfg->phy_ops;
 	plat_data.phy_data = hdmi;
 	plat_data.max_bpc = 10;
+	/* VOP2 enforces bit-exact scanout via drm_atomic_helper_check_crtc_dolby_vision() */
+	plat_data.dolby_vision = true;
 
 	plat_data.supported_formats = BIT(DRM_OUTPUT_COLOR_FORMAT_RGB444) |
 				      BIT(DRM_OUTPUT_COLOR_FORMAT_YCBCR444) |
