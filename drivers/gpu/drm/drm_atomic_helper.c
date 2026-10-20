@@ -1006,6 +1006,89 @@ int drm_atomic_helper_check_crtc_primary_plane(struct drm_crtc_state *crtc_state
 EXPORT_SYMBOL(drm_atomic_helper_check_crtc_primary_plane);
 
 /**
+ * drm_atomic_helper_check_crtc_dolby_vision - check bit-exact scanout for Dolby Vision
+ * @state: the atomic commit being checked
+ * @crtc: the CRTC to check
+ *
+ * Standard (sink-led) Dolby Vision carries its metadata in the least
+ * significant bits of the RGB 8 bpc picture, so the CRTC must deliver the
+ * framebuffer to the sink unmodified. When a connector driven by @crtc has
+ * requested Dolby Vision (&drm_connector_hdmi_state.dolby_vision), reject
+ * colour management, VRR, additional planes, scaling, rotation and
+ * translucency. CRTC drivers that attach the Dolby Vision property call this
+ * from their &drm_crtc_helper_funcs.atomic_check and remain responsible for
+ * any processing of their own (dithering, colour space conversion).
+ *
+ * Returns:
+ * Zero if the scanout is bit-exact or Dolby Vision is not requested, a
+ * negative errno otherwise.
+ */
+int drm_atomic_helper_check_crtc_dolby_vision(struct drm_atomic_commit *state,
+					      struct drm_crtc *crtc)
+{
+	struct drm_crtc_state *crtc_state = drm_atomic_get_new_crtc_state(state, crtc);
+	struct drm_connector_list_iter iter;
+	struct drm_connector *connector;
+	struct drm_plane_state *plane_state;
+	struct drm_plane *primary = crtc->primary;
+	bool requested = false;
+	unsigned int w, h;
+	int ret = 0;
+
+	if (!crtc_state || !crtc_state->active || !crtc_state->connector_mask)
+		return 0;
+
+	drm_connector_list_iter_begin(crtc->dev, &iter);
+	drm_for_each_connector_iter(connector, &iter) {
+		struct drm_connector_state *conn_state;
+
+		if (!connector->dolby_vision_property ||
+		    !(crtc_state->connector_mask & drm_connector_mask(connector)))
+			continue;
+
+		conn_state = drm_atomic_get_connector_state(state, connector);
+		if (IS_ERR(conn_state)) {
+			ret = PTR_ERR(conn_state);
+			break;
+		}
+		if (conn_state->crtc == crtc && conn_state->hdmi.dolby_vision)
+			requested = true;
+	}
+	drm_connector_list_iter_end(&iter);
+	if (ret || !requested)
+		return ret;
+
+	if (crtc_state->ctm || crtc_state->degamma_lut || crtc_state->gamma_lut ||
+	    crtc_state->vrr_enabled || !primary ||
+	    crtc_state->plane_mask != drm_plane_mask(primary)) {
+		drm_dbg_atomic(crtc->dev, "Dolby Vision: CRTC colour processing or extra planes\n");
+		return -EINVAL;
+	}
+
+	plane_state = drm_atomic_get_plane_state(state, primary);
+	if (IS_ERR(plane_state))
+		return PTR_ERR(plane_state);
+
+	w = crtc_state->mode.hdisplay;
+	h = crtc_state->mode.vdisplay;
+	if (!plane_state->fb || plane_state->crtc != crtc || !plane_state->visible ||
+	    (plane_state->fb->format->format != DRM_FORMAT_XRGB8888 &&
+	     plane_state->fb->format->format != DRM_FORMAT_ARGB8888) ||
+	    plane_state->src_x || plane_state->src_y ||
+	    plane_state->src_w != (w << 16) || plane_state->src_h != (h << 16) ||
+	    plane_state->crtc_x || plane_state->crtc_y ||
+	    plane_state->crtc_w != w || plane_state->crtc_h != h ||
+	    plane_state->rotation != DRM_MODE_ROTATE_0 ||
+	    plane_state->alpha != DRM_BLEND_ALPHA_OPAQUE) {
+		drm_dbg_atomic(crtc->dev, "Dolby Vision: scanout is not bit-exact\n");
+		return -EINVAL;
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL(drm_atomic_helper_check_crtc_dolby_vision);
+
+/**
  * drm_atomic_helper_check_planes - validate state object for planes changes
  * @dev: DRM device
  * @state: the driver state object
