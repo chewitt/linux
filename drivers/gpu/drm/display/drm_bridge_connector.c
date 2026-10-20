@@ -1078,6 +1078,12 @@ struct drm_connector *drm_bridge_connector_init(struct drm_device *drm,
 					       connector_type, ddc);
 		if (ret)
 			return ERR_PTR(ret);
+
+		if (bridge_connector->bridge_hdmi->hdmi_dolby_vision) {
+			ret = drm_connector_attach_hdmi_dolby_vision_property(connector);
+			if (ret)
+				return ERR_PTR(ret);
+		}
 	} else {
 		ret = drmm_connector_init(drm, connector,
 					  &drm_bridge_connector_funcs,
