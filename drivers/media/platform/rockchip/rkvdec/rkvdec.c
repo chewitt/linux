@@ -1265,8 +1265,13 @@ static const struct media_device_ops rkvdec_media_ops = {
 };
 
 /**
- * Return a core that is available for decoding or null if no core is found.
+ * acquire_core() - claim a core that is available for decoding
+ * @rkvdec: the rkvdec device
+ * @ctx: the context that will run on the core
+ *
  * The caller should make sure to call release_core() when the core is no longer needed.
+ *
+ * Return: an available core, or NULL if no core is available.
  */
 static struct rkvdec_core *acquire_core(struct rkvdec_dev *rkvdec, struct rkvdec_ctx *ctx)
 {
@@ -1285,7 +1290,9 @@ static struct rkvdec_core *acquire_core(struct rkvdec_dev *rkvdec, struct rkvdec
 }
 
 /**
- * Release the core to make it available for a next job.
+ * release_core() - make a core available for the next job
+ * @rkvdec: the rkvdec device
+ * @core: the core to release
  */
 static void release_core(struct rkvdec_dev *rkvdec, struct rkvdec_core *core)
 {
