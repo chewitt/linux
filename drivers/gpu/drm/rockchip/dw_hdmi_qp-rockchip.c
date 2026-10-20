@@ -760,6 +760,11 @@ static int dw_hdmi_qp_rockchip_bind(struct device *dev, struct device *master,
 		return dev_err_probe(dev, PTR_ERR(connector),
 				     "Failed to init bridge connector\n");
 
+	ret = drm_connector_attach_broadcast_rgb_property(connector);
+	if (ret)
+		return dev_err_probe(dev, ret,
+				     "Failed to attach Broadcast RGB property\n");
+
 	platform_set_drvdata(pdev, hdmi);
 
 	return 0;
