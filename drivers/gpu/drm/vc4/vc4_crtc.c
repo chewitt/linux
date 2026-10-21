@@ -795,7 +795,7 @@ int vc4_crtc_atomic_check(struct drm_crtc *crtc,
 		break;
 	}
 
-	return 0;
+	return drm_atomic_helper_check_crtc_dolby_vision(state, crtc);
 }
 
 static int vc4_enable_vblank(struct drm_crtc *crtc)

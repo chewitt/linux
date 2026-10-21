@@ -474,6 +474,13 @@ static int vc4_hdmi_connector_atomic_check(struct drm_connector *connector,
 	if (!crtc)
 		return 0;
 
+	if (new_state->hdmi.dolby_vision &&
+	    (new_state->tv.margins.left || new_state->tv.margins.right ||
+	     new_state->tv.margins.top || new_state->tv.margins.bottom)) {
+		drm_dbg_atomic(connector->dev, "Dolby Vision: TV margins scale the plane\n");
+		return -EINVAL;
+	}
+
 	if (old_state->tv.margins.left != new_state->tv.margins.left ||
 	    old_state->tv.margins.right != new_state->tv.margins.right ||
 	    old_state->tv.margins.top != new_state->tv.margins.top ||
@@ -599,6 +606,12 @@ static int vc4_hdmi_connector_init(struct drm_device *dev,
 	ret = drm_connector_attach_broadcast_rgb_property(connector);
 	if (ret)
 		return ret;
+
+	if (vc4_hdmi->variant->supports_dolby_vision) {
+		ret = drm_connector_attach_hdmi_dolby_vision_property(connector);
+		if (ret)
+			return ret;
+	}
 
 	drm_connector_attach_encoder(connector, encoder);
 
@@ -3490,6 +3503,7 @@ static const struct vc4_hdmi_variant bcm2712_hdmi0_variant = {
 	.phy_disable		= vc6_hdmi_phy_disable,
 	.channel_map		= vc5_hdmi_channel_map,
 	.supports_hdr		= true,
+	.supports_dolby_vision	= true,
 	.hp_detect		= vc5_hdmi_hp_detect,
 };
 
@@ -3518,6 +3532,7 @@ static const struct vc4_hdmi_variant bcm2712_hdmi1_variant = {
 	.phy_disable		= vc6_hdmi_phy_disable,
 	.channel_map		= vc5_hdmi_channel_map,
 	.supports_hdr		= true,
+	.supports_dolby_vision	= true,
 	.hp_detect		= vc5_hdmi_hp_detect,
 };
 

@@ -97,6 +97,9 @@ struct vc4_hdmi_variant {
 	/* Enables HDR metadata */
 	bool supports_hdr;
 
+	/* Enables standard Dolby Vision signalling */
+	bool supports_dolby_vision;
+
 	/* Callback for hardware specific hotplug detect */
 	bool (*hp_detect)(struct vc4_hdmi *vc4_hdmi);
 };
