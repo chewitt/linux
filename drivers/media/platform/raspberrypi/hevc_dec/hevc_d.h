@@ -94,7 +94,7 @@ struct hevc_d_dev;
 typedef void (*hevc_d_irq_callback)(struct hevc_d_dev *dev, void *ctx);
 
 struct hevc_d_q_aux;
-#define HEVC_D_AUX_ENT_COUNT VB2_MAX_FRAME
+#define HEVC_D_AUX_ENT_COUNT 64
 
 struct hevc_d_ctx {
 	struct v4l2_fh			fh;
