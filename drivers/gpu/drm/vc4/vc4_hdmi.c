@@ -508,7 +508,7 @@ static int vc4_hdmi_connector_atomic_check(struct drm_connector *connector,
 static void vc4_hdmi_connector_reset(struct drm_connector *connector)
 {
 	drm_atomic_helper_connector_reset(connector);
-	__drm_atomic_helper_connector_hdmi_state_init(connector, connector->state);
+	__drm_atomic_helper_connector_hdmi_state_init(connector->state, connector);
 	drm_atomic_helper_connector_tv_margins_reset(connector);
 }
 
