@@ -381,7 +381,7 @@ vc4_vec_connector_detect(struct drm_connector *connector, bool force)
 static void vc4_vec_connector_reset(struct drm_connector *connector)
 {
 	drm_atomic_helper_connector_reset(connector);
-	drm_atomic_helper_connector_tv_reset(connector);
+	drm_atomic_helper_connector_tv_state_init(connector->state, connector);
 }
 
 static int
