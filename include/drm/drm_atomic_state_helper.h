@@ -74,7 +74,8 @@ drm_atomic_helper_connector_create_state(struct drm_connector *connector);
 void drm_atomic_helper_connector_tv_reset(struct drm_connector *connector);
 int drm_atomic_helper_connector_tv_check(struct drm_connector *connector,
 					 struct drm_atomic_commit *state);
-void drm_atomic_helper_connector_tv_margins_reset(struct drm_connector *connector);
+void drm_atomic_helper_connector_tv_margins_state_init(struct drm_connector_state *state,
+						       struct drm_connector *connector);
 void
 __drm_atomic_helper_connector_duplicate_state(struct drm_connector *connector,
 					   struct drm_connector_state *state);

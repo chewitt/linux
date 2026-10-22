@@ -482,22 +482,23 @@ drm_atomic_helper_connector_create_state(struct drm_connector *connector)
 EXPORT_SYMBOL(drm_atomic_helper_connector_create_state);
 
 /**
- * drm_atomic_helper_connector_tv_margins_reset - Resets TV connector properties
+ * drm_atomic_helper_connector_tv_margins_state_init - Initializes TV connector properties
+ * @state: the DRM state object
  * @connector: DRM connector
  *
- * Resets the TV-related properties attached to a connector.
+ * Initializes the TV-related properties attached to a connector.
  */
-void drm_atomic_helper_connector_tv_margins_reset(struct drm_connector *connector)
+void drm_atomic_helper_connector_tv_margins_state_init(struct drm_connector_state *state,
+						       struct drm_connector *connector)
 {
 	struct drm_cmdline_mode *cmdline = &connector->cmdline_mode;
-	struct drm_connector_state *state = connector->state;
 
 	state->tv.margins.left = cmdline->tv_margins.left;
 	state->tv.margins.right = cmdline->tv_margins.right;
 	state->tv.margins.top = cmdline->tv_margins.top;
 	state->tv.margins.bottom = cmdline->tv_margins.bottom;
 }
-EXPORT_SYMBOL(drm_atomic_helper_connector_tv_margins_reset);
+EXPORT_SYMBOL(drm_atomic_helper_connector_tv_margins_state_init);
 
 /**
  * drm_atomic_helper_connector_tv_reset - Resets Analog TV connector properties
@@ -570,7 +571,7 @@ void drm_atomic_helper_connector_tv_reset(struct drm_connector *connector)
 							   prop, &val))
 			state->tv.hue = val;
 
-	drm_atomic_helper_connector_tv_margins_reset(connector);
+	drm_atomic_helper_connector_tv_margins_state_init(connector->state, connector);
 }
 EXPORT_SYMBOL(drm_atomic_helper_connector_tv_reset);
 
