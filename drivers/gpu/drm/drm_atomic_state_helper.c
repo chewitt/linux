@@ -501,16 +501,17 @@ void drm_atomic_helper_connector_tv_margins_state_init(struct drm_connector_stat
 EXPORT_SYMBOL(drm_atomic_helper_connector_tv_margins_state_init);
 
 /**
- * drm_atomic_helper_connector_tv_reset - Resets Analog TV connector properties
+ * drm_atomic_helper_connector_tv_state_init - Initializes Analog TV connector properties
+ * @state: the DRM state object
  * @connector: DRM connector
  *
- * Resets the analog TV properties attached to a connector
+ * Initializes the analog TV properties attached to a connector
  */
-void drm_atomic_helper_connector_tv_reset(struct drm_connector *connector)
+void drm_atomic_helper_connector_tv_state_init(struct drm_connector_state *state,
+					       struct drm_connector *connector)
 {
 	struct drm_device *dev = connector->dev;
 	struct drm_cmdline_mode *cmdline = &connector->cmdline_mode;
-	struct drm_connector_state *state = connector->state;
 	struct drm_property *prop;
 	uint64_t val;
 
@@ -571,9 +572,9 @@ void drm_atomic_helper_connector_tv_reset(struct drm_connector *connector)
 							   prop, &val))
 			state->tv.hue = val;
 
-	drm_atomic_helper_connector_tv_margins_state_init(connector->state, connector);
+	drm_atomic_helper_connector_tv_margins_state_init(state, connector);
 }
-EXPORT_SYMBOL(drm_atomic_helper_connector_tv_reset);
+EXPORT_SYMBOL(drm_atomic_helper_connector_tv_state_init);
 
 /**
  * drm_atomic_helper_connector_tv_check - Validate an analog TV connector state
