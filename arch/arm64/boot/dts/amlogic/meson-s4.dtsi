@@ -1407,7 +1407,7 @@
 	};
 
 	spdifout_a: audio-controller@330480 {
-		compatible = "amlogic,g12a-spdifout",
+		compatible = "amlogic,s4-spdifout",
 				 "amlogic,axg-spdifout";
 		reg = <0x0 0x330480 0x0 0x50>;
 		#sound-dai-cells = <0>;
@@ -1461,7 +1461,7 @@
 	};
 
 	spdifout_b: audio-controller@330680 {
-		compatible = "amlogic,g12a-spdifout",
+		compatible = "amlogic,s4-spdifout",
 				 "amlogic,axg-spdifout";
 		reg = <0x0 0x330680 0x0 0x50>;
 		#sound-dai-cells = <0>;
@@ -1482,7 +1482,7 @@
 	};
 
 	tohdmitx: audio-controller@330744 {
-		compatible = "amlogic,sm1-tohdmitx",
+		compatible = "amlogic,s4-tohdmitx",
 				 "amlogic,g12a-tohdmitx";
 		reg = <0x0 0x330744 0x0 0x4>;
 		#sound-dai-cells = <1>;
