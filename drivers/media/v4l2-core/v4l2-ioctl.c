@@ -1544,6 +1544,8 @@ static void v4l_fill_fmtdesc(struct v4l2_fmtdesc *fmt)
 		case V4L2_PIX_FMT_MT21C:	descr = "Mediatek Compressed Format"; break;
 		case V4L2_PIX_FMT_QC08C:	descr = "QCOM Compressed 8-bit Format"; break;
 		case V4L2_PIX_FMT_QC10C:	descr = "QCOM Compressed 10-bit Format"; break;
+		case V4L2_PIX_FMT_YUV420_8_AFBC_16X16:	descr = "YUV 4:2:0 (AFBC 16x16)"; break;
+		case V4L2_PIX_FMT_YUV420_10_AFBC_16X16:	descr = "10-bit YUV 4:2:0 (AFBC 16x16)"; break;
 		case V4L2_PIX_FMT_AJPG:		descr = "Aspeed JPEG"; break;
 		case V4L2_PIX_FMT_AV1_FRAME:	descr = "AV1 Frame"; break;
 		case V4L2_PIX_FMT_AV1:		descr = "AV1 OBU Stream"; break;
