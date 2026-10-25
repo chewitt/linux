@@ -259,6 +259,27 @@ please make a proposal on the linux-media mailing list.
         and it is used by various multimedia hardware blocks like GPU, display
         controllers, ISP and video accelerators.
         It contains four planes for progressive video.
+    * .. _V4L2-PIX-FMT-YUV420-8-AFBC-16X16:
+
+      - ``V4L2_PIX_FMT_YUV420_8_AFBC_16X16``
+      - 'AF12'
+      - Arm Frame Buffer Compression (AFBC) of 8-bit YUV 4:2:0, using 16x16
+        superblocks with no block split or YUV transform. It is the DRM format
+        ``DRM_FORMAT_YUV420_8BIT`` with the modifier
+        ``DRM_FORMAT_MOD_ARM_AFBC(AFBC_FORMAT_MOD_BLOCK_SIZE_16x16)``, and it
+        is used by the Rockchip video decoders. The single plane holds the
+        AFBC headers followed by the superblock bodies. ``bytesperline`` is the DRM framebuffer pitch: the
+        header row width in pixels multiplied by 12 bits. The decoder may
+        place the picture below the top of the buffer; the capture queue
+        ``V4L2_SEL_TGT_COMPOSE`` selection gives its position.
+    * .. _V4L2-PIX-FMT-YUV420-10-AFBC-16X16:
+
+      - ``V4L2_PIX_FMT_YUV420_10_AFBC_16X16``
+      - 'AF01'
+      - As ``V4L2_PIX_FMT_YUV420_8_AFBC_16X16``, for 10-bit YUV 4:2:0. It is
+        the DRM format ``DRM_FORMAT_YUV420_10BIT`` with the same modifier, and
+        ``bytesperline`` is the header row width in pixels multiplied by 15
+        bits.
     * .. _V4L2-PIX-FMT-AJPG:
 
       - ``V4L2_PIX_FMT_AJPG``
