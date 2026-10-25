@@ -260,9 +260,19 @@ static void config_registers(struct rkvdec_ctx *ctx,
 	ver_virstride = dst_fmt->height;
 	y_virstride = hor_virstride * ver_virstride;
 
-	regs->common.reg018_y_hor_stride.y_hor_virstride = hor_virstride / 16;
-	regs->common.reg019_uv_hor_stride.uv_hor_virstride = hor_virstride / 16;
-	regs->common.reg020_y_stride.y_virstride = y_virstride / 16;
+	if (rkvdec_is_afbc(dst_fmt->pixelformat)) {
+		u32 hdr_stride = ALIGN(dst_fmt->width, 64);
+
+		regs->common.reg012_secondary_en.fbc_e = 1;
+		regs->common.reg018_y_hor_stride.y_hor_virstride = hdr_stride / 16;
+		regs->common.reg019_uv_hor_stride.uv_hor_virstride = hdr_stride / 16;
+		regs->common.reg020_fbc_payload_off.payload_st_offset =
+			rkvdec_afbc_payload_offset(ctx) >> 4;
+	} else {
+		regs->common.reg018_y_hor_stride.y_hor_virstride = hor_virstride / 16;
+		regs->common.reg019_uv_hor_stride.uv_hor_virstride = hor_virstride / 16;
+		regs->common.reg020_y_stride.y_virstride = y_virstride / 16;
+	}
 
 	/* Activate block gating */
 	regs->common.reg026_block_gating_en.inter_auto_gating_e = 1;
@@ -457,9 +467,21 @@ static int rkvdec_h264_try_ctrl(struct rkvdec_ctx *ctx, struct v4l2_ctrl *ctrl)
 	return 0;
 }
 
+/* The decoder cannot write field or MBAFF pictures as AFBC */
+static bool rkvdec_h264_afbc_capable(struct rkvdec_ctx *ctx, struct v4l2_ctrl *ctrl)
+{
+	const struct v4l2_ctrl_h264_sps *sps = ctrl->p_new.p_h264_sps;
+
+	if (ctrl->id != V4L2_CID_STATELESS_H264_SPS)
+		return !ctx->no_afbc;
+
+	return sps->flags & V4L2_H264_SPS_FLAG_FRAME_MBS_ONLY;
+}
+
 const struct rkvdec_coded_fmt_ops rkvdec_vdpu381_h264_fmt_ops = {
 	.adjust_fmt = rkvdec_h264_adjust_fmt,
 	.get_image_fmt = rkvdec_h264_get_image_fmt,
+	.afbc_capable = rkvdec_h264_afbc_capable,
 	.start = rkvdec_h264_start,
 	.stop = rkvdec_h264_stop,
 	.run = rkvdec_h264_run,

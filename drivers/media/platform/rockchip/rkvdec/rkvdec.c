@@ -36,6 +36,10 @@
 #include "rkvdec-vdpu383-regs.h"
 #include "rkvdec-rcb.h"
 
+static bool rkvdec_prefer_afbc;
+module_param_named(afbc, rkvdec_prefer_afbc, bool, 0644);
+MODULE_PARM_DESC(afbc, "Offer AFBC capture formats ahead of linear ones");
+
 static bool rkvdec_image_fmt_match(enum rkvdec_image_fmt fmt1,
 				   enum rkvdec_image_fmt fmt2)
 {
@@ -52,23 +56,39 @@ static bool rkvdec_image_fmt_changed(struct rkvdec_ctx *ctx,
 	return ctx->image_fmt != image_fmt;
 }
 
+static bool rkvdec_decoded_fmt_usable(struct rkvdec_ctx *ctx,
+				      const struct rkvdec_decoded_fmt_desc *fmt,
+				      enum rkvdec_image_fmt image_fmt)
+{
+	if (!rkvdec_image_fmt_match(fmt->image_fmt, image_fmt))
+		return false;
+
+	return !(ctx->no_afbc && rkvdec_is_afbc(fmt->fourcc));
+}
+
 static u32 rkvdec_enum_decoded_fmt(struct rkvdec_ctx *ctx, int index,
 				   enum rkvdec_image_fmt image_fmt)
 {
 	const struct rkvdec_coded_fmt_desc *desc = ctx->coded_fmt_desc;
 	int fmt_idx = -1;
-	unsigned int i;
+	unsigned int i, pass;
 
 	if (WARN_ON(!desc))
 		return 0;
 
-	for (i = 0; i < desc->num_decoded_fmts; i++) {
-		if (!rkvdec_image_fmt_match(desc->decoded_fmts[i].image_fmt,
-					    image_fmt))
-			continue;
-		fmt_idx++;
-		if (index == fmt_idx)
-			return desc->decoded_fmts[i].fourcc;
+	/* List the preferred kind (AFBC or linear) first, then the other. */
+	for (pass = 0; pass < 2; pass++) {
+		for (i = 0; i < desc->num_decoded_fmts; i++) {
+			const struct rkvdec_decoded_fmt_desc *fmt = &desc->decoded_fmts[i];
+
+			if ((rkvdec_is_afbc(fmt->fourcc) == rkvdec_prefer_afbc) != !pass)
+				continue;
+			if (!rkvdec_decoded_fmt_usable(ctx, fmt, image_fmt))
+				continue;
+			fmt_idx++;
+			if (index == fmt_idx)
+				return fmt->fourcc;
+		}
 	}
 
 	return 0;
@@ -81,9 +101,8 @@ static bool rkvdec_is_valid_fmt(struct rkvdec_ctx *ctx, u32 fourcc,
 	unsigned int i;
 
 	for (i = 0; i < desc->num_decoded_fmts; i++) {
-		if (rkvdec_image_fmt_match(desc->decoded_fmts[i].image_fmt,
-					   image_fmt) &&
-		    desc->decoded_fmts[i].fourcc == fourcc)
+		if (desc->decoded_fmts[i].fourcc == fourcc &&
+		    rkvdec_decoded_fmt_usable(ctx, &desc->decoded_fmts[i], image_fmt))
 			return true;
 	}
 
@@ -131,15 +150,75 @@ static u32 vdpu383_hor_stride(u32 bytesperline)
 	return (ALIGN(bytesperline, 128) | 128) + 64;
 }
 
+/*
+ * AFBC frames hold one 16-byte header per 16x16 superblock, in rows of
+ * ALIGN(width, 64) pixels, followed by the superblock bodies from a 4K aligned
+ * payload offset. H.264 and HEVC write 16 lines more than the aligned height
+ * and place the picture 4 lines down; VP9 writes whole 64-line superblocks.
+ */
+static u32 rkvdec_afbc_lines(struct rkvdec_ctx *ctx, u32 height)
+{
+	if (ctx->coded_fmt_desc->fourcc == V4L2_PIX_FMT_VP9_FRAME)
+		return ALIGN(height, 64);
+
+	return ALIGN(height, 16) + 16;
+}
+
+static u32 rkvdec_afbc_top(struct rkvdec_ctx *ctx)
+{
+	if (!rkvdec_is_afbc(ctx->decoded_fmt.fmt.pix_mp.pixelformat) ||
+	    ctx->coded_fmt_desc->fourcc == V4L2_PIX_FMT_VP9_FRAME)
+		return 0;
+
+	return 4;
+}
+
+static u32 rkvdec_afbc_offset(struct rkvdec_ctx *ctx, u32 width, u32 height)
+{
+	u32 lines = rkvdec_afbc_lines(ctx, height);
+
+	if (ctx->coded_fmt_desc->fourcc == V4L2_PIX_FMT_HEVC_SLICE)
+		lines += 64;
+	else
+		lines += 16;
+
+	return ALIGN(ALIGN(width, 64) * lines / 16, SZ_4K);
+}
+
+u32 rkvdec_afbc_payload_offset(struct rkvdec_ctx *ctx)
+{
+	const struct v4l2_pix_format_mplane *pix_mp = &ctx->decoded_fmt.fmt.pix_mp;
+
+	return rkvdec_afbc_offset(ctx, pix_mp->width, pix_mp->height);
+}
+
+static void rkvdec_fill_afbc_pixfmt(struct rkvdec_ctx *ctx,
+				    struct v4l2_pix_format_mplane *pix_mp)
+{
+	struct v4l2_plane_pix_format *plane = &pix_mp->plane_fmt[0];
+	u32 bpp = pix_mp->pixelformat == V4L2_PIX_FMT_YUV420_10_AFBC_16X16 ? 15 : 12;
+	u32 hdr_stride = ALIGN(pix_mp->width, 64);
+	u32 blocks = hdr_stride / 16 * (rkvdec_afbc_lines(ctx, pix_mp->height) / 16);
+
+	pix_mp->num_planes = 1;
+	memset(plane, 0, sizeof(*plane));
+	plane->bytesperline = hdr_stride * bpp / 8;
+	plane->sizeimage = PAGE_ALIGN(rkvdec_afbc_offset(ctx, pix_mp->width, pix_mp->height) +
+				      blocks * ALIGN(bpp * 256 / 8, 128));
+}
+
 static void rkvdec_fill_decoded_pixfmt(struct rkvdec_ctx *ctx,
 				       struct v4l2_pix_format_mplane *pix_mp)
 {
 	const struct rkvdec_variant *variant = ctx->dev->variant;
 	struct v4l2_plane_pix_format *plane = &pix_mp->plane_fmt[0];
 
-	v4l2_fill_pixfmt_mp(pix_mp, pix_mp->pixelformat, pix_mp->width, pix_mp->height);
+	if (rkvdec_is_afbc(pix_mp->pixelformat))
+		rkvdec_fill_afbc_pixfmt(ctx, pix_mp);
+	else
+		v4l2_fill_pixfmt_mp(pix_mp, pix_mp->pixelformat, pix_mp->width, pix_mp->height);
 
-	if (variant->ops->hor_stride) {
+	if (variant->ops->hor_stride && !rkvdec_is_afbc(pix_mp->pixelformat)) {
 		u32 lines = plane->sizeimage / plane->bytesperline;
 
 		plane->bytesperline = variant->ops->hor_stride(plane->bytesperline);
@@ -220,6 +299,7 @@ static int rkvdec_s_ctrl(struct v4l2_ctrl *ctrl)
 	const struct rkvdec_coded_fmt_desc *desc = ctx->coded_fmt_desc;
 	enum rkvdec_image_fmt image_fmt;
 	struct vb2_queue *vq;
+	bool no_afbc;
 
 	if (ctrl->id == V4L2_CID_STATELESS_HEVC_EXT_SPS_ST_RPS) {
 		ctx->has_sps_st_rps |= !!(ctrl->has_changed);
@@ -236,13 +316,21 @@ static int rkvdec_s_ctrl(struct v4l2_ctrl *ctrl)
 		return 0;
 
 	image_fmt = desc->ops->get_image_fmt(ctx, ctrl);
-	if (rkvdec_image_fmt_changed(ctx, image_fmt)) {
+	if (!rkvdec_image_fmt_changed(ctx, image_fmt))
+		image_fmt = ctx->image_fmt;
+
+	no_afbc = ctx->no_afbc;
+	if (desc->ops->afbc_capable)
+		no_afbc = !desc->ops->afbc_capable(ctx, ctrl);
+
+	if (image_fmt != ctx->image_fmt || no_afbc != ctx->no_afbc) {
 		vq = v4l2_m2m_get_vq(ctx->fh.m2m_ctx,
 				     V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE);
 		if (vb2_is_busy(vq))
 			return -EBUSY;
 
 		ctx->image_fmt = image_fmt;
+		ctx->no_afbc = no_afbc;
 		rkvdec_reset_decoded_fmt(ctx);
 	}
 
@@ -427,6 +515,25 @@ static const struct rkvdec_decoded_fmt_desc rkvdec_hevc_decoded_fmts[] = {
 	},
 };
 
+static const struct rkvdec_decoded_fmt_desc rkvdec_vdpu381_hevc_decoded_fmts[] = {
+	{
+		.fourcc = V4L2_PIX_FMT_NV12,
+		.image_fmt = RKVDEC_IMG_FMT_420_8BIT,
+	},
+	{
+		.fourcc = V4L2_PIX_FMT_NV15,
+		.image_fmt = RKVDEC_IMG_FMT_420_10BIT,
+	},
+	{
+		.fourcc = V4L2_PIX_FMT_YUV420_8_AFBC_16X16,
+		.image_fmt = RKVDEC_IMG_FMT_420_8BIT,
+	},
+	{
+		.fourcc = V4L2_PIX_FMT_YUV420_10_AFBC_16X16,
+		.image_fmt = RKVDEC_IMG_FMT_420_10BIT,
+	},
+};
+
 static const struct rkvdec_ctrl_desc rkvdec_h264_ctrl_descs[] = {
 	{
 		.cfg.id = V4L2_CID_STATELESS_H264_DECODE_PARAMS,
@@ -540,6 +647,33 @@ static const struct rkvdec_decoded_fmt_desc rkvdec_h264_decoded_fmts[] = {
 	},
 };
 
+static const struct rkvdec_decoded_fmt_desc rkvdec_vdpu381_h264_decoded_fmts[] = {
+	{
+		.fourcc = V4L2_PIX_FMT_NV12,
+		.image_fmt = RKVDEC_IMG_FMT_420_8BIT,
+	},
+	{
+		.fourcc = V4L2_PIX_FMT_NV15,
+		.image_fmt = RKVDEC_IMG_FMT_420_10BIT,
+	},
+	{
+		.fourcc = V4L2_PIX_FMT_NV16,
+		.image_fmt = RKVDEC_IMG_FMT_422_8BIT,
+	},
+	{
+		.fourcc = V4L2_PIX_FMT_NV20,
+		.image_fmt = RKVDEC_IMG_FMT_422_10BIT,
+	},
+	{
+		.fourcc = V4L2_PIX_FMT_YUV420_8_AFBC_16X16,
+		.image_fmt = RKVDEC_IMG_FMT_420_8BIT,
+	},
+	{
+		.fourcc = V4L2_PIX_FMT_YUV420_10_AFBC_16X16,
+		.image_fmt = RKVDEC_IMG_FMT_420_10BIT,
+	},
+};
+
 static const struct rkvdec_ctrl_desc rkvdec_vp9_ctrl_descs[] = {
 	{
 		.cfg.id = V4L2_CID_STATELESS_VP9_FRAME,
@@ -605,6 +739,14 @@ static const struct rkvdec_decoded_fmt_desc rkvdec_vdpu346_vp9_decoded_fmts[] = 
 		.fourcc = V4L2_PIX_FMT_NV15,
 		.image_fmt =  RKVDEC_IMG_FMT_420_10BIT,
 	},
+	{
+		.fourcc = V4L2_PIX_FMT_YUV420_8_AFBC_16X16,
+		.image_fmt = RKVDEC_IMG_FMT_420_8BIT,
+	},
+	{
+		.fourcc = V4L2_PIX_FMT_YUV420_10_AFBC_16X16,
+		.image_fmt = RKVDEC_IMG_FMT_420_10BIT,
+	},
 };
 
 static const struct rkvdec_ctrl_desc vdpu381_vp9_ctrl_descs[] = {
@@ -643,6 +785,14 @@ static const struct rkvdec_decoded_fmt_desc rkvdec_vdpu381_vp9_decoded_fmts[] = 
 	{
 		.fourcc = V4L2_PIX_FMT_NV15,
 		.image_fmt =  RKVDEC_IMG_FMT_420_10BIT,
+	},
+	{
+		.fourcc = V4L2_PIX_FMT_YUV420_8_AFBC_16X16,
+		.image_fmt = RKVDEC_IMG_FMT_420_8BIT,
+	},
+	{
+		.fourcc = V4L2_PIX_FMT_YUV420_10_AFBC_16X16,
+		.image_fmt = RKVDEC_IMG_FMT_420_10BIT,
 	},
 };
 
@@ -726,8 +876,8 @@ static const struct rkvdec_coded_fmt_desc vdpu346_coded_fmts[] = {
 		},
 		.ctrls = &vdpu346_hevc_ctrls,
 		.ops = &rkvdec_vdpu381_hevc_fmt_ops,
-		.num_decoded_fmts = ARRAY_SIZE(rkvdec_hevc_decoded_fmts),
-		.decoded_fmts = rkvdec_hevc_decoded_fmts,
+		.num_decoded_fmts = ARRAY_SIZE(rkvdec_vdpu381_hevc_decoded_fmts),
+		.decoded_fmts = rkvdec_vdpu381_hevc_decoded_fmts,
 		.subsystem_flags = VB2_V4L2_FL_SUPPORTS_M2M_HOLD_CAPTURE_BUF,
 	},
 	{
@@ -742,8 +892,8 @@ static const struct rkvdec_coded_fmt_desc vdpu346_coded_fmts[] = {
 		},
 		.ctrls = &rkvdec_h264_ctrls,
 		.ops = &rkvdec_vdpu381_h264_fmt_ops,
-		.num_decoded_fmts = ARRAY_SIZE(rkvdec_h264_decoded_fmts),
-		.decoded_fmts = rkvdec_h264_decoded_fmts,
+		.num_decoded_fmts = ARRAY_SIZE(rkvdec_vdpu381_h264_decoded_fmts),
+		.decoded_fmts = rkvdec_vdpu381_h264_decoded_fmts,
 		.subsystem_flags = VB2_V4L2_FL_SUPPORTS_M2M_HOLD_CAPTURE_BUF,
 	},
 	{
@@ -776,8 +926,8 @@ static const struct rkvdec_coded_fmt_desc vdpu381_coded_fmts[] = {
 		},
 		.ctrls = &vdpu38x_hevc_ctrls,
 		.ops = &rkvdec_vdpu381_hevc_fmt_ops,
-		.num_decoded_fmts = ARRAY_SIZE(rkvdec_hevc_decoded_fmts),
-		.decoded_fmts = rkvdec_hevc_decoded_fmts,
+		.num_decoded_fmts = ARRAY_SIZE(rkvdec_vdpu381_hevc_decoded_fmts),
+		.decoded_fmts = rkvdec_vdpu381_hevc_decoded_fmts,
 		.subsystem_flags = VB2_V4L2_FL_SUPPORTS_M2M_HOLD_CAPTURE_BUF,
 	},
 	{
@@ -792,8 +942,8 @@ static const struct rkvdec_coded_fmt_desc vdpu381_coded_fmts[] = {
 		},
 		.ctrls = &vdpu38x_h264_ctrls,
 		.ops = &rkvdec_vdpu381_h264_fmt_ops,
-		.num_decoded_fmts = ARRAY_SIZE(rkvdec_h264_decoded_fmts),
-		.decoded_fmts = rkvdec_h264_decoded_fmts,
+		.num_decoded_fmts = ARRAY_SIZE(rkvdec_vdpu381_h264_decoded_fmts),
+		.decoded_fmts = rkvdec_vdpu381_h264_decoded_fmts,
 		.subsystem_flags = VB2_V4L2_FL_SUPPORTS_M2M_HOLD_CAPTURE_BUF,
 	},
 	{
@@ -1064,6 +1214,7 @@ static int rkvdec_s_output_fmt(struct file *file, void *priv,
 	 * Note that this will propagates any size changes to the decoded format.
 	 */
 	ctx->image_fmt = RKVDEC_IMG_FMT_ANY;
+	ctx->no_afbc = 0;
 
 	/* VP9 bit depth is per-frame, not up-front like HEVC's SPS;
 	 * default to 8-bit/NV12 until get_image_fmt() switches it.
@@ -1132,6 +1283,37 @@ static int rkvdec_enum_capture_fmt(struct file *file, void *priv,
 	return 0;
 }
 
+static int rkvdec_g_selection(struct file *file, void *priv,
+			      struct v4l2_selection *s)
+{
+	struct rkvdec_ctx *ctx = file_to_rkvdec_ctx(file);
+	const struct v4l2_pix_format_mplane *pix_mp = &ctx->decoded_fmt.fmt.pix_mp;
+	u32 top = rkvdec_afbc_top(ctx);
+
+	if (s->type != V4L2_BUF_TYPE_VIDEO_CAPTURE)
+		return -EINVAL;
+
+	switch (s->target) {
+	case V4L2_SEL_TGT_COMPOSE:
+	case V4L2_SEL_TGT_COMPOSE_DEFAULT:
+		s->r.top = top;
+		s->r.height = pix_mp->height;
+		break;
+	case V4L2_SEL_TGT_COMPOSE_BOUNDS:
+	case V4L2_SEL_TGT_COMPOSE_PADDED:
+		s->r.top = 0;
+		s->r.height = pix_mp->height + top;
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	s->r.left = 0;
+	s->r.width = pix_mp->width;
+
+	return 0;
+}
+
 static const struct v4l2_ioctl_ops rkvdec_ioctl_ops = {
 	.vidioc_querycap = rkvdec_querycap,
 	.vidioc_enum_framesizes = rkvdec_enum_framesizes,
@@ -1144,6 +1326,7 @@ static const struct v4l2_ioctl_ops rkvdec_ioctl_ops = {
 	.vidioc_g_fmt_vid_cap_mplane = rkvdec_g_capture_fmt,
 	.vidioc_enum_fmt_vid_out = rkvdec_enum_output_fmt,
 	.vidioc_enum_fmt_vid_cap = rkvdec_enum_capture_fmt,
+	.vidioc_g_selection = rkvdec_g_selection,
 
 	.vidioc_reqbufs = v4l2_m2m_ioctl_reqbufs,
 	.vidioc_querybuf = v4l2_m2m_ioctl_querybuf,
