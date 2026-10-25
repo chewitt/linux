@@ -569,6 +569,7 @@ static int rkvdec_hevc_run(struct rkvdec_ctx *ctx)
 	rkvdec_schedule_watchdog(core, timeout_threshold);
 
 	/* Start decoding! */
+	rkvdec_vdpu383_config_cache(core);
 	writel(timeout_threshold, core->link + VDPU383_LINK_TIMEOUT_THRESHOLD);
 	writel(VDPU383_IP_CRU_MODE, core->link + VDPU383_LINK_IP_ENABLE);
 	writel(VDPU383_DEC_E_BIT, core->link + VDPU383_LINK_DEC_ENABLE);
