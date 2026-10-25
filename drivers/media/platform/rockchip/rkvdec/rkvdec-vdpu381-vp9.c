@@ -416,15 +416,8 @@ static void rkvdec_write_regs(struct rkvdec_ctx *ctx)
 
 static dma_addr_t get_mv_base_addr(struct rkvdec_ctx *ctx, struct rkvdec_decoded_buffer *buf)
 {
-	unsigned int aligned_pitch, aligned_height, yuv_len;
-
-	aligned_height = round_up(buf->vp9.height, 64);
-
-	aligned_pitch = ctx->decoded_fmt.fmt.pix_mp.plane_fmt[0].bytesperline;
-	yuv_len = (aligned_height * aligned_pitch * 3) / 2;
-
 	return vb2_dma_contig_plane_dma_addr(&buf->base.vb.vb2_buf, 0) +
-	       yuv_len;
+	       ctx->colmv_offset;
 }
 
 static void config_registers(struct rkvdec_ctx *ctx,
