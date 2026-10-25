@@ -100,6 +100,24 @@ static u32 vdpu383_colmv_size(u16 width, u16 height)
 	return ALIGN(width, 64) * ALIGN(height, 16);
 }
 
+#define VDPU383_CACHE_CLR		0x10
+#define VDPU383_CACHE_MAX_READS		0x18
+#define VDPU383_CACHE_SIZE		0x1c
+#define VDPU383_CACHE_ACCESS		BIT(0)
+#define VDPU383_CACHE_READ_ALLOCATE	BIT(1)
+#define VDPU383_CACHE_LINE_64B		BIT(4)
+
+void rkvdec_vdpu383_config_cache(struct rkvdec_core *core)
+{
+	if (!core->cache)
+		return;
+
+	writel(VDPU383_CACHE_ACCESS | VDPU383_CACHE_READ_ALLOCATE |
+	       VDPU383_CACHE_LINE_64B, core->cache + VDPU383_CACHE_SIZE);
+	writel(1, core->cache + VDPU383_CACHE_CLR);
+	writel(0x1c, core->cache + VDPU383_CACHE_MAX_READS);
+}
+
 /*
  * Keep the line stride an odd multiple of 128 bytes plus 64, so the rows of a
  * reference block do not all map to the same DRAM bank and cache set.
@@ -2092,6 +2110,10 @@ static int rkvdec_core_probe(struct platform_device *pdev)
 		core->link = devm_platform_ioremap_resource_byname(pdev, "link");
 		if (IS_ERR(core->link))
 			return PTR_ERR(core->link);
+
+		core->cache = devm_platform_ioremap_resource_byname(pdev, "cache");
+		if (IS_ERR(core->cache))
+			core->cache = NULL;
 	}
 
 	if (iommu_get_domain_for_dev(&pdev->dev)) {
