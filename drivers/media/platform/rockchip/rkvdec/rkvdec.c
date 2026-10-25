@@ -100,12 +100,33 @@ static u32 vdpu383_colmv_size(u16 width, u16 height)
 	return ALIGN(width, 64) * ALIGN(height, 16);
 }
 
+/*
+ * Keep the line stride an odd multiple of 128 bytes plus 64, so the rows of a
+ * reference block do not all map to the same DRAM bank and cache set.
+ */
+static u32 vdpu383_hor_stride(u32 bytesperline)
+{
+	bytesperline = ALIGN(bytesperline, 64);
+	if ((bytesperline - 64) % 256 == 128)
+		return bytesperline;
+
+	return (ALIGN(bytesperline, 128) | 128) + 64;
+}
+
 static void rkvdec_fill_decoded_pixfmt(struct rkvdec_ctx *ctx,
 				       struct v4l2_pix_format_mplane *pix_mp)
 {
 	const struct rkvdec_variant *variant = ctx->dev->variant;
+	struct v4l2_plane_pix_format *plane = &pix_mp->plane_fmt[0];
 
 	v4l2_fill_pixfmt_mp(pix_mp, pix_mp->pixelformat, pix_mp->width, pix_mp->height);
+
+	if (variant->ops->hor_stride) {
+		u32 lines = plane->sizeimage / plane->bytesperline;
+
+		plane->bytesperline = variant->ops->hor_stride(plane->bytesperline);
+		plane->sizeimage = plane->bytesperline * lines;
+	}
 
 	ctx->colmv_offset = pix_mp->plane_fmt[0].sizeimage;
 
@@ -1949,6 +1970,7 @@ static const struct rcb_size_info vdpu383_rcb_sizes[] = {
 static const struct rkvdec_variant_ops vdpu383_variant_ops = {
 	.irq_handler = vdpu383_irq_handler,
 	.colmv_size = vdpu383_colmv_size,
+	.hor_stride = vdpu383_hor_stride,
 	.flatten_matrices = vdpu383_flatten_matrices,
 };
 
