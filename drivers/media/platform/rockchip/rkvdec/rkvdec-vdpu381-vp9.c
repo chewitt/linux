@@ -320,6 +320,12 @@ static void config_ref_registers(struct rkvdec_ctx *ctx,
 	aligned_pitch = ctx->decoded_fmt.fmt.pix_mp.plane_fmt[0].bytesperline;
 	y_len = aligned_height * aligned_pitch;
 
+	/* AFBC references take the header stride and the payload offset in bytes */
+	if (rkvdec_is_afbc(ctx->decoded_fmt.fmt.pix_mp.pixelformat)) {
+		aligned_pitch = ALIGN(ctx->decoded_fmt.fmt.pix_mp.width, 64);
+		y_len = rkvdec_afbc_payload_offset(ctx) * 16;
+	}
+
 	switch (i) {
 	case 0:
 		regs->vp9_param.reg79.vp9_lastfy_hor_virstride = aligned_pitch / 16;
@@ -472,9 +478,19 @@ static void config_registers(struct rkvdec_ctx *ctx,
 
 	pixels = ctx->decoded_fmt.fmt.pix_mp.height * ctx->decoded_fmt.fmt.pix_mp.width;
 
-	regs->common.reg018_y_hor_stride.y_hor_virstride = aligned_pitch / 16;
-	regs->common.reg019_uv_hor_stride.uv_hor_virstride = aligned_pitch / 16;
-	regs->common.reg020_y_stride.y_virstride = y_len / 16;
+	if (rkvdec_is_afbc(ctx->decoded_fmt.fmt.pix_mp.pixelformat)) {
+		u32 hdr_stride = ALIGN(ctx->decoded_fmt.fmt.pix_mp.width, 64);
+
+		regs->common.reg012_secondary_en.fbc_e = 1;
+		regs->common.reg018_y_hor_stride.y_hor_virstride = hdr_stride / 16;
+		regs->common.reg019_uv_hor_stride.uv_hor_virstride = hdr_stride / 16;
+		regs->common.reg020_fbc_payload_off.payload_st_offset =
+			rkvdec_afbc_payload_offset(ctx) >> 4;
+	} else {
+		regs->common.reg018_y_hor_stride.y_hor_virstride = aligned_pitch / 16;
+		regs->common.reg019_uv_hor_stride.uv_hor_virstride = aligned_pitch / 16;
+		regs->common.reg020_y_stride.y_virstride = y_len / 16;
+	}
 
 	stream_len = vb2_get_plane_payload(&run->base.bufs.src->vb2_buf, 0);
 
