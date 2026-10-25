@@ -75,6 +75,7 @@ vb2_to_rkvdec_decoded_buf(struct vb2_buffer *buf)
 struct rkvdec_variant_ops {
 	irqreturn_t (*irq_handler)(struct rkvdec_ctx *ctx);
 	u32 (*colmv_size)(u16 width, u16 height);
+	u32 (*hor_stride)(u32 bytesperline);
 	void (*flatten_matrices)(u8 *output, const u8 *input, int matrices, int row_length);
 };
 
