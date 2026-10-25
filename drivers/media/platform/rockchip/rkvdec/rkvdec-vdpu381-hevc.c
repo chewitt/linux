@@ -427,9 +427,19 @@ static void config_registers(struct rkvdec_ctx *ctx,
 	ver_virstride = dst_fmt->height;
 	y_virstride = hor_virstride * ver_virstride;
 
-	regs->common.reg018_y_hor_stride.y_hor_virstride = hor_virstride / 16;
-	regs->common.reg019_uv_hor_stride.uv_hor_virstride = hor_virstride / 16;
-	regs->common.reg020_y_stride.y_virstride = y_virstride / 16;
+	if (rkvdec_is_afbc(dst_fmt->pixelformat)) {
+		u32 hdr_stride = ALIGN(dst_fmt->width, 64);
+
+		regs->common.reg012_secondary_en.fbc_e = 1;
+		regs->common.reg018_y_hor_stride.y_hor_virstride = hdr_stride / 16;
+		regs->common.reg019_uv_hor_stride.uv_hor_virstride = hdr_stride / 16;
+		regs->common.reg020_fbc_payload_off.payload_st_offset =
+			rkvdec_afbc_payload_offset(ctx) >> 4;
+	} else {
+		regs->common.reg018_y_hor_stride.y_hor_virstride = hor_virstride / 16;
+		regs->common.reg019_uv_hor_stride.uv_hor_virstride = hor_virstride / 16;
+		regs->common.reg020_y_stride.y_virstride = y_virstride / 16;
+	}
 
 	/* Activate block gating */
 	regs->common.reg026_block_gating_en.inter_auto_gating_e = 1;

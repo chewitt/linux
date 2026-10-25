@@ -168,10 +168,17 @@ struct rkvdec_vdpu381_regs_common {
 		u32 reserved		: 16;
 	} reg019_uv_hor_stride;
 
-	struct {
-		u32 y_virstride		: 28;
-		u32 reserved		: 4;
-	} reg020_y_stride;
+	union {
+		struct {
+			u32 y_virstride		: 28;
+			u32 reserved		: 4;
+		} reg020_y_stride;
+
+		struct {
+			u32 reserved		: 4;
+			u32 payload_st_offset	: 28;
+		} reg020_fbc_payload_off;
+	};
 
 	struct {
 		u32 inter_error_prc_mode		: 1;

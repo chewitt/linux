@@ -102,6 +102,7 @@ struct rkvdec_coded_fmt_ops {
 	int (*try_ctrl)(struct rkvdec_ctx *ctx, struct v4l2_ctrl *ctrl);
 	enum rkvdec_image_fmt (*get_image_fmt)(struct rkvdec_ctx *ctx,
 					       struct v4l2_ctrl *ctrl);
+	bool (*afbc_capable)(struct rkvdec_ctx *ctx, struct v4l2_ctrl *ctrl);
 };
 
 enum rkvdec_image_fmt {
@@ -172,6 +173,7 @@ struct rkvdec_ctx {
 	void *priv;
 	u8 has_sps_st_rps: 1;
 	u8 has_sps_lt_rps: 1;
+	u8 no_afbc: 1;
 };
 
 static inline struct rkvdec_ctx *file_to_rkvdec_ctx(struct file *filp)
@@ -190,6 +192,14 @@ struct rkvdec_aux_buf {
 	size_t size;
 	enum rkvdec_alloc_type type;
 };
+
+static inline bool rkvdec_is_afbc(u32 fourcc)
+{
+	return fourcc == V4L2_PIX_FMT_YUV420_8_AFBC_16X16 ||
+	       fourcc == V4L2_PIX_FMT_YUV420_10_AFBC_16X16;
+}
+
+u32 rkvdec_afbc_payload_offset(struct rkvdec_ctx *ctx);
 
 void rkvdec_run_preamble(struct rkvdec_ctx *ctx, struct rkvdec_run *run);
 void rkvdec_run_postamble(struct rkvdec_ctx *ctx, struct rkvdec_run *run);
