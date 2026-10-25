@@ -441,6 +441,8 @@ static int rkvdec_h264_run(struct rkvdec_ctx *ctx)
 	timeout_threshold = h264_ctx->regs.common.reg013_core_timeout_threshold;
 	rkvdec_schedule_watchdog(core, timeout_threshold);
 
+	rkvdec_vdpu383_config_cache(core);
+
 	/* Start decoding! */
 	writel(timeout_threshold, core->link + VDPU383_LINK_TIMEOUT_THRESHOLD);
 	writel(0, core->link + VDPU383_LINK_IP_ENABLE);
