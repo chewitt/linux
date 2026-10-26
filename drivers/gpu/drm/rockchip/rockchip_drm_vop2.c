@@ -715,6 +715,28 @@ static enum vop_csc_format vop2_convert_csc_mode(int csc_mode)
  * 11. RGB       --> bypass                --> RGB_OUTPUT(709)
  */
 
+/*
+ * The window CSC has no full-range BT.709 or BT.2020 mode, so those fall
+ * back to limited range.
+ */
+static enum vop_csc_format vop2_plane_csc_mode(struct vop2_win *win,
+					       struct drm_plane_state *pstate)
+{
+	bool full = pstate->color_range == DRM_COLOR_YCBCR_FULL_RANGE;
+
+	if (!win->base.color_encoding_property)
+		return CSC_BT709L;
+
+	switch (pstate->color_encoding) {
+	case DRM_COLOR_YCBCR_BT601:
+		return full ? CSC_BT601F : CSC_BT601L;
+	case DRM_COLOR_YCBCR_BT2020:
+		return CSC_BT2020L;
+	default:
+		return CSC_BT709L;
+	}
+}
+
 static void vop2_setup_csc_mode(struct vop2_video_port *vp,
 				struct vop2_win *win,
 				struct drm_plane_state *pstate)
@@ -722,7 +744,6 @@ static void vop2_setup_csc_mode(struct vop2_video_port *vp,
 	struct rockchip_crtc_state *vcstate = to_rockchip_crtc_state(vp->crtc.state);
 	int is_input_yuv = pstate->fb->format->is_yuv;
 	int is_output_yuv = is_yuv_output(vcstate->bus_format);
-	int input_csc = V4L2_COLORSPACE_DEFAULT;
 	int output_csc = vcstate->color_space;
 	bool r2y_en, y2r_en;
 	enum vop_csc_format csc_mode;
@@ -730,7 +751,7 @@ static void vop2_setup_csc_mode(struct vop2_video_port *vp,
 	if (is_input_yuv && !is_output_yuv) {
 		y2r_en = true;
 		r2y_en = false;
-		csc_mode = vop2_convert_csc_mode(input_csc);
+		csc_mode = vop2_plane_csc_mode(win, pstate);
 	} else if (!is_input_yuv && is_output_yuv) {
 		y2r_en = false;
 		r2y_en = true;
