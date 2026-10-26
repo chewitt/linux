@@ -184,6 +184,7 @@ struct dw_hdmi {
 
 	struct mutex mutex;		/* for state below */
 	struct drm_connector *curr_conn;/* current connector (only valid when !disabled) */
+	struct drm_connector *eld_conn;	/* connector the audio ELD is read from */
 	u8 mc_clkdis;			/* clock disable register */
 
 	spinlock_t audio_lock;
@@ -711,10 +712,10 @@ static void hdmi_enable_audio_clk(struct dw_hdmi *hdmi, bool enable)
 
 static u8 *hdmi_audio_get_eld(struct dw_hdmi *hdmi)
 {
-	if (!hdmi->curr_conn)
+	if (!hdmi->eld_conn)
 		return NULL;
 
-	return hdmi->curr_conn->eld;
+	return hdmi->eld_conn->eld;
 }
 
 static void dw_hdmi_gp_audio_enable(struct dw_hdmi *hdmi)
@@ -2524,6 +2525,7 @@ static void dw_hdmi_bridge_atomic_enable(struct drm_bridge *bridge,
 
 	mutex_lock(&hdmi->mutex);
 	hdmi->curr_conn = connector;
+	hdmi->eld_conn = connector;
 	dw_hdmi_poweron(hdmi, connector, mode, state);
 	handle_plugged_change(hdmi, true);
 	mutex_unlock(&hdmi->mutex);
