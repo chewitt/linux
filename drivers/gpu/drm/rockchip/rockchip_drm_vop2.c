@@ -1887,6 +1887,10 @@ static void vop2_dither_setup(struct drm_crtc *crtc, u32 *dsp_ctrl)
 	case MEDIA_BUS_FMT_UYYVYY8_0_5X24:
 		*dsp_ctrl |= RK3568_VP_DSP_CTRL__PRE_DITHER_DOWN_EN;
 		break;
+	case MEDIA_BUS_FMT_RGB101010_1X30:
+	case MEDIA_BUS_FMT_YUV10_1X30:
+	case MEDIA_BUS_FMT_UYYVYY10_0_5X30:
+		return;
 	default:
 		break;
 	}
