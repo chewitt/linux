@@ -2499,13 +2499,14 @@ static void dw_hdmi_bridge_atomic_disable(struct drm_bridge *bridge,
 
 	connector = drm_atomic_get_old_connector_for_encoder(state,
 							     bridge->encoder);
-	drm_connector_hdmi_disable_scrambling(connector);
 
 	mutex_lock(&hdmi->mutex);
 	hdmi->curr_conn = NULL;
 	dw_hdmi_poweroff(hdmi);
 	handle_plugged_change(hdmi, false);
 	mutex_unlock(&hdmi->mutex);
+
+	drm_connector_hdmi_disable_scrambling(connector);
 }
 
 static void dw_hdmi_bridge_atomic_enable(struct drm_bridge *bridge,
