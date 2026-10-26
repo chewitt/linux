@@ -717,10 +717,30 @@ hdmi_compute_config(const struct drm_connector *connector,
 
 	/*
 	 * For %DRM_CONNECTOR_COLOR_FORMAT_AUTO, try RGB first, and fall back
-	 * to the less bandwidth-intensive YCBCR420 if RGB fails.
+	 * to the less bandwidth-intensive YCBCR420 if RGB fails, or if it
+	 * carries more bits per component than RGB can.
 	 */
 	ret = hdmi_compute_format_bpc(connector, conn_state, mode, max_bpc,
 				      DRM_OUTPUT_COLOR_FORMAT_RGB444);
+	if (!ret && conn_state->hdmi.output_bpc < max_bpc &&
+	    connector->ycbcr_420_allowed) {
+		unsigned int rgb_bpc = conn_state->hdmi.output_bpc;
+		unsigned long long rgb_rate = conn_state->hdmi.tmds_char_rate;
+		bool rgb_scrambler = conn_state->hdmi.scrambler_needed;
+
+		if (!hdmi_compute_format_bpc(connector, conn_state, mode,
+					     max_bpc,
+					     DRM_OUTPUT_COLOR_FORMAT_YCBCR420) &&
+		    conn_state->hdmi.output_bpc > rgb_bpc)
+			return 0;
+
+		conn_state->hdmi.output_bpc = rgb_bpc;
+		conn_state->hdmi.output_format = DRM_OUTPUT_COLOR_FORMAT_RGB444;
+		conn_state->hdmi.tmds_char_rate = rgb_rate;
+		conn_state->hdmi.scrambler_needed = rgb_scrambler;
+		return 0;
+	}
+
 	if (ret) {
 		if (connector->ycbcr_420_allowed) {
 			ret = hdmi_compute_format_bpc(connector, conn_state,
