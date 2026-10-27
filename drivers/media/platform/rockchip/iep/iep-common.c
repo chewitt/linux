@@ -45,7 +45,7 @@ EXPORT_SYMBOL_GPL(rk_iep_check_pix_format);
 void rk_iep_prepare_format(struct v4l2_pix_format *pix_fmt,
 			   struct rk_iep_fmt *fmts, unsigned int nfmts)
 {
-	unsigned int width, height;
+	unsigned int width, height, bytesperline;
 	struct rk_iep_fmt *hw_fmt;
 
 	hw_fmt = rk_iep_fmt_find(fmts, nfmts, pix_fmt->pixelformat);
@@ -59,10 +59,14 @@ void rk_iep_prepare_format(struct v4l2_pix_format *pix_fmt,
 	height = ALIGN(clamp(pix_fmt->height, RK_IEP_MIN_HEIGHT,
 			     RK_IEP_MAX_HEIGHT), 16);
 
+	/* all formats are 8-bit (semi-)planar: the luma stride in bytes */
+	bytesperline = ALIGN(clamp(pix_fmt->bytesperline, width,
+				   RK_IEP_MAX_STRIDE), 16);
+
 	pix_fmt->width = width;
 	pix_fmt->height = height;
-	pix_fmt->bytesperline = width;
-	pix_fmt->sizeimage = height * (width * hw_fmt->depth) >> 3;
+	pix_fmt->bytesperline = bytesperline;
+	pix_fmt->sizeimage = height * (bytesperline * hw_fmt->depth) >> 3;
 }
 EXPORT_SYMBOL_GPL(rk_iep_prepare_format);
 
@@ -358,9 +362,9 @@ int rk_iep_s_fmt_vid_out(struct file *file, void *priv,
 	ctx->src_fmt.hw_fmt = rk_iep_fmt_find(iep_dev->formats,
 					       iep_dev->num_formats,
 					       f->fmt.pix.pixelformat);
-	ctx->src_fmt.y_stride = RK_IEP_Y_STRIDE(f->fmt.pix.width,
+	ctx->src_fmt.y_stride = RK_IEP_Y_STRIDE(f->fmt.pix.bytesperline,
 						  f->fmt.pix.height);
-	ctx->src_fmt.uv_stride = RK_IEP_UV_STRIDE(f->fmt.pix.width,
+	ctx->src_fmt.uv_stride = RK_IEP_UV_STRIDE(f->fmt.pix.bytesperline,
 						    f->fmt.pix.height,
 						    ctx->src_fmt.hw_fmt->uv_factor);
 
@@ -373,10 +377,13 @@ int rk_iep_s_fmt_vid_out(struct file *file, void *priv,
 	/* scaling is not supported */
 	ctx->dst_fmt.pix.width = f->fmt.pix.width;
 	ctx->dst_fmt.pix.height = f->fmt.pix.height;
-	ctx->dst_fmt.y_stride = RK_IEP_Y_STRIDE(f->fmt.pix.width,
-						  f->fmt.pix.height);
-	ctx->dst_fmt.uv_stride = RK_IEP_UV_STRIDE(f->fmt.pix.width,
-						    f->fmt.pix.height,
+	ctx->dst_fmt.pix.bytesperline = 0;
+	rk_iep_prepare_format(&ctx->dst_fmt.pix, iep_dev->formats,
+			      iep_dev->num_formats);
+	ctx->dst_fmt.y_stride = RK_IEP_Y_STRIDE(ctx->dst_fmt.pix.bytesperline,
+						  ctx->dst_fmt.pix.height);
+	ctx->dst_fmt.uv_stride = RK_IEP_UV_STRIDE(ctx->dst_fmt.pix.bytesperline,
+						    ctx->dst_fmt.pix.height,
 						    ctx->dst_fmt.hw_fmt->uv_factor);
 
 	if (iep_dev->post_set_fmt)
@@ -407,15 +414,17 @@ int rk_iep_s_fmt_vid_cap(struct file *file, void *priv,
 	/* scaling is not supported */
 	f->fmt.pix.width = ctx->src_fmt.pix.width;
 	f->fmt.pix.height = ctx->src_fmt.pix.height;
+	rk_iep_prepare_format(&f->fmt.pix, iep_dev->formats,
+			      iep_dev->num_formats);
 
 	ctx->dst_fmt.pix = f->fmt.pix;
 	ctx->dst_fmt.hw_fmt = rk_iep_fmt_find(iep_dev->formats,
 					       iep_dev->num_formats,
 					       f->fmt.pix.pixelformat);
 
-	ctx->dst_fmt.y_stride = RK_IEP_Y_STRIDE(f->fmt.pix.width,
+	ctx->dst_fmt.y_stride = RK_IEP_Y_STRIDE(f->fmt.pix.bytesperline,
 						  f->fmt.pix.height);
-	ctx->dst_fmt.uv_stride = RK_IEP_UV_STRIDE(f->fmt.pix.width,
+	ctx->dst_fmt.uv_stride = RK_IEP_UV_STRIDE(f->fmt.pix.bytesperline,
 						    f->fmt.pix.height,
 						    ctx->dst_fmt.hw_fmt->uv_factor);
 
@@ -495,9 +504,9 @@ int rk_iep_open(struct file *file)
 	rk_iep_prepare_format(&ctx->src_fmt.pix, iep_dev->formats,
 			      iep_dev->num_formats);
 	ctx->src_fmt.hw_fmt = &iep_dev->formats[0];
-	ctx->src_fmt.y_stride = RK_IEP_Y_STRIDE(ctx->src_fmt.pix.width,
+	ctx->src_fmt.y_stride = RK_IEP_Y_STRIDE(ctx->src_fmt.pix.bytesperline,
 						  ctx->src_fmt.pix.height);
-	ctx->src_fmt.uv_stride = RK_IEP_UV_STRIDE(ctx->src_fmt.pix.width,
+	ctx->src_fmt.uv_stride = RK_IEP_UV_STRIDE(ctx->src_fmt.pix.bytesperline,
 						    ctx->src_fmt.pix.height,
 						    ctx->src_fmt.hw_fmt->uv_factor);
 
@@ -509,9 +518,9 @@ int rk_iep_open(struct file *file)
 	rk_iep_prepare_format(&ctx->dst_fmt.pix, iep_dev->formats,
 			      iep_dev->num_formats);
 	ctx->dst_fmt.hw_fmt = &iep_dev->formats[0];
-	ctx->dst_fmt.y_stride = RK_IEP_Y_STRIDE(ctx->dst_fmt.pix.width,
+	ctx->dst_fmt.y_stride = RK_IEP_Y_STRIDE(ctx->dst_fmt.pix.bytesperline,
 						  ctx->dst_fmt.pix.height);
-	ctx->dst_fmt.uv_stride = RK_IEP_UV_STRIDE(ctx->dst_fmt.pix.width,
+	ctx->dst_fmt.uv_stride = RK_IEP_UV_STRIDE(ctx->dst_fmt.pix.bytesperline,
 						    ctx->dst_fmt.pix.height,
 						    ctx->dst_fmt.hw_fmt->uv_factor);
 
