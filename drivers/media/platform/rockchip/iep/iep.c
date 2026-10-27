@@ -84,7 +84,8 @@ static void iep_setup_formats(struct rk_iep_ctx *ctx)
 
 	/* setup virtual width */
 	iep_write(iep, IEP_VIR_IMG_WIDTH,
-		  IEP_VIR_WIDTH(ctx->src_fmt.pix.width, ctx->dst_fmt.pix.width));
+		  IEP_VIR_WIDTH(ctx->src_fmt.pix.bytesperline,
+				ctx->dst_fmt.pix.bytesperline));
 
 	/* setup src format */
 	iep_shadow_mod(iep, IEP_CONFIG1, IEP_RAW_CONFIG1,
