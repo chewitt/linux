@@ -176,10 +176,37 @@ static void rkvdec_reset_decoded_fmt(struct rkvdec_ctx *ctx)
 	rkvdec_fill_decoded_pixfmt(ctx, &f->fmt.pix_mp);
 }
 
+static int rkvdec_check_vp9_profile(const struct rkvdec_coded_fmt_desc *desc,
+				    u8 profile)
+{
+	const struct v4l2_ctrl_config *cfg;
+	unsigned int i;
+
+	for (i = 0; i < desc->ctrls->num_ctrls; i++) {
+		cfg = &desc->ctrls->ctrls[i].cfg;
+		if (cfg->id != V4L2_CID_MPEG_VIDEO_VP9_PROFILE)
+			continue;
+
+		if (profile < cfg->min || profile > cfg->max ||
+		    (cfg->menu_skip_mask & BIT_ULL(profile)))
+			return -EINVAL;
+		break;
+	}
+
+	return 0;
+}
+
 static int rkvdec_try_ctrl(struct v4l2_ctrl *ctrl)
 {
 	struct rkvdec_ctx *ctx = container_of(ctrl->handler, struct rkvdec_ctx, ctrl_hdl);
 	const struct rkvdec_coded_fmt_desc *desc = ctx->coded_fmt_desc;
+	int ret;
+
+	if (ctrl->id == V4L2_CID_STATELESS_VP9_FRAME) {
+		ret = rkvdec_check_vp9_profile(desc, ctrl->p_new.p_vp9_frame->profile);
+		if (ret)
+			return ret;
+	}
 
 	if (desc->ops->try_ctrl)
 		return desc->ops->try_ctrl(ctx, ctrl);
@@ -516,6 +543,7 @@ static const struct rkvdec_decoded_fmt_desc rkvdec_h264_decoded_fmts[] = {
 static const struct rkvdec_ctrl_desc rkvdec_vp9_ctrl_descs[] = {
 	{
 		.cfg.id = V4L2_CID_STATELESS_VP9_FRAME,
+		.cfg.ops = &rkvdec_ctrl_ops,
 	},
 	{
 		.cfg.id = V4L2_CID_STATELESS_VP9_COMPRESSED_HDR,
