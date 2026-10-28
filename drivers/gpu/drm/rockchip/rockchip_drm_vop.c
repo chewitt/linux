@@ -928,6 +928,12 @@ static int vop_plane_atomic_check(struct drm_plane *plane,
 				      new_plane_state->rotation);
 			return -EINVAL;
 		}
+
+		if (fb->width != drm_rect_width(&new_plane_state->src) >> 16) {
+			DRM_DEBUG_KMS("AFBC does not support a virtual width, fb width=%u\n",
+				      fb->width);
+			return -EINVAL;
+		}
 	}
 
 	return 0;
