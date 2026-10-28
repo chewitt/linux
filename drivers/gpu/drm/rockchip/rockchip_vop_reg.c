@@ -969,17 +969,37 @@ static const struct vop_yuv2yuv_phy rk3399_yuv2yuv_win01_data = {
 		VOP_REG(RK3399_WIN0_YUV2YUV_Y2R + 24, 0xffffffff, 0),
 		VOP_REG(RK3399_WIN0_YUV2YUV_Y2R + 28, 0xffffffff, 0),
 	},
+	.r2y_coefficients = {
+		VOP_REG(RK3399_WIN0_YUV2YUV_R2Y + 0, 0xffff, 0),
+		VOP_REG(RK3399_WIN0_YUV2YUV_R2Y + 0, 0xffff, 16),
+		VOP_REG(RK3399_WIN0_YUV2YUV_R2Y + 4, 0xffff, 0),
+		VOP_REG(RK3399_WIN0_YUV2YUV_R2Y + 4, 0xffff, 16),
+		VOP_REG(RK3399_WIN0_YUV2YUV_R2Y + 8, 0xffff, 0),
+		VOP_REG(RK3399_WIN0_YUV2YUV_R2Y + 8, 0xffff, 16),
+		VOP_REG(RK3399_WIN0_YUV2YUV_R2Y + 12, 0xffff, 0),
+		VOP_REG(RK3399_WIN0_YUV2YUV_R2Y + 12, 0xffff, 16),
+		VOP_REG(RK3399_WIN0_YUV2YUV_R2Y + 16, 0xffff, 0),
+		VOP_REG(RK3399_WIN0_YUV2YUV_R2Y + 20, 0xffffffff, 0),
+		VOP_REG(RK3399_WIN0_YUV2YUV_R2Y + 24, 0xffffffff, 0),
+		VOP_REG(RK3399_WIN0_YUV2YUV_R2Y + 28, 0xffffffff, 0),
+	},
 };
 
 static const struct vop_yuv2yuv_phy rk3399_yuv2yuv_win23_data = { };
 
 static const struct vop_win_yuv2yuv_data rk3399_vop_big_win_yuv2yuv_data[] = {
 	{ .base = 0x00, .phy = &rk3399_yuv2yuv_win01_data,
-	  .y2r_en = VOP_REG(RK3399_YUV2YUV_WIN, 0x1, 1) },
+	  .y2r_en = VOP_REG(RK3399_YUV2YUV_WIN, 0x1, 1),
+	  .r2y_en = VOP_REG(RK3399_YUV2YUV_WIN, 0x1, 2) },
 	{ .base = 0x60, .phy = &rk3399_yuv2yuv_win01_data,
-	  .y2r_en = VOP_REG(RK3399_YUV2YUV_WIN, 0x1, 9) },
-	{ .base = 0xC0, .phy = &rk3399_yuv2yuv_win23_data },
-	{ .base = 0x120, .phy = &rk3399_yuv2yuv_win23_data },
+	  .y2r_en = VOP_REG(RK3399_YUV2YUV_WIN, 0x1, 9),
+	  .r2y_en = VOP_REG(RK3399_YUV2YUV_WIN, 0x1, 10) },
+	{ .base = 0xC0, .phy = &rk3399_yuv2yuv_win23_data,
+	  .r2y_en = VOP_REG(RK3399_YUV2YUV_WIN, 0x1, 18),
+	  .csc_mode = VOP_REG(RK3399_YUV2YUV_WIN, 0x3, 22) },
+	{ .base = 0x120, .phy = &rk3399_yuv2yuv_win23_data,
+	  .r2y_en = VOP_REG(RK3399_YUV2YUV_WIN, 0x1, 26),
+	  .csc_mode = VOP_REG(RK3399_YUV2YUV_WIN, 0x3, 30) },
 
 };
 
@@ -1082,8 +1102,11 @@ static const struct vop_win_data rk3399_vop_lit_win_data[] = {
 
 static const struct vop_win_yuv2yuv_data rk3399_vop_lit_win_yuv2yuv_data[] = {
 	{ .base = 0x00, .phy = &rk3399_yuv2yuv_win01_data,
-	  .y2r_en = VOP_REG(RK3399_YUV2YUV_WIN, 0x1, 1)},
-	{ .base = 0x60, .phy = &rk3399_yuv2yuv_win23_data },
+	  .y2r_en = VOP_REG(RK3399_YUV2YUV_WIN, 0x1, 1),
+	  .r2y_en = VOP_REG(RK3399_YUV2YUV_WIN, 0x1, 2) },
+	{ .base = 0x60, .phy = &rk3399_yuv2yuv_win23_data,
+	  .r2y_en = VOP_REG(RK3399_YUV2YUV_WIN, 0x1, 18),
+	  .csc_mode = VOP_REG(RK3399_YUV2YUV_WIN, 0x3, 22) },
 };
 
 static const struct vop_data rk3399_vop_lit = {
