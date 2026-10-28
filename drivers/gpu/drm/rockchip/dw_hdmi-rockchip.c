@@ -12,6 +12,7 @@
 #include <linux/phy/phy.h>
 #include <linux/regmap.h>
 #include <linux/regulator/consumer.h>
+#include <linux/videodev2.h>
 
 #include <drm/bridge/dw_hdmi.h>
 #include <drm/drm_edid.h>
@@ -329,6 +330,19 @@ static u32 dw_hdmi_rockchip_get_bus_format(struct drm_encoder *encoder,
 	return bridge_state->output_bus_cfg.format;
 }
 
+static u32
+dw_hdmi_rockchip_color_space(const struct drm_connector_state *conn_state)
+{
+	switch (conn_state->colorspace) {
+	case DRM_MODE_COLORIMETRY_BT2020_RGB:
+	case DRM_MODE_COLORIMETRY_BT2020_YCC:
+	case DRM_MODE_COLORIMETRY_BT2020_CYCC:
+		return V4L2_COLORSPACE_BT2020;
+	default:
+		return V4L2_COLORSPACE_DEFAULT;
+	}
+}
+
 static int
 dw_hdmi_rockchip_encoder_atomic_check(struct drm_encoder *encoder,
 				      struct drm_crtc_state *crtc_state,
@@ -361,6 +375,7 @@ dw_hdmi_rockchip_encoder_atomic_check(struct drm_encoder *encoder,
 
 	s->output_type = DRM_MODE_CONNECTOR_HDMIA;
 	s->bus_format = bus_format;
+	s->color_space = dw_hdmi_rockchip_color_space(conn_state);
 
 	if (!hdmi->phy || !conn_state->hdmi.tmds_char_rate)
 		return 0;
