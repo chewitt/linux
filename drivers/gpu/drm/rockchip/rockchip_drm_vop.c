@@ -863,6 +863,7 @@ static int vop_plane_atomic_check(struct drm_plane *plane,
 	struct drm_framebuffer *fb = new_plane_state->fb;
 	struct vop_win *vop_win = to_vop_win(plane);
 	const struct vop_win_data *win = vop_win->data;
+	unsigned int src_h;
 	int ret;
 	int min_scale = win->phy->scl ? FRAC_16_16(1, 8) :
 					DRM_PLANE_NO_SCALING;
@@ -934,6 +935,18 @@ static int vop_plane_atomic_check(struct drm_plane *plane,
 				      fb->width);
 			return -EINVAL;
 		}
+
+		if (!IS_ALIGNED(fb->width, 16)) {
+			DRM_DEBUG_KMS("AFBC width must be 16 aligned, fb width=%u\n",
+				      fb->width);
+			return -EINVAL;
+		}
+
+		/* The decoder only handles whole rows of 16x16 blocks */
+		src_h = drm_rect_height(&new_plane_state->src) >> 16;
+		if (!IS_ALIGNED(src_h, 16))
+			new_plane_state->src.y2 = new_plane_state->src.y1 +
+						  (ALIGN_DOWN(src_h, 16) << 16);
 	}
 
 	return 0;
