@@ -184,6 +184,7 @@ struct vop_scl_regs {
 
 struct vop_yuv2yuv_phy {
 	struct vop_reg y2r_coefficients[NUM_YUV2YUV_COEFFICIENTS];
+	struct vop_reg r2y_coefficients[NUM_YUV2YUV_COEFFICIENTS];
 };
 
 struct vop_win_phy {
@@ -220,6 +221,8 @@ struct vop_win_yuv2yuv_data {
 	uint32_t base;
 	const struct vop_yuv2yuv_phy *phy;
 	struct vop_reg y2r_en;
+	struct vop_reg r2y_en;
+	struct vop_reg csc_mode;
 };
 
 struct vop_win_data {

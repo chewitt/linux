@@ -17,6 +17,7 @@
 #include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
 #include <linux/reset.h>
+#include <linux/videodev2.h>
 
 #include <drm/drm.h>
 #include <drm/drm_atomic.h>
@@ -125,6 +126,25 @@ static const uint32_t bt601_yuv2rgb[] = {
 	0x4A8, 0x812,  0x0,
 	0x321168, 0x0877CF, 0x2EB127
 };
+
+/* Full range RGB to limited range YCbCr */
+static const uint32_t bt709_rgb2yuv[] = {
+	0x00BB, 0x0275, 0x003F,
+	0xFF99, 0xFEA5, 0x01C2,
+	0x01C2, 0xFE68, 0xFFD7,
+	0x010200, 0x080200, 0x080200
+};
+
+static const uint32_t bt2020_rgb2yuv[] = {
+	0x00E6, 0x0253, 0x0034,
+	0xFF83, 0xFEBD, 0x01C1,
+	0x01C1, 0xFE64, 0xFFDC,
+	0x010200, 0x080200, 0x080200
+};
+
+/* Fixed RGB to YCbCr matrices of the windows without coefficient registers */
+#define VOP_CSC_BT709L		1
+#define VOP_CSC_BT2020L		3
 
 enum vop_pending {
 	VOP_PENDING_FB_UNREF,
@@ -954,6 +974,8 @@ static void vop_plane_atomic_update(struct drm_plane *plane,
 	uint32_t val;
 	bool rb_swap, uv_swap;
 	int win_index = VOP_WIN_TO_INDEX(vop_win);
+	struct rockchip_crtc_state *s;
+	bool yuv_overlay, bt2020;
 	int format;
 	int is_yuv = fb->format->is_yuv;
 	int i;
@@ -971,6 +993,8 @@ static void vop_plane_atomic_update(struct drm_plane *plane,
 		vop_plane_atomic_disable(plane, state);
 		return;
 	}
+
+	s = to_rockchip_crtc_state(drm_atomic_get_new_crtc_state(state, crtc));
 
 	obj = fb->obj[0];
 	rk_obj = to_rockchip_obj(obj);
@@ -1020,7 +1044,25 @@ static void vop_plane_atomic_update(struct drm_plane *plane,
 	VOP_WIN_SET(vop, win, fmt_10, is_fmt_10(fb->format->format));
 	VOP_WIN_SET(vop, win, yrgb_vir, DIV_ROUND_UP(fb->pitches[0], 4));
 	VOP_WIN_SET(vop, win, yrgb_mst, dma_addr);
-	VOP_WIN_YUV2YUV_SET(vop, win_yuv2yuv, y2r_en, is_yuv);
+	/*
+	 * With a YUV output the windows are overlaid in YUV: YUV windows are
+	 * scanned out unconverted and RGB windows are converted to YUV.
+	 */
+	yuv_overlay = is_yuv_output(s->bus_format);
+	bt2020 = s->color_space == V4L2_COLORSPACE_BT2020;
+	VOP_WIN_YUV2YUV_SET(vop, win_yuv2yuv, y2r_en, is_yuv && !yuv_overlay);
+	VOP_WIN_YUV2YUV_SET(vop, win_yuv2yuv, r2y_en, !is_yuv && yuv_overlay);
+	if (!is_yuv && yuv_overlay) {
+		const uint32_t *rgb2yuv = bt2020 ? bt2020_rgb2yuv : bt709_rgb2yuv;
+
+		for (i = 0; i < NUM_YUV2YUV_COEFFICIENTS; i++) {
+			VOP_WIN_YUV2YUV_COEFFICIENT_SET(vop, win_yuv2yuv,
+							r2y_coefficients[i],
+							rgb2yuv[i]);
+		}
+		VOP_WIN_YUV2YUV_SET(vop, win_yuv2yuv, csc_mode,
+				    bt2020 ? VOP_CSC_BT2020L : VOP_CSC_BT709L);
+	}
 	VOP_WIN_SET(vop, win, y_mir_en,
 		    (new_state->rotation & DRM_MODE_REFLECT_Y) ? 1 : 0);
 	VOP_WIN_SET(vop, win, x_mir_en,
@@ -1495,7 +1537,8 @@ static void vop_crtc_atomic_enable(struct drm_crtc *crtc,
 	VOP_REG_SET(vop, common, overlay_mode, yuv_output);
 	VOP_REG_SET(vop, common, dsp_out_yuv, yuv_output);
 
-	VOP_REG_SET(vop, common, bcsh_r2y_en, yuv_output);
+	/* RGB windows are converted to YUV before the YUV overlay */
+	VOP_REG_SET(vop, common, bcsh_r2y_en, 0);
 
 	/*
 	 * Background color is 10bit depth if vop version >= 3.5
