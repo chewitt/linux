@@ -16,16 +16,30 @@
 #include <linux/pm_runtime.h>
 #include <linux/regmap.h>
 #include <linux/spinlock.h>
+#include <sound/asoundef.h>
 #include <sound/pcm_params.h>
 #include <sound/dmaengine_pcm.h>
+#include <sound/hdmi-codec.h>
 
 #include "rockchip_i2s.h"
 
 #define DRV_NAME "rockchip-i2s"
 
+#define I2S_HDMI_PREAMBLE_B	0x8
+#define I2S_HDMI_PAYLOAD_MASK	GENMASK(27, 12)
+#define I2S_HDMI_PCUV_MASK	(IEC958_SUBFRAME_PARITY | \
+				 IEC958_SUBFRAME_CHANNEL_STATUS | \
+				 IEC958_SUBFRAME_USER_DATA | \
+				 IEC958_SUBFRAME_VALIDITY)
+
 struct rk_i2s_pins {
 	u32 reg_offset;
 	u32 shift;
+};
+
+struct rk_i2s_soc_data {
+	const struct rk_i2s_pins *pins;
+	bool hdmi_bpcuv;
 };
 
 struct rk_i2s_dev {
@@ -52,6 +66,7 @@ struct rk_i2s_dev {
 	bool rx_start;
 	bool is_master_mode;
 	const struct rk_i2s_pins *pins;
+	bool hdmi_bpcuv;
 	unsigned int bclk_ratio;
 	spinlock_t lock; /* tx/rx lock */
 	struct pinctrl *pinctrl;
@@ -538,8 +553,82 @@ static int rockchip_i2s_dai_probe(struct snd_soc_dai *dai)
 	return 0;
 }
 
+static bool rockchip_i2s_is_hdmi(struct snd_pcm_substream *substream)
+{
+	struct snd_soc_pcm_runtime *rtd = snd_soc_substream_to_rtd(substream);
+
+	return snd_soc_rtdcom_lookup(rtd, HDMI_CODEC_DRV_NAME) != NULL;
+}
+
+static int rockchip_i2s_rule_access(struct snd_pcm_hw_params *params,
+				    struct snd_pcm_hw_rule *rule)
+{
+	const struct snd_mask *format =
+		hw_param_mask_c(params, SNDRV_PCM_HW_PARAM_FORMAT);
+	struct snd_mask *access = hw_param_mask(params, SNDRV_PCM_HW_PARAM_ACCESS);
+	struct snd_mask allowed;
+
+	if (!snd_mask_single(format) ||
+	    !snd_mask_test_format(format, SNDRV_PCM_FORMAT_IEC958_SUBFRAME_LE))
+		return 0;
+
+	snd_mask_copy(&allowed, access);
+	snd_mask_reset(&allowed, SNDRV_PCM_ACCESS_MMAP_INTERLEAVED);
+	snd_mask_reset(&allowed, SNDRV_PCM_ACCESS_MMAP_NONINTERLEAVED);
+	snd_mask_reset(&allowed, SNDRV_PCM_ACCESS_MMAP_COMPLEX);
+
+	return snd_mask_refine(access, &allowed);
+}
+
+static int rockchip_i2s_rule_format(struct snd_pcm_hw_params *params,
+				    struct snd_pcm_hw_rule *rule)
+{
+	const struct snd_mask *access =
+		hw_param_mask_c(params, SNDRV_PCM_HW_PARAM_ACCESS);
+	struct snd_mask *format = hw_param_mask(params, SNDRV_PCM_HW_PARAM_FORMAT);
+	struct snd_mask allowed;
+
+	if (snd_mask_test(access, SNDRV_PCM_ACCESS_RW_INTERLEAVED) ||
+	    snd_mask_test(access, SNDRV_PCM_ACCESS_RW_NONINTERLEAVED))
+		return 0;
+
+	snd_mask_copy(&allowed, format);
+	snd_mask_reset(&allowed,
+		       (__force unsigned int)SNDRV_PCM_FORMAT_IEC958_SUBFRAME_LE);
+
+	return snd_mask_refine(format, &allowed);
+}
+
+/*
+ * The IEC958 subframes are rewritten for the HDMI transmitter in the copy
+ * path, so keep them out of mmap access.
+ */
+static int rockchip_i2s_startup(struct snd_pcm_substream *substream,
+				struct snd_soc_dai *dai)
+{
+	struct rk_i2s_dev *i2s = snd_soc_dai_get_drvdata(dai);
+	struct snd_pcm_runtime *runtime = substream->runtime;
+	int ret;
+
+	if (!i2s->hdmi_bpcuv ||
+	    substream->stream != SNDRV_PCM_STREAM_PLAYBACK ||
+	    !rockchip_i2s_is_hdmi(substream))
+		return 0;
+
+	ret = snd_pcm_hw_rule_add(runtime, 0, SNDRV_PCM_HW_PARAM_ACCESS,
+				  rockchip_i2s_rule_access, NULL,
+				  SNDRV_PCM_HW_PARAM_FORMAT, -1);
+	if (ret)
+		return ret;
+
+	return snd_pcm_hw_rule_add(runtime, 0, SNDRV_PCM_HW_PARAM_FORMAT,
+				   rockchip_i2s_rule_format, NULL,
+				   SNDRV_PCM_HW_PARAM_ACCESS, -1);
+}
+
 static const struct snd_soc_dai_ops rockchip_i2s_dai_ops = {
 	.probe = rockchip_i2s_dai_probe,
+	.startup = rockchip_i2s_startup,
 	.hw_params = rockchip_i2s_hw_params,
 	.set_bclk_ratio	= rockchip_i2s_set_bclk_ratio,
 	.set_sysclk = rockchip_i2s_set_sysclk,
@@ -550,6 +639,50 @@ static const struct snd_soc_dai_ops rockchip_i2s_dai_ops = {
 static struct snd_soc_dai_driver rockchip_i2s_dai = {
 	.ops = &rockchip_i2s_dai_ops,
 	.symmetric_rate = 1,
+};
+
+/*
+ * The DesignWare HDMI TX samples IEC958 data on I2S as B, P, C, U and V
+ * followed by the 16-bit payload. Move the payload and the PCUV bits of
+ * ALSA's IEC958 subframes into that layout and derive B from the Z preamble.
+ */
+static int rockchip_i2s_hdmi_process(struct snd_pcm_substream *substream,
+				     int channel, unsigned long hwoff,
+				     unsigned long bytes)
+{
+	struct snd_pcm_runtime *runtime = substream->runtime;
+	__le32 *ptr = (__le32 *)(runtime->dma_area + hwoff +
+		channel * (runtime->dma_bytes / runtime->channels));
+	__le32 *end = (__le32 *)((u8 *)ptr + bytes);
+
+	if (runtime->format != SNDRV_PCM_FORMAT_IEC958_SUBFRAME_LE)
+		return 0;
+
+	if (!rockchip_i2s_is_hdmi(substream))
+		return -EINVAL;
+
+	if (bytes % sizeof(*ptr))
+		return -EINVAL;
+
+	for (; ptr < end; ptr++) {
+		u32 sample = le32_to_cpu(*ptr);
+		u32 hdmi = (sample & I2S_HDMI_PAYLOAD_MASK) >> 1;
+
+		hdmi |= (sample & I2S_HDMI_PCUV_MASK) >> 1;
+
+		if ((sample & IEC958_SUBFRAME_PREAMBLE_MASK) ==
+		    I2S_HDMI_PREAMBLE_B)
+			hdmi |= BIT(31);
+
+		*ptr = cpu_to_le32(hdmi);
+	}
+
+	return 0;
+}
+
+static const struct snd_dmaengine_pcm_config rockchip_i2s_hdmi_pcm_config = {
+	.prepare_slave_config = snd_dmaengine_pcm_prepare_slave_config,
+	.process = rockchip_i2s_hdmi_process,
 };
 
 static const struct snd_soc_component_driver rockchip_i2s_component = {
@@ -640,9 +773,18 @@ static const struct regmap_config rockchip_i2s_regmap_config = {
 	.cache_type = REGCACHE_FLAT,
 };
 
+static const struct rk_i2s_soc_data rk3328_i2s_soc_data = {
+	.hdmi_bpcuv = true,
+};
+
 static const struct rk_i2s_pins rk3399_i2s_pins = {
 	.reg_offset = 0xe220,
 	.shift = 11,
+};
+
+static const struct rk_i2s_soc_data rk3399_i2s_soc_data = {
+	.pins = &rk3399_i2s_pins,
+	.hdmi_bpcuv = true,
 };
 
 static const struct of_device_id rockchip_i2s_match[] __maybe_unused = {
@@ -655,10 +797,10 @@ static const struct of_device_id rockchip_i2s_match[] __maybe_unused = {
 	{ .compatible = "rockchip,rk3228-i2s", },
 	{ .compatible = "rockchip,rk3288-i2s", },
 	{ .compatible = "rockchip,rk3308-i2s", },
-	{ .compatible = "rockchip,rk3328-i2s", },
+	{ .compatible = "rockchip,rk3328-i2s", .data = &rk3328_i2s_soc_data },
 	{ .compatible = "rockchip,rk3366-i2s", },
 	{ .compatible = "rockchip,rk3368-i2s", },
-	{ .compatible = "rockchip,rk3399-i2s", .data = &rk3399_i2s_pins },
+	{ .compatible = "rockchip,rk3399-i2s", .data = &rk3399_i2s_soc_data },
 	{ .compatible = "rockchip,rk3588-i2s", },
 	{ .compatible = "rockchip,rv1126-i2s", },
 	{},
@@ -747,6 +889,7 @@ static int rockchip_i2s_init_dai(struct rk_i2s_dev *i2s, struct resource *res,
 static int rockchip_i2s_probe(struct platform_device *pdev)
 {
 	struct device_node *node = pdev->dev.of_node;
+	const struct rk_i2s_soc_data *soc_data;
 	struct rk_i2s_dev *i2s;
 	struct snd_soc_dai_driver *dai;
 	struct resource *res;
@@ -760,9 +903,13 @@ static int rockchip_i2s_probe(struct platform_device *pdev)
 	spin_lock_init(&i2s->lock);
 	i2s->dev = &pdev->dev;
 
+	soc_data = device_get_match_data(&pdev->dev);
+	if (soc_data)
+		i2s->hdmi_bpcuv = soc_data->hdmi_bpcuv;
+
 	i2s->grf = syscon_regmap_lookup_by_phandle(node, "rockchip,grf");
 	if (!IS_ERR(i2s->grf)) {
-		i2s->pins = device_get_match_data(&pdev->dev);
+		i2s->pins = soc_data ? soc_data->pins : NULL;
 		if (!i2s->pins)
 			return -EINVAL;
 
@@ -837,7 +984,11 @@ static int rockchip_i2s_probe(struct platform_device *pdev)
 	if (ret)
 		return ret;
 
-	ret = devm_snd_dmaengine_pcm_register(&pdev->dev, NULL, 0);
+	if (i2s->hdmi_bpcuv)
+		ret = devm_snd_dmaengine_pcm_register(&pdev->dev,
+				&rockchip_i2s_hdmi_pcm_config, 0);
+	else
+		ret = devm_snd_dmaengine_pcm_register(&pdev->dev, NULL, 0);
 	if (ret)
 		return ret;
 
