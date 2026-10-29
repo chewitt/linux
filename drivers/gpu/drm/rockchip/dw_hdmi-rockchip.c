@@ -481,7 +481,7 @@ static struct rockchip_hdmi_chip_data rk3228_chip_data = {
 };
 
 static const struct dw_hdmi_plat_data rk3228_hdmi_drv_data = {
-	.max_tmds_char_rate = 594000000,
+	.max_tmds_char_rate = 371250000,
 	.tmds_char_rate_valid = dw_hdmi_rockchip_tmds_char_rate_valid,
 	.phy_data = &rk3228_chip_data,
 	.phy_ops = &rk3228_hdmi_phy_ops,
@@ -521,7 +521,7 @@ static struct rockchip_hdmi_chip_data rk3328_chip_data = {
 };
 
 static const struct dw_hdmi_plat_data rk3328_hdmi_drv_data = {
-	.max_tmds_char_rate = 594000000,
+	.max_tmds_char_rate = 371250000,
 	.tmds_char_rate_valid = dw_hdmi_rockchip_tmds_char_rate_valid,
 	.phy_data = &rk3328_chip_data,
 	.phy_ops = &rk3328_hdmi_phy_ops,
