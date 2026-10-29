@@ -2091,10 +2091,15 @@ static int dw_hdmi_poweron(struct dw_hdmi *hdmi,
 {
 	struct drm_connector_state *conn_state =
 		drm_atomic_get_new_connector_state(state, connector);
+	struct drm_bridge_state *bridge_state =
+		drm_atomic_get_new_bridge_state(state, &hdmi->bridge);
 	const struct drm_display_info *display = &connector->display_info;
 	int ret;
 
 	hdmi_disable_overflow_interrupts(hdmi);
+
+	hdmi->hdmi_data.enc_in_bus_format = bridge_state->input_bus_cfg.format;
+	hdmi->hdmi_data.enc_out_bus_format = bridge_state->output_bus_cfg.format;
 
 	hdmi->vic = drm_match_cea_mode(mode);
 
@@ -2443,12 +2448,6 @@ static int dw_hdmi_bridge_atomic_check(struct drm_bridge *bridge,
 	struct drm_connector_state *old_conn_state =
 		drm_atomic_get_old_connector_state(conn_state->state,
 						   conn_state->connector);
-
-	hdmi->hdmi_data.enc_out_bus_format =
-			bridge_state->output_bus_cfg.format;
-
-	hdmi->hdmi_data.enc_in_bus_format =
-			bridge_state->input_bus_cfg.format;
 
 	dev_dbg(hdmi->dev, "input format 0x%04x, output format 0x%04x\n",
 		bridge_state->input_bus_cfg.format,
