@@ -947,6 +947,31 @@ static int rk_tsadcv2_get_temp(const struct chip_tsadc_table *table,
 	return rk_tsadcv2_code_to_temp(table, val, temp);
 }
 
+#define RK3328_TSADC_AVG_SAMPLES	8
+#define RK3328_TSADC_AVG_INTERVAL_US	5000 /* TSADCV2_AUTO_PERIOD_TIME at 50 kHz */
+
+static int rk3328_tsadc_get_temp(const struct chip_tsadc_table *table,
+				 int chn, void __iomem *regs, int *temp)
+{
+	int i, val, sum = 0;
+	int ret;
+
+	for (i = 0; i < RK3328_TSADC_AVG_SAMPLES; i++) {
+		if (i)
+			fsleep(RK3328_TSADC_AVG_INTERVAL_US);
+
+		ret = rk_tsadcv2_get_temp(table, chn, regs, &val);
+		if (ret)
+			return ret;
+
+		sum += val;
+	}
+
+	*temp = sum / RK3328_TSADC_AVG_SAMPLES;
+
+	return 0;
+}
+
 static int rk_tsadcv4_get_temp(const struct chip_tsadc_table *table,
 			       int chn, void __iomem *regs, int *temp)
 {
@@ -1199,7 +1224,7 @@ static const struct rockchip_tsadc_chip rk3328_tsadc_data = {
 	.initialize = rk_tsadcv2_initialize,
 	.irq_ack = rk_tsadcv3_irq_ack,
 	.control = rk_tsadcv3_control,
-	.get_temp = rk_tsadcv2_get_temp,
+	.get_temp = rk3328_tsadc_get_temp,
 	.set_alarm_temp = rk_tsadcv2_alarm_temp,
 	.set_tshut_temp = rk_tsadcv2_tshut_temp,
 	.set_tshut_mode = rk_tsadcv2_tshut_mode,
