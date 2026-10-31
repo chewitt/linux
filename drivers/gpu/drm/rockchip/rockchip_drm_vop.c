@@ -993,6 +993,7 @@ static void vop_plane_atomic_update(struct drm_plane *plane,
 	uint32_t val;
 	bool rb_swap, uv_swap;
 	int win_index = VOP_WIN_TO_INDEX(vop_win);
+	int color_mode;
 	struct rockchip_crtc_state *s;
 	bool yuv_overlay, bt2020;
 	int format;
@@ -1133,10 +1134,15 @@ static void vop_plane_atomic_update(struct drm_plane *plane,
 	 * with the default opaque black default background color is a no-op,
 	 * so we can just disable blending to get the correct result.
 	 */
-	if (fb->format->has_alpha && win_index > 0) {
+	if (fb->format->has_alpha && win_index > 0 &&
+	    new_state->pixel_blend_mode != DRM_MODE_BLEND_PIXEL_NONE) {
+		/* ALPHA_SRC_NO_PRE_MUL makes the VOP multiply colour by alpha */
+		color_mode = new_state->pixel_blend_mode == DRM_MODE_BLEND_COVERAGE ?
+			     ALPHA_SRC_NO_PRE_MUL : ALPHA_SRC_PRE_MUL;
+
 		VOP_WIN_SET(vop, win, dst_alpha_ctl,
 			    DST_FACTOR_M0(ALPHA_SRC_INVERSE));
-		val = SRC_ALPHA_EN(1) | SRC_COLOR_M0(ALPHA_SRC_PRE_MUL) |
+		val = SRC_ALPHA_EN(1) | SRC_COLOR_M0(color_mode) |
 			SRC_ALPHA_M0(ALPHA_STRAIGHT) |
 			SRC_BLEND_M0(ALPHA_PER_PIX) |
 			SRC_ALPHA_CAL_M0(ALPHA_NO_SATURATION) |
@@ -1951,9 +1957,36 @@ out:
 	return ret;
 }
 
-static void vop_plane_add_properties(struct drm_plane *plane,
-				     const struct vop_win_data *win_data)
+static unsigned int vop_win_blend_modes(struct vop_win *vop_win)
 {
+	const struct vop_win_data *win_data = vop_win->data;
+	unsigned int modes = BIT(DRM_MODE_BLEND_PIXEL_NONE);
+
+	/*
+	 * The bottom window is never blended. Pre-multiplied alpha over the
+	 * opaque black background is a no-op, so that is still honoured.
+	 */
+	if (VOP_WIN_TO_INDEX(vop_win) == 0)
+		return modes | BIT(DRM_MODE_BLEND_PREMULTI);
+
+	if (VOP_WIN_HAS_REG(win_data, src_alpha_ctl))
+		return modes | BIT(DRM_MODE_BLEND_PREMULTI) |
+		       BIT(DRM_MODE_BLEND_COVERAGE);
+
+	if (VOP_WIN_HAS_REG(win_data, alpha_pre_mul))
+		return modes | BIT(DRM_MODE_BLEND_PREMULTI);
+
+	/* Per-pixel alpha without a pre-multiplied mode (RK3066) */
+	if (VOP_WIN_HAS_REG(win_data, alpha_en))
+		return modes | BIT(DRM_MODE_BLEND_COVERAGE);
+
+	return modes;
+}
+
+static void vop_plane_add_properties(struct vop_win *vop_win)
+{
+	const struct vop_win_data *win_data = vop_win->data;
+	struct drm_plane *plane = &vop_win->base;
 	unsigned int flags = 0;
 
 	flags |= VOP_WIN_HAS_REG(win_data, x_mir_en) ? DRM_MODE_REFLECT_X : 0;
@@ -1961,6 +1994,9 @@ static void vop_plane_add_properties(struct drm_plane *plane,
 	if (flags)
 		drm_plane_create_rotation_property(plane, DRM_MODE_ROTATE_0,
 						   DRM_MODE_ROTATE_0 | flags);
+
+	drm_plane_create_blend_mode_property(plane,
+					     vop_win_blend_modes(vop_win));
 }
 
 static int vop_create_crtc(struct vop *vop)
@@ -2001,7 +2037,7 @@ static int vop_create_crtc(struct vop *vop)
 
 		plane = &vop_win->base;
 		drm_plane_helper_add(plane, &plane_helper_funcs);
-		vop_plane_add_properties(plane, win_data);
+		vop_plane_add_properties(vop_win);
 		if (plane->type == DRM_PLANE_TYPE_PRIMARY)
 			primary = plane;
 		else if (plane->type == DRM_PLANE_TYPE_CURSOR)
@@ -2044,7 +2080,7 @@ static int vop_create_crtc(struct vop *vop)
 			goto err_cleanup_crtc;
 		}
 		drm_plane_helper_add(&vop_win->base, &plane_helper_funcs);
-		vop_plane_add_properties(&vop_win->base, win_data);
+		vop_plane_add_properties(vop_win);
 	}
 
 	port = of_get_child_by_name(dev->of_node, "port");
