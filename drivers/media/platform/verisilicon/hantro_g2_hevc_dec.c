@@ -605,8 +605,10 @@ int hantro_g2_hevc_dec_run(struct hantro_ctx *ctx)
 
 	/* set reference pictures */
 	ret = set_ref(ctx);
-	if (ret)
+	if (ret) {
+		hantro_abort_prepare_run(ctx);
 		return ret;
+	}
 
 	set_buffers(ctx);
 	prepare_tile_info_buffer(ctx);
