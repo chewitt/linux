@@ -203,8 +203,10 @@ int hantro_hevc_dec_prepare_run(struct hantro_ctx *ctx)
 	}
 
 	ret = hantro_hevc_validate_sps(ctx, ctrls->sps);
-	if (ret)
+	if (ret) {
+		hantro_abort_prepare_run(ctx);
 		return ret;
+	}
 
 	ctrls->pps =
 		hantro_get_ctrl(ctx, V4L2_CID_STATELESS_HEVC_PPS);
