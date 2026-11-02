@@ -197,7 +197,7 @@ static void device_run(void *priv)
 	v4l2_m2m_buf_copy_metadata(src, dst);
 
 	if (ctx->codec_ops->run(ctx))
-		goto err_cancel_job;
+		hantro_job_finish(ctx->dev, ctx, VB2_BUF_STATE_ERROR);
 
 	return;
 
