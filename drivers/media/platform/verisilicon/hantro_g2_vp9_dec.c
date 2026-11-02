@@ -895,7 +895,7 @@ int hantro_g2_vp9_dec_run(struct hantro_ctx *ctx)
 
 	ret = start_prepare_run(ctx, &decode_params);
 	if (ret) {
-		hantro_end_prepare_run(ctx);
+		hantro_abort_prepare_run(ctx);
 		return ret;
 	}
 
