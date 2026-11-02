@@ -35,10 +35,47 @@ void hantro_mpeg2_dec_copy_qtable(u8 *qtable,
 	}
 }
 
+/*
+ * V4L2_MPEG2_PIC_FLAG_TOP_FIELD_FIRST is always 0 in a field picture. Both
+ * fields of a frame decode into the same CAPTURE buffer with opposite
+ * parity, so the second field is the one that follows a first field of the
+ * other parity into the same buffer.
+ */
+void hantro_mpeg2_dec_field_order(struct hantro_ctx *ctx,
+				  const struct v4l2_ctrl_mpeg2_picture *pic,
+				  const struct vb2_buffer *dst_buf,
+				  struct hantro_mpeg2_field_order *order)
+{
+	struct hantro_mpeg2_dec_hw_ctx *mpeg2 = &ctx->mpeg2_dec;
+	u32 structure = pic->picture_structure;
+
+	order->second_field = false;
+	order->top_field_first = !!(pic->flags & V4L2_MPEG2_PIC_FLAG_TOP_FIELD_FIRST);
+
+	if (structure == V4L2_MPEG2_PIC_FRAME) {
+		mpeg2->first_field = 0;
+		return;
+	}
+
+	if (mpeg2->first_field && mpeg2->first_field != structure &&
+	    mpeg2->first_field_buf == dst_buf->index) {
+		order->second_field = true;
+		order->top_field_first =
+			mpeg2->first_field == V4L2_MPEG2_PIC_TOP_FIELD;
+		mpeg2->first_field = 0;
+		return;
+	}
+
+	order->top_field_first = structure == V4L2_MPEG2_PIC_TOP_FIELD;
+	mpeg2->first_field = structure;
+	mpeg2->first_field_buf = dst_buf->index;
+}
+
 int hantro_mpeg2_dec_init(struct hantro_ctx *ctx)
 {
 	struct hantro_dev *vpu = ctx->dev;
 
+	ctx->mpeg2_dec.first_field = 0;
 	ctx->mpeg2_dec.qtable.size = ARRAY_SIZE(zigzag) * 4;
 	ctx->mpeg2_dec.qtable.cpu =
 		dma_alloc_coherent(vpu->dev,

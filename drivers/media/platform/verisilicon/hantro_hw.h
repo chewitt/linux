@@ -171,9 +171,27 @@ struct hantro_hevc_dec_hw_ctx {
  * struct hantro_mpeg2_dec_hw_ctx
  *
  * @qtable:		Quantization table
+ * @first_field:	Picture structure (V4L2_MPEG2_PIC_TOP_FIELD or
+ *			V4L2_MPEG2_PIC_BOTTOM_FIELD) of a decoded first field
+ *			whose second field has not been decoded yet, 0 if none.
+ * @first_field_buf:	Index of the CAPTURE buffer that first field went into.
  */
 struct hantro_mpeg2_dec_hw_ctx {
 	struct hantro_aux_buf qtable;
+	u32 first_field;
+	u32 first_field_buf;
+};
+
+/**
+ * struct hantro_mpeg2_field_order - decode-order field information
+ *
+ * @second_field:	This field picture is the second field of its frame.
+ * @top_field_first:	The first field of the frame is (was) the top field.
+ *			For a frame picture this is the bitstream flag.
+ */
+struct hantro_mpeg2_field_order {
+	bool second_field;
+	bool top_field_first;
 };
 
 /**
@@ -567,6 +585,10 @@ int hantro_g1_mpeg2_dec_run(struct hantro_ctx *ctx);
 int rockchip_vpu2_mpeg2_dec_run(struct hantro_ctx *ctx);
 void hantro_mpeg2_dec_copy_qtable(u8 *qtable,
 				  const struct v4l2_ctrl_mpeg2_quantisation *ctrl);
+void hantro_mpeg2_dec_field_order(struct hantro_ctx *ctx,
+				  const struct v4l2_ctrl_mpeg2_picture *pic,
+				  const struct vb2_buffer *dst_buf,
+				  struct hantro_mpeg2_field_order *order);
 int hantro_mpeg2_dec_init(struct hantro_ctx *ctx);
 void hantro_mpeg2_dec_exit(struct hantro_ctx *ctx);
 
