@@ -190,8 +190,10 @@ int hantro_hevc_dec_prepare_run(struct hantro_ctx *ctx)
 
 	ctrls->scaling =
 		hantro_get_ctrl(ctx, V4L2_CID_STATELESS_HEVC_SCALING_MATRIX);
-	if (WARN_ON(!ctrls->scaling))
+	if (WARN_ON(!ctrls->scaling)) {
+		hantro_abort_prepare_run(ctx);
 		return -EINVAL;
+	}
 
 	ctrls->sps =
 		hantro_get_ctrl(ctx, V4L2_CID_STATELESS_HEVC_SPS);
