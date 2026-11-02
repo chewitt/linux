@@ -327,6 +327,16 @@ static const struct drm_hdmi_acr_data hdmi_acr_n_cts[] = {
 		.n_cts_44k1 = { .n = 6272,  .cts = 82500, },
 		.n_cts_48k =  { .n = 6144,  .cts = 74250, },
 	}, {
+		.tmds_clock_khz = 92720,
+		.n_cts_32k =  { .n = 11648, .cts = 263671, },
+		.n_cts_44k1 = { .n = 17836, .cts = 292968, },
+		.n_cts_48k =  { .n = 11648, .cts = 175781, },
+	}, {
+		.tmds_clock_khz = 111264,
+		.n_cts_32k =  { .n = 11648, .cts = 316406, },
+		.n_cts_44k1 = { .n = 17836, .cts = 351562, },
+		.n_cts_48k =  { .n = 11648, .cts = 210937, },
+	}, {
 		.tmds_clock_khz = 148352,
 		.n_cts_32k =  { .n = 11648, .cts = 421875, },
 		.n_cts_44k1 = { .n = 8918,  .cts = 234375, },
@@ -337,6 +347,16 @@ static const struct drm_hdmi_acr_data hdmi_acr_n_cts[] = {
 		.n_cts_44k1 = { .n = 6272,  .cts = 165000, },
 		.n_cts_48k =  { .n = 6144,  .cts = 148500, },
 	}, {
+		.tmds_clock_khz = 185440,
+		.n_cts_32k =  { .n = 11648, .cts = 527343, },
+		.n_cts_44k1 = { .n = 17836, .cts = 585937, },
+		.n_cts_48k =  { .n = 11648, .cts = 351562, },
+	}, {
+		.tmds_clock_khz = 222528,
+		.n_cts_32k =  { .n = 11648, .cts = 632812, },
+		.n_cts_44k1 = { .n = 17836, .cts = 703125, },
+		.n_cts_48k =  { .n = 11648, .cts = 421875, },
+	}, {
 		.tmds_clock_khz = 296703,
 		.n_cts_32k =  { .n = 5824,  .cts = 421875, },
 		.n_cts_44k1 = { .n = 4459,  .cts = 234375, },
@@ -346,6 +366,16 @@ static const struct drm_hdmi_acr_data hdmi_acr_n_cts[] = {
 		.n_cts_32k =  { .n = 3072,  .cts = 222750, },
 		.n_cts_44k1 = { .n = 4704,  .cts = 247500, },
 		.n_cts_48k =  { .n = 5120,  .cts = 247500, },
+	}, {
+		.tmds_clock_khz = 370879,
+		.n_cts_32k =  { .n = 5824,  .cts = 527343, },
+		.n_cts_44k1 = { .n = 8918,  .cts = 585937, },
+		.n_cts_48k =  { .n = 11648, .cts = 703125, },
+	}, {
+		.tmds_clock_khz = 445055,
+		.n_cts_32k =  { .n = 5824,  .cts = 632812, },
+		.n_cts_44k1 = { .n = 8918,  .cts = 703125, },
+		.n_cts_48k =  { .n = 5824,  .cts = 421875, },
 	}, {
 		.tmds_clock_khz = 593407,
 		.n_cts_32k =  { .n = 5824,  .cts = 843750, },
