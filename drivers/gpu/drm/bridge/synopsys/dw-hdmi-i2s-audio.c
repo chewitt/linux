@@ -157,6 +157,11 @@ static void dw_hdmi_i2s_audio_shutdown(struct device *dev, void *data)
 	struct dw_hdmi *hdmi = audio->hdmi;
 
 	dw_hdmi_audio_disable(hdmi);
+
+	dw_hdmi_set_channel_count(hdmi, 2);
+	dw_hdmi_set_channel_allocation(hdmi, 0);
+	hdmi_write(audio, HDMI_AUD_CONF0_I2S_SELECT | HDMI_AUD_CONF0_I2S_EN0,
+		   HDMI_AUD_CONF0);
 }
 
 static int dw_hdmi_i2s_get_eld(struct device *dev, void *data, uint8_t *buf,
