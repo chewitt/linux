@@ -398,8 +398,6 @@ static int dw_hdmi_phy_init(struct dw_hdmi *hdmi, void *data,
 	/* Disable clock, fifo, fifo_wr */
 	regmap_update_bits(priv->hhi, HHI_HDMI_PHY_CNTL1, 0xf, 0);
 
-	dw_hdmi_set_high_tmds_clock_ratio(hdmi, display);
-
 	msleep(100);
 
 	/* Reset PHY 3 times in a row */
