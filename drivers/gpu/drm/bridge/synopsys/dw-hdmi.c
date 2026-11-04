@@ -29,7 +29,6 @@
 #include <drm/bridge/dw_hdmi.h>
 #include <drm/display/drm_hdmi_helper.h>
 #include <drm/display/drm_hdmi_state_helper.h>
-#include <drm/display/drm_scdc_helper.h>
 #include <drm/drm_atomic.h>
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_bridge.h>
@@ -185,6 +184,7 @@ struct dw_hdmi {
 	struct mutex mutex;		/* for state below */
 	struct drm_connector *curr_conn;/* current connector (only valid when !disabled) */
 	u8 mc_clkdis;			/* clock disable register */
+	bool scdc_unknown;		/* sink SCDC state not yet set by us */
 
 	spinlock_t audio_lock;
 	struct mutex audio_mutex;
@@ -1313,62 +1313,6 @@ void dw_hdmi_phy_i2c_write(struct dw_hdmi *hdmi, unsigned short data,
 }
 EXPORT_SYMBOL_GPL(dw_hdmi_phy_i2c_write);
 
-/* Filter out invalid setups to avoid configuring SCDC and scrambling */
-static bool dw_hdmi_support_scdc(struct dw_hdmi *hdmi,
-				 const struct drm_display_info *display)
-{
-	/* Completely disable SCDC support for older controllers */
-	if (hdmi->version < 0x200a)
-		return false;
-
-	/* Disable if no DDC bus */
-	if (!hdmi->ddc)
-		return false;
-
-	/* Disable if SCDC is not supported, or if an HF-VSDB block is absent */
-	if (!display->hdmi.scdc.supported ||
-	    !display->hdmi.scdc.scrambling.supported)
-		return false;
-
-	/*
-	 * Disable if display only support low TMDS rates and scrambling
-	 * for low rates is not supported either
-	 */
-	if (!display->hdmi.scdc.scrambling.low_rates &&
-	    display->max_tmds_clock <= 340000)
-		return false;
-
-	return true;
-}
-
-/*
- * HDMI2.0 Specifies the following procedure for High TMDS Bit Rates:
- * - The Source shall suspend transmission of the TMDS clock and data
- * - The Source shall write to the TMDS_Bit_Clock_Ratio bit to change it
- * from a 0 to a 1 or from a 1 to a 0
- * - The Source shall allow a minimum of 1 ms and a maximum of 100 ms from
- * the time the TMDS_Bit_Clock_Ratio bit is written until resuming
- * transmission of TMDS clock and data
- *
- * To respect the 100ms maximum delay, the dw_hdmi_set_high_tmds_clock_ratio()
- * helper should called right before enabling the TMDS Clock and Data in
- * the PHY configuration callback.
- */
-void dw_hdmi_set_high_tmds_clock_ratio(struct dw_hdmi *hdmi,
-				       const struct drm_display_info *display)
-{
-	unsigned long mtmdsclock = hdmi->hdmi_data.video_mode.mtmdsclock;
-
-	/* Control for TMDS Bit Period/TMDS Clock-Period Ratio */
-	if (dw_hdmi_support_scdc(hdmi, display)) {
-		if (mtmdsclock > HDMI_1_3_TMDS_CHAR_RATE_MAX_HZ)
-			drm_scdc_set_high_tmds_clock_ratio(hdmi->curr_conn, 1);
-		else
-			drm_scdc_set_high_tmds_clock_ratio(hdmi->curr_conn, 0);
-	}
-}
-EXPORT_SYMBOL_GPL(dw_hdmi_set_high_tmds_clock_ratio);
-
 static void dw_hdmi_phy_enable_powerdown(struct dw_hdmi *hdmi, bool enable)
 {
 	hdmi_mask_writeb(hdmi, !enable, HDMI_PHY_CONF0,
@@ -1591,8 +1535,6 @@ static int hdmi_phy_configure(struct dw_hdmi *hdmi,
 	int ret;
 
 	dw_hdmi_phy_power_off(hdmi);
-
-	dw_hdmi_set_high_tmds_clock_ratio(hdmi, display);
 
 	/* Leave low power consumption mode by asserting SVSRET. */
 	if (phy->has_svsret)
@@ -1958,8 +1900,13 @@ static void hdmi_av_composer(struct dw_hdmi *hdmi,
 			dev_warn(hdmi->dev, "Failed to enable scrambling: %d\n",
 				 ret);
 	} else if (hdmi->version >= 0x200a) {
+		if (hdmi->scdc_unknown)
+			WRITE_ONCE(conn_state->connector->hdmi.scrambler_enabled,
+				   true);
+		drm_connector_hdmi_disable_scrambling(conn_state->connector);
 		hdmi_writeb(hdmi, 0, HDMI_FC_SCRAMBLER_CTRL);
 	}
+	hdmi->scdc_unknown = false;
 
 	/* Set up horizontal active pixel width */
 	hdmi_writeb(hdmi, hdisplay >> 8, HDMI_FC_INHACTV1);
@@ -2975,6 +2922,7 @@ struct dw_hdmi *dw_hdmi_probe(struct platform_device *pdev,
 	/* Product and revision IDs */
 	hdmi->version = (hdmi_readb(hdmi, HDMI_DESIGN_ID) << 8)
 		      | (hdmi_readb(hdmi, HDMI_REVISION_ID) << 0);
+	hdmi->scdc_unknown = true;
 	prod_id0 = hdmi_readb(hdmi, HDMI_PRODUCT_ID0);
 	prod_id1 = hdmi_readb(hdmi, HDMI_PRODUCT_ID1);
 
