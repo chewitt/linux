@@ -1913,9 +1913,15 @@ static irqreturn_t codec_h264_threaded_isr(struct amvdec_session *sess)
 				h264->multi_done_pending = true;
 				schedule_work(&sess->esparser_queue_work);
 			}
-		} else if (h264->multi_field_picture) {
-			dev_err_ratelimited(core->dev_dec, "h264 field: unexpected status=%#x phase=%u\n",
-					    status, READ_ONCE(h264->multi_field_phase));
+		} else {
+			/*
+			 * Any other status (e.g. the firmware ran out of input on a
+			 * damaged access unit) waits for an action, which isn't sent.
+			 * Abort, otherwise the job never finishes.
+			 */
+			dev_err_ratelimited(core->dev_dec, "h264 multi: unexpected status=%#x field=%u phase=%u\n",
+					    status, h264->multi_field_picture,
+					    READ_ONCE(h264->multi_field_phase));
 			codec_h264_multi_abort(sess);
 		}
 		return IRQ_HANDLED;
