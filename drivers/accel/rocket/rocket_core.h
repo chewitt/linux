@@ -33,12 +33,15 @@ enum rocket_clk {
 	ROCKET_CLK_HCLK,
 	ROCKET_CLK_NPU,
 	ROCKET_CLK_PCLK,
+	ROCKET_CLK_ACLK_CBUF,
+	ROCKET_CLK_HCLK_CBUF,
 	ROCKET_CLK_MAX,
 };
 
 struct rocket_soc_data {
 	unsigned int num_clks;
 	unsigned int num_resets;
+	bool task_con_16bit;
 };
 
 struct rocket_core {

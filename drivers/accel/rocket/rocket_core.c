@@ -33,6 +33,8 @@ int rocket_core_init(struct rocket_core *core)
 	core->clks[ROCKET_CLK_HCLK].id = "hclk";
 	core->clks[ROCKET_CLK_NPU].id = "npu";
 	core->clks[ROCKET_CLK_PCLK].id = "pclk";
+	core->clks[ROCKET_CLK_ACLK_CBUF].id = "aclk_cbuf";
+	core->clks[ROCKET_CLK_HCLK_CBUF].id = "hclk_cbuf";
 	err = devm_clk_bulk_get(dev, core->soc->num_clks, core->clks);
 	if (err)
 		return dev_err_probe(dev, err, "failed to get clocks for core %d\n", core->index);
