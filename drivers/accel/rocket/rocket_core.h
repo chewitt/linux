@@ -31,6 +31,7 @@
 struct rocket_soc_data {
 	unsigned int num_clks;
 	unsigned int num_resets;
+	bool task_con_16bit;
 };
 
 struct rocket_core {
@@ -48,7 +49,7 @@ struct rocket_core {
 	void __iomem *pc_iomem;
 	void __iomem *cna_iomem;
 	void __iomem *core_iomem;
-	struct clk_bulk_data clks[4];
+	struct clk_bulk_data clks[6];
 	struct reset_control_bulk_data resets[2];
 
 	struct iommu_group *iommu_group;
