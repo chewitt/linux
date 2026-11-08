@@ -36,9 +36,15 @@ enum rocket_clk {
 	ROCKET_CLK_MAX,
 };
 
+struct rocket_soc_data {
+	unsigned int num_clks;
+	unsigned int num_resets;
+};
+
 struct rocket_core {
 	struct device *dev;
 	struct rocket_device *rdev;
+	const struct rocket_soc_data *soc;
 	/*
 	 * Hardware number of the core: its position among the core nodes in
 	 * the devicetree.
