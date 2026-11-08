@@ -32,6 +32,7 @@ struct rocket_soc_data {
 	unsigned int num_clks;
 	unsigned int num_resets;
 	bool task_con_16bit;
+	u32 hw_version;
 };
 
 struct rocket_core {
