@@ -400,6 +400,8 @@ static void rocket_job_handle_irq(struct rocket_core *core)
 static void
 rocket_reset(struct rocket_core *core, struct drm_sched_job *bad)
 {
+	bool put_job_ref;
+
 	if (!atomic_read(&core->reset.pending))
 		return;
 
@@ -418,11 +420,10 @@ rocket_reset(struct rocket_core *core, struct drm_sched_job *bad)
 	/*
 	 * Remaining interrupts have been handled, but we might still have
 	 * stuck jobs. Let's make sure the PM counters stay balanced by
-	 * manually calling pm_runtime_put_noidle().
+	 * dropping the job's reference once the core has been reset.
 	 */
 	scoped_guard(mutex, &core->job_lock) {
-		if (core->in_flight_job)
-			pm_runtime_put_noidle(core->dev);
+		put_job_ref = core->in_flight_job;
 
 		rocket_devfreq_record_idle(core);
 
@@ -433,6 +434,9 @@ rocket_reset(struct rocket_core *core, struct drm_sched_job *bad)
 
 	/* Proceed with reset now. */
 	rocket_core_reset(core);
+
+	if (put_job_ref)
+		pm_runtime_put_autosuspend(core->dev);
 
 	/* NPU has been reset, we can clear the reset pending bit. */
 	atomic_set(&core->reset.pending, 0);
