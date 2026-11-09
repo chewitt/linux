@@ -1822,8 +1822,7 @@ static irqreturn_t codec_h264_threaded_isr(struct amvdec_session *sess)
 			codec_h264_multi_inject_sps_rpm(sess);
 			if (!h264->multi_pic_started) {
 				if (codec_h264_multi_pick_capture(sess)) {
-					if (h264->multi_field_picture)
-						codec_h264_multi_abort(sess);
+					codec_h264_multi_abort(sess);
 					return IRQ_HANDLED;
 				}
 				if (codec_h264_multi_config_decode_buf(sess)) {
