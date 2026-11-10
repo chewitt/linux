@@ -61,6 +61,9 @@ struct video_device;
  * @p_vc1_picture_layer:	Pointer to a VC-1 picture layer structure.
  * @p_vc1_bitplanes:		Pointer to a VC-1 bitplanes structure.
  * @p_vc1_slice_params:	Pointer to a VC-1 slice parameters structure.
+ * @p_mpeg4_vol:		Pointer to an MPEG-4 Part 2 VOL structure.
+ * @p_mpeg4_vop:		Pointer to an MPEG-4 Part 2 VOP structure.
+ * @p_mpeg4_quantisation:	Pointer to an MPEG-4 Part 2 quantisation data structure.
  * @p_rect:			Pointer to a rectangle.
  * @p:				Pointer to a compound value.
  * @p_const:			Pointer to a constant compound value.
@@ -100,6 +103,9 @@ union v4l2_ctrl_ptr {
 	struct v4l2_ctrl_vc1_picture_layer *p_vc1_picture_layer;
 	struct v4l2_ctrl_vc1_bitplanes *p_vc1_bitplanes;
 	struct v4l2_ctrl_vc1_slice_params *p_vc1_slice_params;
+	struct v4l2_ctrl_mpeg4_vol *p_mpeg4_vol;
+	struct v4l2_ctrl_mpeg4_vop *p_mpeg4_vop;
+	struct v4l2_ctrl_mpeg4_quantisation *p_mpeg4_quantisation;
 	struct v4l2_rect *p_rect;
 	void *p;
 	const void *p_const;

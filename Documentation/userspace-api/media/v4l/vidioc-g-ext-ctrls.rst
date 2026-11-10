@@ -322,6 +322,18 @@ still cause this situation.
       - ``p_vc1_slice_params``
       - A pointer to a struct :c:type:`v4l2_ctrl_vc1_slice_params`. Valid if this control is
         of type ``V4L2_CTRL_TYPE_VC1_SLICE_PARAMS``.
+    * - struct :c:type:`v4l2_ctrl_mpeg4_vol` *
+      - ``p_mpeg4_vol``
+      - A pointer to a struct :c:type:`v4l2_ctrl_mpeg4_vol`. Valid if this control is
+        of type ``V4L2_CTRL_TYPE_MPEG4_VOL``.
+    * - struct :c:type:`v4l2_ctrl_mpeg4_vop` *
+      - ``p_mpeg4_vop``
+      - A pointer to a struct :c:type:`v4l2_ctrl_mpeg4_vop`. Valid if this control is
+        of type ``V4L2_CTRL_TYPE_MPEG4_VOP``.
+    * - struct :c:type:`v4l2_ctrl_mpeg4_quantisation` *
+      - ``p_mpeg4_quantisation``
+      - A pointer to a struct :c:type:`v4l2_ctrl_mpeg4_quantisation`. Valid if this
+        control is of type ``V4L2_CTRL_TYPE_MPEG4_QUANTISATION``.
     * - struct :c:type:`v4l2_ctrl_hdr10_cll_info` *
       - ``p_hdr10_cll_info``
       - A pointer to a struct :c:type:`v4l2_ctrl_hdr10_cll_info`. Valid if this control is

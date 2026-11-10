@@ -134,6 +134,62 @@ Compressed Formats
       - ``V4L2_PIX_FMT_MPEG4``
       - 'MPG4'
       - MPEG4 video elementary stream.
+    * .. _V4L2-PIX-FMT-MPEG4-SLICE:
+
+      - ``V4L2_PIX_FMT_MPEG4_SLICE``
+      - 'MG4S'
+      - MPEG-4 Part 2 parsed slice data, as extracted from the MPEG-4 Part 2
+	bitstream, for the Simple and Advanced Simple profiles of
+	:ref:`mpeg4part2`.
+	This format is adapted for stateless video decoders that implement an
+	MPEG-4 Part 2 pipeline with the :ref:`stateless_decoder`.
+	Metadata associated with the frame to decode is required to be passed
+	through the ``V4L2_CID_STATELESS_MPEG4_VOL`` and
+	``V4L2_CID_STATELESS_MPEG4_VOP`` controls.
+	Quantisation matrices can optionally be specified through the
+	``V4L2_CID_STATELESS_MPEG4_QUANTISATION`` control.
+	See the :ref:`associated Codec Control IDs <v4l2-codec-stateless-mpeg4>`.
+	Exactly one output and one capture buffer must be provided for use with
+	this pixel format. The output buffer must contain exactly one coded
+	Video Object Plane (VOP): it starts with the VOP start code (0x000001b6)
+	and holds the VOP header and all the video packets of the VOP, including
+	their resynchronisation markers. Other headers, such as the Visual
+	Object Sequence, Video Object Layer and Group of VOP headers, and user
+	data must not be included. Buffers which hold more than one VOP, such as
+	the chunks of the so-called packed bitstreams, must be split by the
+	application, and VOPs which are not coded (``vop_coded`` equal to 0)
+	must not be queued.
+
+	Streams in short video header mode are also supported with this pixel
+	format; their output buffers are those of ``V4L2_PIX_FMT_H263_SLICE``.
+    * .. _V4L2-PIX-FMT-H263-SLICE:
+
+      - ``V4L2_PIX_FMT_H263_SLICE``
+      - 'S263'
+      - H.263 parsed slice data, as extracted from the H.263 bitstream.
+	Drivers which expose this pixel format decode at least the baseline
+	profile of :ref:`h263` (no optional coding mode and one of the five
+	standard picture formats), which is the short video header format of
+	:ref:`mpeg4part2`.
+	This format is adapted for stateless video decoders that implement an
+	H.263 pipeline with the :ref:`stateless_decoder`.
+	Metadata associated with the frame to decode is required to be passed
+	through the ``V4L2_CID_STATELESS_MPEG4_VOL`` and
+	``V4L2_CID_STATELESS_MPEG4_VOP`` controls, with
+	``V4L2_MPEG4_VOL_FLAG_SHORT_VIDEO_HEADER`` set.
+	See the :ref:`associated Codec Control IDs <v4l2-codec-stateless-mpeg4>`.
+	Exactly one output and one capture buffer must be provided for use with
+	this pixel format. The output buffer must contain exactly one coded
+	picture: it starts with the byte-aligned 22-bit picture start code
+	(the short video start marker) and holds the picture header and all the
+	groups of blocks of the picture, including their headers.
+
+	The other modes of the picture header of :ref:`h263` (the extended
+	picture type, custom picture formats and the optional coding modes of
+	the annexes) are described by the ``h263_flags`` field of the
+	``V4L2_CID_STATELESS_MPEG4_VOP`` control. A driver rejects the control
+	for the modes which it does not support; such a picture cannot be
+	decoded by the device.
     * .. _V4L2-PIX-FMT-XVID:
 
       - ``V4L2_PIX_FMT_XVID``
