@@ -4057,6 +4057,254 @@ struct v4l2_ctrl_vc1_slice_params {
 	__u8	reserved[3];
 };
 
+/* Stateless MPEG-4 Part 2 and H.263 controls */
+
+#define V4L2_MPEG4_SPRITE_NONE					0
+#define V4L2_MPEG4_SPRITE_STATIC				1
+#define V4L2_MPEG4_SPRITE_GMC					2
+
+#define V4L2_MPEG4_NUM_SPRITE_WARPING_POINTS			4
+
+#define V4L2_MPEG4_VOL_FLAG_SHORT_VIDEO_HEADER			0x0001
+#define V4L2_MPEG4_VOL_FLAG_INTERLACED				0x0002
+#define V4L2_MPEG4_VOL_FLAG_OBMC_DISABLE			0x0004
+#define V4L2_MPEG4_VOL_FLAG_SPRITE_BRIGHTNESS_CHANGE		0x0008
+#define V4L2_MPEG4_VOL_FLAG_QUANT_TYPE				0x0010
+#define V4L2_MPEG4_VOL_FLAG_QUARTER_SAMPLE			0x0020
+#define V4L2_MPEG4_VOL_FLAG_COMPLEXITY_ESTIMATION_DISABLE	0x0040
+#define V4L2_MPEG4_VOL_FLAG_RESYNC_MARKER_DISABLE		0x0080
+#define V4L2_MPEG4_VOL_FLAG_DATA_PARTITIONED			0x0100
+#define V4L2_MPEG4_VOL_FLAG_REVERSIBLE_VLC			0x0200
+#define V4L2_MPEG4_VOL_FLAG_NEWPRED_ENABLE			0x0400
+#define V4L2_MPEG4_VOL_FLAG_REDUCED_RESOLUTION_VOP_ENABLE	0x0800
+#define V4L2_MPEG4_VOL_FLAG_SCALABILITY				0x1000
+#define V4L2_MPEG4_VOL_FLAG_LOW_DELAY				0x2000
+#define V4L2_MPEG4_VOL_FLAG_FIXED_VOP_RATE			0x4000
+
+#define V4L2_CID_STATELESS_MPEG4_VOL	(V4L2_CID_CODEC_STATELESS_BASE + 700)
+/**
+ * struct v4l2_ctrl_mpeg4_vol - MPEG-4 Part 2 Video Object Layer parameters
+ *
+ * The members match the syntax elements of the Visual Object Sequence and of
+ * the Video Object Layer headers, as specified by sections 6.2.2 and 6.2.3 of
+ * ISO/IEC 14496-2. Only rectangular video objects with 4:2:0 chroma format are
+ * supported.
+ *
+ * In short video header mode (ITU-T H.263 baseline) there is no Video Object
+ * Layer header. V4L2_MPEG4_VOL_FLAG_SHORT_VIDEO_HEADER shall be set,
+ * @video_object_layer_width and @video_object_layer_height shall be set to the
+ * dimensions given by the source format of the picture header and the
+ * remaining members and flags shall be set to the values which ISO/IEC 14496-2
+ * specifies for short_video_header equal to 1.
+ *
+ * @flags: see V4L2_MPEG4_VOL_FLAG_{}.
+ * @video_object_layer_width: width of the displayable part of the luminance
+ * component, in samples.
+ * @video_object_layer_height: height of the displayable part of the luminance
+ * component, in samples.
+ * @vop_time_increment_resolution: number of ticks within one modulo time
+ * (one second).
+ * @fixed_vop_time_increment: number of ticks between two successive VOPs in
+ * display order. Valid if V4L2_MPEG4_VOL_FLAG_FIXED_VOP_RATE is set.
+ * @profile_and_level_indication: see ISO/IEC 14496-2. Zero if the stream does
+ * not carry a Visual Object Sequence header.
+ * @video_object_type_indication: see ISO/IEC 14496-2.
+ * @video_object_layer_verid: see ISO/IEC 14496-2. Set to 1 if
+ * is_object_layer_identifier is 0.
+ * @chroma_format: the chrominance sub-sampling format. Shall be 1 (4:2:0).
+ * @video_object_layer_shape: the shape type of the video object layer. Shall
+ * be 0 (rectangular).
+ * @sprite_enable: see V4L2_MPEG4_SPRITE_{}.
+ * @no_of_sprite_warping_points: number of points used in sprite warping.
+ * @sprite_warping_accuracy: quantisation accuracy of the motion vectors used
+ * in the warping process, see ISO/IEC 14496-2.
+ * @quant_precision: number of bits used to represent the quantiser parameters.
+ * Set to 5 if not_8_bit is 0.
+ * @bits_per_pixel: video data precision in bits per sample. Set to 8 if
+ * not_8_bit is 0.
+ * @reserved: padding field. Should be zeroed by applications.
+ */
+struct v4l2_ctrl_mpeg4_vol {
+	__u32	flags;
+	__u16	video_object_layer_width;
+	__u16	video_object_layer_height;
+	__u16	vop_time_increment_resolution;
+	__u16	fixed_vop_time_increment;
+	__u8	profile_and_level_indication;
+	__u8	video_object_type_indication;
+	__u8	video_object_layer_verid;
+	__u8	chroma_format;
+	__u8	video_object_layer_shape;
+	__u8	sprite_enable;
+	__u8	no_of_sprite_warping_points;
+	__u8	sprite_warping_accuracy;
+	__u8	quant_precision;
+	__u8	bits_per_pixel;
+	__u8	reserved[2];
+};
+
+#define V4L2_MPEG4_VOP_CODING_TYPE_I				0
+#define V4L2_MPEG4_VOP_CODING_TYPE_P				1
+#define V4L2_MPEG4_VOP_CODING_TYPE_B				2
+#define V4L2_MPEG4_VOP_CODING_TYPE_S				3
+
+#define V4L2_MPEG4_VOP_FLAG_ROUNDING_TYPE			0x01
+#define V4L2_MPEG4_VOP_FLAG_TOP_FIELD_FIRST			0x02
+#define V4L2_MPEG4_VOP_FLAG_ALTERNATE_VERTICAL_SCAN		0x04
+
+/* Picture header modes of ITU-T H.263, see &v4l2_ctrl_mpeg4_vop.h263_flags */
+#define V4L2_H263_FLAG_PLUSPTYPE				0x00000001
+#define V4L2_H263_FLAG_CUSTOM_PICTURE_FORMAT			0x00000002
+#define V4L2_H263_FLAG_CUSTOM_PCF				0x00000004
+#define V4L2_H263_FLAG_UMV					0x00000008
+#define V4L2_H263_FLAG_SAC					0x00000010
+#define V4L2_H263_FLAG_AP					0x00000020
+#define V4L2_H263_FLAG_PB_FRAMES				0x00000040
+#define V4L2_H263_FLAG_IMPROVED_PB_FRAMES			0x00000080
+#define V4L2_H263_FLAG_AIC					0x00000100
+#define V4L2_H263_FLAG_DF					0x00000200
+#define V4L2_H263_FLAG_SS					0x00000400
+#define V4L2_H263_FLAG_RPS					0x00000800
+#define V4L2_H263_FLAG_ISD					0x00001000
+#define V4L2_H263_FLAG_AIV					0x00002000
+#define V4L2_H263_FLAG_MQ					0x00004000
+#define V4L2_H263_FLAG_RPR					0x00008000
+#define V4L2_H263_FLAG_RRU					0x00010000
+#define V4L2_H263_FLAG_CPM					0x00020000
+#define V4L2_H263_FLAG_SCALABILITY				0x00040000
+
+#define V4L2_CID_STATELESS_MPEG4_VOP	(V4L2_CID_CODEC_STATELESS_BASE + 701)
+/**
+ * struct v4l2_ctrl_mpeg4_vop - MPEG-4 Part 2 Video Object Plane parameters
+ *
+ * The members match the syntax elements of the Video Object Plane header of
+ * the coded VOP held by the OUTPUT buffer, as specified by section 6.2.5 of
+ * ISO/IEC 14496-2, or of the picture header as specified by section 6.2.5.2
+ * "Video Plane with Short Header" of ISO/IEC 14496-2 and section 5.1 of
+ * ITU-T H.263. Syntax elements which are not present in the header shall be
+ * set to zero, unless stated otherwise. VOPs which are not coded (vop_coded
+ * equal to 0) shall not be submitted for decoding.
+ *
+ * In short video header mode @h263_flags gives the modes of the picture
+ * header of ITU-T H.263. A baseline picture has none of them. Drivers reject
+ * the control if it has a flag set for a mode which they do not support.
+ *
+ * @backward_ref_ts: timestamp of the V4L2 capture buffer to use as backward
+ * reference, used with B-coded VOPs.
+ * @forward_ref_ts: timestamp of the V4L2 capture buffer to use as forward
+ * reference, used with P-coded, S(GMC)-coded and B-coded VOPs. These
+ * timestamps refer to the timestamp field in struct v4l2_buffer. Use
+ * v4l2_timeval_to_ns() to convert the struct timeval to a __u64.
+ * @data_bit_offset: offset in bits from the beginning of the OUTPUT buffer,
+ * which is the first bit of the VOP start code or of the short video start
+ * marker, to the first bit following the VOP header or the picture header,
+ * which is the first bit of the first macroblock. In the Slice Structured
+ * mode of H.263 the picture header ends with PEI and PSUPP: this is the first
+ * bit of what the first slice keeps of the slice header.
+ * @flags: see V4L2_MPEG4_VOP_FLAG_{}.
+ * @trb: temporal distance between the B-coded VOP and its forward reference,
+ * in ticks of &v4l2_ctrl_mpeg4_vol.vop_time_increment_resolution. This is TRB
+ * of the direct mode of progressive VOPs. B-coded VOPs only.
+ * @trd: temporal distance between the backward reference and the forward
+ * reference of the B-coded VOP, in ticks of
+ * &v4l2_ctrl_mpeg4_vol.vop_time_increment_resolution. This is TRD of the
+ * direct mode of progressive VOPs. B-coded VOPs only.
+ * @trb_field: temporal distance between the B-coded VOP and its forward
+ * reference, in field periods. This is TRB,i of the direct mode of interlaced
+ * VOPs without its field parity correction term. B-coded VOPs only.
+ * @trd_field: temporal distance between the backward reference and the
+ * forward reference of the B-coded VOP, in field periods. This is TRD,i of the
+ * direct mode of interlaced VOPs without its field parity correction term.
+ * B-coded VOPs only.
+ * @h263_flags: see V4L2_H263_FLAG_{}. Short video header mode only.
+ * @sprite_trajectory_du: horizontal components of the sprite trajectory
+ * differential vectors, as decoded from sprite_trajectory(). The first
+ * &v4l2_ctrl_mpeg4_vol.no_of_sprite_warping_points elements are valid.
+ * S-coded VOPs only.
+ * @sprite_trajectory_dv: vertical components of the sprite trajectory
+ * differential vectors, as decoded from sprite_trajectory(). The first
+ * &v4l2_ctrl_mpeg4_vol.no_of_sprite_warping_points elements are valid.
+ * S-coded VOPs only.
+ * @vop_time_increment: see ISO/IEC 14496-2.
+ * @vop_quant: quantiser parameter of the first macroblock of the VOP. In short
+ * video header mode this is PQUANT.
+ * @num_macroblocks_in_gob: number of macroblocks in a group of blocks. Short
+ * video header mode only.
+ * @vop_coding_type: see V4L2_MPEG4_VOP_CODING_TYPE_{}.
+ * @intra_dc_vlc_thr: see ISO/IEC 14496-2.
+ * @vop_fcode_forward: motion vector range code of the forward prediction.
+ * Set to 1 for I-coded VOPs and in short video header mode.
+ * @vop_fcode_backward: motion vector range code of the backward prediction.
+ * Set to 1 unless the VOP is B-coded.
+ * @modulo_time_base: number of consecutive bits set to 1 which make up the
+ * modulo_time_base syntax element.
+ * @complexity_estimation_bits: size in bits of the complexity estimation
+ * header of the VOP header. Zero if
+ * V4L2_MPEG4_VOL_FLAG_COMPLEXITY_ESTIMATION_DISABLE is set.
+ * @temporal_reference: temporal reference of the picture. Short video header
+ * mode only.
+ * @source_format: source format of the picture: 1 to 5 for the standard
+ * picture formats (sub-QCIF, QCIF, CIF, 4CIF, 16CIF), 6 for a custom picture
+ * format. For a picture with the extended picture type this is the source
+ * format of the extended picture type. Short video header mode only.
+ * @num_gobs_in_vop: number of groups of blocks in the picture. Short video
+ * header mode only.
+ * @forward_ref_vop_coding_type: coding type of the forward reference, see
+ * V4L2_MPEG4_VOP_CODING_TYPE_{}. P-coded, S-coded and B-coded VOPs only.
+ * @backward_ref_vop_coding_type: coding type of the backward reference, see
+ * V4L2_MPEG4_VOP_CODING_TYPE_{}. B-coded VOPs only.
+ * @reserved: padding field. Should be zeroed by applications.
+ */
+struct v4l2_ctrl_mpeg4_vop {
+	__u64	backward_ref_ts;
+	__u64	forward_ref_ts;
+	__u32	data_bit_offset;
+	__u32	flags;
+	__u32	trb;
+	__u32	trd;
+	__u32	trb_field;
+	__u32	trd_field;
+	__u32	h263_flags;
+	__s16	sprite_trajectory_du[V4L2_MPEG4_NUM_SPRITE_WARPING_POINTS];
+	__s16	sprite_trajectory_dv[V4L2_MPEG4_NUM_SPRITE_WARPING_POINTS];
+	__u16	vop_time_increment;
+	__u16	vop_quant;
+	__u16	num_macroblocks_in_gob;
+	__u8	vop_coding_type;
+	__u8	intra_dc_vlc_thr;
+	__u8	vop_fcode_forward;
+	__u8	vop_fcode_backward;
+	__u8	modulo_time_base;
+	__u8	complexity_estimation_bits;
+	__u8	temporal_reference;
+	__u8	source_format;
+	__u8	num_gobs_in_vop;
+	__u8	forward_ref_vop_coding_type;
+	__u8	backward_ref_vop_coding_type;
+	__u8	reserved[3];
+};
+
+#define V4L2_CID_STATELESS_MPEG4_QUANTISATION (V4L2_CID_CODEC_STATELESS_BASE + 702)
+/**
+ * struct v4l2_ctrl_mpeg4_quantisation - MPEG-4 Part 2 quantisation matrices
+ *
+ * Quantisation matrices used by the first inverse quantisation method, as
+ * specified by section 7.4.4.1 of ISO/IEC 14496-2. They are only used if
+ * V4L2_MPEG4_VOL_FLAG_QUANT_TYPE is set. Both matrices are always complete:
+ * the default matrix is used for a matrix which the bitstream does not load
+ * and a matrix which the bitstream terminates early is completed by repeating
+ * its last non-zero coefficient.
+ *
+ * @intra_quant_mat: the quantisation matrix coefficients for intra-coded
+ * macroblocks, in zigzag scanning order.
+ * @nonintra_quant_mat: the quantisation matrix coefficients for
+ * non-intra-coded macroblocks, in zigzag scanning order.
+ */
+struct v4l2_ctrl_mpeg4_quantisation {
+	__u8	intra_quant_mat[64];
+	__u8	nonintra_quant_mat[64];
+};
+
 /* MPEG-compression definitions kept for backwards compatibility */
 #ifndef __KERNEL__
 #define V4L2_CTRL_CLASS_MPEG            V4L2_CTRL_CLASS_CODEC
