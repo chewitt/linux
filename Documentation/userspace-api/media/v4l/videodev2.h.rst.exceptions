@@ -172,6 +172,11 @@ replace symbol V4L2_CTRL_TYPE_AV1_SEQUENCE :c:type:`V4L.v4l2_ctrl_type`
 replace symbol V4L2_CTRL_TYPE_AV1_TILE_GROUP_ENTRY :c:type:`V4L.v4l2_ctrl_type`
 replace symbol V4L2_CTRL_TYPE_AV1_FRAME :c:type:`V4L.v4l2_ctrl_type`
 replace symbol V4L2_CTRL_TYPE_AV1_FILM_GRAIN :c:type:`V4L.v4l2_ctrl_type`
+replace symbol V4L2_CTRL_TYPE_VC1_SEQUENCE :c:type:`V4L.v4l2_ctrl_type`
+replace symbol V4L2_CTRL_TYPE_VC1_ENTRYPOINT_HEADER :c:type:`V4L.v4l2_ctrl_type`
+replace symbol V4L2_CTRL_TYPE_VC1_PICTURE_LAYER :c:type:`V4L.v4l2_ctrl_type`
+replace symbol V4L2_CTRL_TYPE_VC1_BITPLANES :c:type:`V4L.v4l2_ctrl_type`
+replace symbol V4L2_CTRL_TYPE_VC1_SLICE_PARAMS :c:type:`V4L.v4l2_ctrl_type`
 
 # V4L2 capability defines
 replace define V4L2_CAP_VIDEO_CAPTURE device-capabilities

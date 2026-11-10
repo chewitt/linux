@@ -149,6 +149,54 @@ Compressed Formats
       - ``V4L2_PIX_FMT_VC1_ANNEX_L``
       - 'VC1L'
       - VC1, SMPTE 421M Annex L compliant stream.
+    * .. _V4L2-PIX-FMT-VC1-SLICE:
+
+      - ``V4L2_PIX_FMT_VC1_SLICE``
+      - 'SVC1'
+      - VC-1 parsed slice data, as extracted from the VC-1 bitstream or from
+	its container, for the Simple, Main and Advanced profiles of :ref:`vc1`.
+	This format is adapted for stateless video decoders that implement a
+	VC-1 pipeline with the :ref:`stateless_decoder`.
+	Metadata associated with the picture to decode is required to be passed
+	through the ``V4L2_CID_STATELESS_VC1_SEQUENCE``,
+	``V4L2_CID_STATELESS_VC1_ENTRYPOINT_HEADER`` and
+	``V4L2_CID_STATELESS_VC1_PICTURE_LAYER`` controls. The bitplanes which
+	are coded in the picture header are passed, decoded, through the
+	``V4L2_CID_STATELESS_VC1_BITPLANES`` control. Drivers may additionally
+	require the location of the slices to be passed through the
+	``V4L2_CID_STATELESS_VC1_SLICE_PARAMS`` control.
+	See the :ref:`associated Codec Control IDs <v4l2-codec-stateless-vc1>`.
+	Exactly one output and one capture buffer must be provided for use with
+	this pixel format. The output buffer must contain exactly one coded
+	picture: a progressive frame, an interlaced frame or one field of a
+	field-interlaced frame. The two fields of a field-interlaced frame are
+	decoded to the same capture buffer with two requests, each of which has
+	its own ``V4L2_CID_STATELESS_VC1_PICTURE_LAYER`` control. If the driver
+	supports it, ``V4L2_BUF_FLAG_M2M_HOLD_CAPTURE_BUF`` should be set on the
+	output buffer of the first field, so that the capture buffer is only
+	returned once both fields are decoded.
+
+	Skipped pictures have no macroblock layer and must not be queued: the
+	decoded picture is identical to its reference picture, which the
+	application outputs again.
+
+	The capture buffer holds the decoded picture before the range expansion
+	of the Main profile and before the range mapping of the Advanced
+	profile. These are output processes which take place after decoding and
+	they are left to the application.
+
+	For the Advanced profile the output buffer holds the picture as a
+	sequence of the encapsulated bitstream data units specified by Annex E of
+	:ref:`vc1`: it starts with the frame start code (0x0000010d), or with the
+	field start code (0x0000010c) for the second field of a field-interlaced
+	frame, and it includes the slice start codes and the emulation prevention
+	bytes. The start code must be added if the container omits it. Other
+	bitstream data units, such as sequence headers, entry-point headers, user
+	data and the end-of-sequence code, must not be included.
+
+	For the Simple and Main profiles the output buffer holds the frame as
+	carried by the container (the frame data of Annex L of :ref:`vc1`),
+	which has no start code and no emulation prevention bytes.
     * .. _V4L2-PIX-FMT-VP8:
 
       - ``V4L2_PIX_FMT_VP8``

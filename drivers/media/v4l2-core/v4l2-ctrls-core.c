@@ -116,6 +116,7 @@ static void std_init_compound(const struct v4l2_ctrl *ctrl, u32 idx,
 	struct v4l2_ctrl_h264_scaling_matrix *p_h264_scaling_matrix;
 	struct v4l2_ctrl_av1_sequence *p_av1_sequence;
 	struct v4l2_ctrl_hevc_sps *p_hevc_sps;
+	struct v4l2_ctrl_vc1_sequence *p_vc1_sequence;
 	void *p = ptr.p + idx * ctrl->elem_size;
 
 	if (ctrl->p_def.p_const)
@@ -171,6 +172,12 @@ static void std_init_compound(const struct v4l2_ctrl *ctrl, u32 idx,
 		p_av1_sequence->bit_depth = 8;
 		p_av1_sequence->flags |= V4L2_AV1_SEQUENCE_FLAG_SUBSAMPLING_X |
 					 V4L2_AV1_SEQUENCE_FLAG_SUBSAMPLING_Y;
+		break;
+	case V4L2_CTRL_TYPE_VC1_SEQUENCE:
+		p_vc1_sequence = p;
+
+		/* 4:2:0 */
+		p_vc1_sequence->colordiff_format = 1;
 		break;
 	case V4L2_CTRL_TYPE_FWHT_PARAMS:
 		p_fwht_params = p;
@@ -457,6 +464,21 @@ void v4l2_ctrl_type_op_log(const struct v4l2_ctrl *ctrl)
 		break;
 	case V4L2_CTRL_TYPE_AV1_FILM_GRAIN:
 		pr_cont("AV1_FILM_GRAIN");
+		break;
+	case V4L2_CTRL_TYPE_VC1_SEQUENCE:
+		pr_cont("VC1_SEQUENCE");
+		break;
+	case V4L2_CTRL_TYPE_VC1_ENTRYPOINT_HEADER:
+		pr_cont("VC1_ENTRYPOINT_HEADER");
+		break;
+	case V4L2_CTRL_TYPE_VC1_PICTURE_LAYER:
+		pr_cont("VC1_PICTURE_LAYER");
+		break;
+	case V4L2_CTRL_TYPE_VC1_BITPLANES:
+		pr_cont("VC1_BITPLANES");
+		break;
+	case V4L2_CTRL_TYPE_VC1_SLICE_PARAMS:
+		pr_cont("VC1_SLICE_PARAMS");
 		break;
 	case V4L2_CTRL_TYPE_RECT:
 		pr_cont("(%d,%d)/%ux%u",
@@ -980,6 +1002,203 @@ static int validate_av1_sequence(struct v4l2_ctrl_av1_sequence *s)
 	return 0;
 }
 
+static int validate_vc1_sequence(struct v4l2_ctrl_vc1_sequence *seq)
+{
+	if (seq->profile > V4L2_VC1_PROFILE_ADVANCED)
+		return -EINVAL;
+
+	/* 4:2:0 is the only chroma format which SMPTE 421M defines */
+	if (seq->colordiff_format != 1)
+		return -EINVAL;
+
+	if (seq->level > 7 || seq->maxbframes > 7 ||
+	    seq->frmrtq_postproc > 7 || seq->bitrtq_postproc > 31)
+		return -EINVAL;
+
+	if (seq->flags & ~(V4L2_VC1_SEQUENCE_FLAG_PULLDOWN |
+			   V4L2_VC1_SEQUENCE_FLAG_INTERLACE |
+			   V4L2_VC1_SEQUENCE_FLAG_TFCNTRFLAG |
+			   V4L2_VC1_SEQUENCE_FLAG_FINTERPFLAG |
+			   V4L2_VC1_SEQUENCE_FLAG_PSF |
+			   V4L2_VC1_SEQUENCE_FLAG_MULTIRES |
+			   V4L2_VC1_SEQUENCE_FLAG_SYNCMARKER |
+			   V4L2_VC1_SEQUENCE_FLAG_RANGERED |
+			   V4L2_VC1_SEQUENCE_FLAG_POSTPROCFLAG |
+			   V4L2_VC1_SEQUENCE_FLAG_RES_RTM))
+		return -EINVAL;
+
+	zero_reserved(*seq);
+
+	return 0;
+}
+
+static int
+validate_vc1_entrypoint_header(struct v4l2_ctrl_vc1_entrypoint_header *hdr)
+{
+	if (hdr->dquant > 2 || hdr->quantizer > V4L2_VC1_QUANTIZER_UNIFORM ||
+	    hdr->range_mapy > 7 || hdr->range_mapuv > 7)
+		return -EINVAL;
+
+	if (hdr->flags & ~(V4L2_VC1_ENTRYPOINT_HEADER_FLAG_BROKEN_LINK |
+			   V4L2_VC1_ENTRYPOINT_HEADER_FLAG_CLOSED_ENTRY |
+			   V4L2_VC1_ENTRYPOINT_HEADER_FLAG_PANSCAN |
+			   V4L2_VC1_ENTRYPOINT_HEADER_FLAG_REFDIST |
+			   V4L2_VC1_ENTRYPOINT_HEADER_FLAG_LOOPFILTER |
+			   V4L2_VC1_ENTRYPOINT_HEADER_FLAG_FASTUVMC |
+			   V4L2_VC1_ENTRYPOINT_HEADER_FLAG_EXTENDED_MV |
+			   V4L2_VC1_ENTRYPOINT_HEADER_FLAG_VSTRANSFORM |
+			   V4L2_VC1_ENTRYPOINT_HEADER_FLAG_OVERLAP |
+			   V4L2_VC1_ENTRYPOINT_HEADER_FLAG_EXTENDED_DMV |
+			   V4L2_VC1_ENTRYPOINT_HEADER_FLAG_RANGE_MAPY |
+			   V4L2_VC1_ENTRYPOINT_HEADER_FLAG_RANGE_MAPUV))
+		return -EINVAL;
+
+	return 0;
+}
+
+#define VC1_BITPLANE_FLAGS_ALL \
+	(V4L2_VC1_BITPLANE_FLAG_MVTYPEMB | V4L2_VC1_BITPLANE_FLAG_DIRECTMB | \
+	 V4L2_VC1_BITPLANE_FLAG_SKIPMB | V4L2_VC1_BITPLANE_FLAG_FIELDTX | \
+	 V4L2_VC1_BITPLANE_FLAG_FORWARDMB | V4L2_VC1_BITPLANE_FLAG_ACPRED | \
+	 V4L2_VC1_BITPLANE_FLAG_OVERFLAGS)
+
+static int validate_vc1_reference(struct v4l2_vc1_reference *ref)
+{
+	unsigned int i, j;
+
+	if (ref->fcm > V4L2_VC1_FCM_FIELD_INTERLACE || ref->refdist > 16)
+		return -EINVAL;
+
+	if (ref->flags & ~(V4L2_VC1_REFERENCE_FLAG_RANGEREDFRM |
+			   V4L2_VC1_REFERENCE_FLAG_TFF))
+		return -EINVAL;
+
+	for (i = 0; i < ARRAY_SIZE(ref->ptype); i++) {
+		/* A reference, unlike a decoded picture, may be a skipped one. */
+		if (ref->ptype[i] > V4L2_VC1_PICTURE_TYPE_SKIPPED ||
+		    ref->num_intcomp[i] > V4L2_VC1_REFERENCE_NUM_INTCOMP)
+			return -EINVAL;
+
+		for (j = 0; j < ref->num_intcomp[i]; j++) {
+			if (ref->intcomp[i][j].lumscale > 63 ||
+			    ref->intcomp[i][j].lumshift > 63)
+				return -EINVAL;
+		}
+	}
+
+	zero_reserved(*ref);
+
+	return 0;
+}
+
+static int
+validate_vc1_picture_layer(struct v4l2_ctrl_vc1_picture_layer *pic)
+{
+	struct v4l2_vc1_vopdquant *dq = &pic->vopdquant;
+	int ret;
+
+	/* The raw coding flags and the bitplane flags use the same values. */
+	BUILD_BUG_ON(V4L2_VC1_RAW_CODING_FLAG_MVTYPEMB !=
+		     V4L2_VC1_BITPLANE_FLAG_MVTYPEMB);
+	BUILD_BUG_ON(V4L2_VC1_RAW_CODING_FLAG_OVERFLAGS !=
+		     V4L2_VC1_BITPLANE_FLAG_OVERFLAGS);
+
+	/* Skipped pictures have no macroblock layer and are not decoded. */
+	if (pic->ptype > V4L2_VC1_PICTURE_TYPE_BI ||
+	    pic->fptype > V4L2_VC1_FPTYPE_BI_BI ||
+	    pic->fcm > V4L2_VC1_FCM_FIELD_INTERLACE)
+		return -EINVAL;
+
+	/* Only field-interlaced frames are made of two coded pictures. */
+	if ((pic->flags & V4L2_VC1_PICTURE_LAYER_FLAG_SECOND_FIELD) &&
+	    pic->fcm != V4L2_VC1_FCM_FIELD_INTERLACE)
+		return -EINVAL;
+
+	if (pic->pqindex > 31 || pic->pquant > 31 ||
+	    pic->mvrange > 3 || pic->dmvrange > 3 || pic->respic > 3 ||
+	    pic->transacfrm > 2 || pic->transacfrm2 > 2 ||
+	    pic->bfraction >= V4L2_VC1_BFRACTION_NUM)
+		return -EINVAL;
+
+	if (pic->mvmode > V4L2_VC1_MVMODE_INTENSITY_COMP ||
+	    pic->mvmode2 > V4L2_VC1_MVMODE_MIXED_MV ||
+	    pic->intcompfield > V4L2_VC1_INTCOMPFIELD_BOTTOM ||
+	    pic->lumscale > 63 || pic->lumshift > 63 ||
+	    pic->lumscale2 > 63 || pic->lumshift2 > 63)
+		return -EINVAL;
+
+	if (pic->mvtab > 3 || pic->cbptab > 3 || pic->mbmodetab > 7 ||
+	    pic->imvtab > 7 || pic->icbptab > 7 || pic->twomvbptab > 3 ||
+	    pic->fourmvbptab > 3 || pic->ttfrm > V4L2_VC1_TTFRM_4X4)
+		return -EINVAL;
+
+	if (pic->refdist > 16 || pic->condover > V4L2_VC1_CONDOVER_SELECT ||
+	    pic->postproc > 3 || pic->rptfrm > 3)
+		return -EINVAL;
+
+	if (pic->flags & ~(V4L2_VC1_PICTURE_LAYER_FLAG_RANGEREDFRM |
+			   V4L2_VC1_PICTURE_LAYER_FLAG_HALFQP |
+			   V4L2_VC1_PICTURE_LAYER_FLAG_PQUANTIZER |
+			   V4L2_VC1_PICTURE_LAYER_FLAG_TRANSDCTAB |
+			   V4L2_VC1_PICTURE_LAYER_FLAG_TFF |
+			   V4L2_VC1_PICTURE_LAYER_FLAG_RNDCTRL |
+			   V4L2_VC1_PICTURE_LAYER_FLAG_TTMBF |
+			   V4L2_VC1_PICTURE_LAYER_FLAG_4MVSWITCH |
+			   V4L2_VC1_PICTURE_LAYER_FLAG_INTCOMP |
+			   V4L2_VC1_PICTURE_LAYER_FLAG_NUMREF |
+			   V4L2_VC1_PICTURE_LAYER_FLAG_REFFIELD |
+			   V4L2_VC1_PICTURE_LAYER_FLAG_SECOND_FIELD |
+			   V4L2_VC1_PICTURE_LAYER_FLAG_RFF |
+			   V4L2_VC1_PICTURE_LAYER_FLAG_INTERPFRM |
+			   V4L2_VC1_PICTURE_LAYER_FLAG_UVSAMP))
+		return -EINVAL;
+
+	if ((pic->raw_coding_flags & ~VC1_BITPLANE_FLAGS_ALL) ||
+	    (pic->bitplane_flags & ~VC1_BITPLANE_FLAGS_ALL))
+		return -EINVAL;
+
+	/* A bitplane is either coded in raw mode or passed decoded. */
+	if (pic->raw_coding_flags & pic->bitplane_flags)
+		return -EINVAL;
+
+	if (dq->altpquant > 31 ||
+	    dq->dqprofile > V4L2_VC1_DQPROFILE_ALL_MBS ||
+	    dq->dqsbedge > 3 || dq->dqdbedge > 3)
+		return -EINVAL;
+
+	if (dq->flags & ~(V4L2_VC1_VOPDQUANT_FLAG_DQUANTFRM |
+			  V4L2_VC1_VOPDQUANT_FLAG_DQBILEVEL))
+		return -EINVAL;
+
+	ret = validate_vc1_reference(&pic->forward_ref);
+	if (ret)
+		return ret;
+
+	ret = validate_vc1_reference(&pic->backward_ref);
+	if (ret)
+		return ret;
+
+	zero_reserved(*dq);
+	zero_reserved(*pic);
+
+	return 0;
+}
+
+static int
+validate_vc1_slice_params(struct v4l2_ctrl_vc1_slice_params *slice)
+{
+	/* SLICE_ADDR is a 9-bit syntax element. */
+	if (slice->slice_addr > 511)
+		return -EINVAL;
+
+	if (slice->flags & ~V4L2_VC1_SLICE_PARAMS_FLAG_PIC_HEADER)
+		return -EINVAL;
+
+	zero_reserved(*slice);
+
+	return 0;
+}
+
 /*
  * Compound controls validation requires setting unused fields/flags to zero
  * in order to properly detect unchanged controls with v4l2_ctrl_type_op_equal's
@@ -1423,6 +1642,17 @@ static int std_validate_compound(const struct v4l2_ctrl *ctrl, u32 idx,
 		break;
 	case V4L2_CTRL_TYPE_AV1_FILM_GRAIN:
 		return validate_av1_film_grain(p);
+
+	case V4L2_CTRL_TYPE_VC1_SEQUENCE:
+		return validate_vc1_sequence(p);
+	case V4L2_CTRL_TYPE_VC1_ENTRYPOINT_HEADER:
+		return validate_vc1_entrypoint_header(p);
+	case V4L2_CTRL_TYPE_VC1_PICTURE_LAYER:
+		return validate_vc1_picture_layer(p);
+	case V4L2_CTRL_TYPE_VC1_BITPLANES:
+		break;
+	case V4L2_CTRL_TYPE_VC1_SLICE_PARAMS:
+		return validate_vc1_slice_params(p);
 
 	case V4L2_CTRL_TYPE_AREA:
 		area = p;
@@ -2146,6 +2376,21 @@ static struct v4l2_ctrl *v4l2_ctrl_new(struct v4l2_ctrl_handler *hdl,
 		break;
 	case V4L2_CTRL_TYPE_AV1_FILM_GRAIN:
 		elem_size = sizeof(struct v4l2_ctrl_av1_film_grain);
+		break;
+	case V4L2_CTRL_TYPE_VC1_SEQUENCE:
+		elem_size = sizeof(struct v4l2_ctrl_vc1_sequence);
+		break;
+	case V4L2_CTRL_TYPE_VC1_ENTRYPOINT_HEADER:
+		elem_size = sizeof(struct v4l2_ctrl_vc1_entrypoint_header);
+		break;
+	case V4L2_CTRL_TYPE_VC1_PICTURE_LAYER:
+		elem_size = sizeof(struct v4l2_ctrl_vc1_picture_layer);
+		break;
+	case V4L2_CTRL_TYPE_VC1_BITPLANES:
+		elem_size = sizeof(struct v4l2_ctrl_vc1_bitplanes);
+		break;
+	case V4L2_CTRL_TYPE_VC1_SLICE_PARAMS:
+		elem_size = sizeof(struct v4l2_ctrl_vc1_slice_params);
 		break;
 	case V4L2_CTRL_TYPE_AREA:
 		elem_size = sizeof(struct v4l2_area);
