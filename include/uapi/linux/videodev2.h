@@ -775,6 +775,7 @@ struct v4l2_pix_format {
 #define V4L2_PIX_FMT_H264_SLICE v4l2_fourcc('S', '2', '6', '4') /* H264 parsed slices */
 #define V4L2_PIX_FMT_HEVC_SLICE v4l2_fourcc('S', '2', '6', '5') /* HEVC parsed slices */
 #define V4L2_PIX_FMT_AV1_FRAME v4l2_fourcc('A', 'V', '1', 'F') /* AV1 parsed frame */
+#define V4L2_PIX_FMT_VC1_SLICE v4l2_fourcc('S', 'V', 'C', '1') /* VC-1 parsed slice data */
 #define V4L2_PIX_FMT_AV1      v4l2_fourcc('A', 'V', '0', '1') /* AV1 */
 #define V4L2_PIX_FMT_SPK      v4l2_fourcc('S', 'P', 'K', '0') /* Sorenson Spark */
 #define V4L2_PIX_FMT_RV30     v4l2_fourcc('R', 'V', '3', '0') /* RealVideo 8 */
@@ -1914,6 +1915,11 @@ struct v4l2_ext_control {
 		struct v4l2_ctrl_av1_tile_group_entry __user *p_av1_tile_group_entry;
 		struct v4l2_ctrl_av1_frame __user *p_av1_frame;
 		struct v4l2_ctrl_av1_film_grain __user *p_av1_film_grain;
+		struct v4l2_ctrl_vc1_sequence __user *p_vc1_sequence;
+		struct v4l2_ctrl_vc1_entrypoint_header __user *p_vc1_entrypoint_header;
+		struct v4l2_ctrl_vc1_picture_layer __user *p_vc1_picture_layer;
+		struct v4l2_ctrl_vc1_bitplanes __user *p_vc1_bitplanes;
+		struct v4l2_ctrl_vc1_slice_params __user *p_vc1_slice_params;
 		struct v4l2_ctrl_hdr10_cll_info __user *p_hdr10_cll_info;
 		struct v4l2_ctrl_hdr10_mastering_display __user *p_hdr10_mastering_display;
 		void __user *ptr;
@@ -1999,6 +2005,12 @@ enum v4l2_ctrl_type {
 	V4L2_CTRL_TYPE_AV1_TILE_GROUP_ENTRY = 0x281,
 	V4L2_CTRL_TYPE_AV1_FRAME	    = 0x282,
 	V4L2_CTRL_TYPE_AV1_FILM_GRAIN	    = 0x283,
+
+	V4L2_CTRL_TYPE_VC1_SEQUENCE		= 0x0290,
+	V4L2_CTRL_TYPE_VC1_ENTRYPOINT_HEADER	= 0x0291,
+	V4L2_CTRL_TYPE_VC1_PICTURE_LAYER	= 0x0292,
+	V4L2_CTRL_TYPE_VC1_BITPLANES		= 0x0293,
+	V4L2_CTRL_TYPE_VC1_SLICE_PARAMS		= 0x0294,
 };
 
 /*  Used in the VIDIOC_QUERYCTRL ioctl for querying controls */

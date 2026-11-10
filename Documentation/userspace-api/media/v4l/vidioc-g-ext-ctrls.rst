@@ -302,6 +302,26 @@ still cause this situation.
       - ``p_av1_film_grain``
       - A pointer to a struct :c:type:`v4l2_ctrl_av1_film_grain`. Valid if this control is
         of type ``V4L2_CTRL_TYPE_AV1_FILM_GRAIN``.
+    * - struct :c:type:`v4l2_ctrl_vc1_sequence` *
+      - ``p_vc1_sequence``
+      - A pointer to a struct :c:type:`v4l2_ctrl_vc1_sequence`. Valid if this control is
+        of type ``V4L2_CTRL_TYPE_VC1_SEQUENCE``.
+    * - struct :c:type:`v4l2_ctrl_vc1_entrypoint_header` *
+      - ``p_vc1_entrypoint_header``
+      - A pointer to a struct :c:type:`v4l2_ctrl_vc1_entrypoint_header`. Valid if this
+        control is of type ``V4L2_CTRL_TYPE_VC1_ENTRYPOINT_HEADER``.
+    * - struct :c:type:`v4l2_ctrl_vc1_picture_layer` *
+      - ``p_vc1_picture_layer``
+      - A pointer to a struct :c:type:`v4l2_ctrl_vc1_picture_layer`. Valid if this
+        control is of type ``V4L2_CTRL_TYPE_VC1_PICTURE_LAYER``.
+    * - struct :c:type:`v4l2_ctrl_vc1_bitplanes` *
+      - ``p_vc1_bitplanes``
+      - A pointer to a struct :c:type:`v4l2_ctrl_vc1_bitplanes`. Valid if this control is
+        of type ``V4L2_CTRL_TYPE_VC1_BITPLANES``.
+    * - struct :c:type:`v4l2_ctrl_vc1_slice_params` *
+      - ``p_vc1_slice_params``
+      - A pointer to a struct :c:type:`v4l2_ctrl_vc1_slice_params`. Valid if this control is
+        of type ``V4L2_CTRL_TYPE_VC1_SLICE_PARAMS``.
     * - struct :c:type:`v4l2_ctrl_hdr10_cll_info` *
       - ``p_hdr10_cll_info``
       - A pointer to a struct :c:type:`v4l2_ctrl_hdr10_cll_info`. Valid if this control is

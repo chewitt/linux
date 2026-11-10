@@ -4287,3 +4287,932 @@ AV1 Tx mode as described in section 6.8.21 "TX mode semantics" of :ref:`av1`.
         (see the semantics for color_range for an explanation of studio swing).
         If not set, indicates that clipping to the full range shall be applied
         to the sample values after adding the film grain.
+
+.. _v4l2-codec-stateless-vc1:
+
+``V4L2_CID_STATELESS_VC1_SEQUENCE (struct)``
+    Specifies the sequence parameters (as extracted from the bitstream or from
+    its container) for the associated VC-1 slice data. For the Advanced
+    profile this includes fields matching the syntax elements of the sequence
+    layer, as specified by section 6.1 "Sequence-level Syntax and Semantics"
+    of :ref:`vc1`. For the Simple and Main profiles, which have no sequence
+    layer in the bitstream, the fields are taken from the ``STRUCT_C`` and
+    ``STRUCT_A`` sequence layer data structures specified by Annex J and Annex
+    L of :ref:`vc1`. Syntax elements which do not exist for the profile of the
+    stream must be set to zero.
+
+.. c:type:: v4l2_ctrl_vc1_sequence
+
+.. raw:: latex
+
+    \small
+
+.. cssclass:: longtable
+
+.. tabularcolumns:: |p{1.4cm}|p{6.0cm}|p{9.9cm}|
+
+.. flat-table:: struct v4l2_ctrl_vc1_sequence
+    :header-rows:  0
+    :stub-columns: 0
+    :widths:       1 1 2
+
+    * - __u8
+      - ``profile``
+      - ``PROFILE`` syntax element: ``V4L2_VC1_PROFILE_SIMPLE`` (0),
+	``V4L2_VC1_PROFILE_MAIN`` (1), ``V4L2_VC1_PROFILE_COMPLEX`` (2, reserved
+	by :ref:`vc1`) or ``V4L2_VC1_PROFILE_ADVANCED`` (3). It selects which of
+	the two bitstream syntaxes and which output buffer framing is in use.
+    * - __u8
+      - ``level``
+      - ``LEVEL`` syntax element. Advanced profile only.
+    * - __u8
+      - ``colordiff_format``
+      - ``COLORDIFF_FORMAT`` syntax element. The only value defined by
+	:ref:`vc1` is 1 (4:2:0), which must also be used for the Simple and Main
+	profiles.
+    * - __u8
+      - ``maxbframes``
+      - ``MAXBFRAMES`` syntax element. Simple and Main profiles only.
+    * - __u8
+      - ``frmrtq_postproc``
+      - ``FRMRTQ_POSTPROC`` syntax element.
+    * - __u8
+      - ``bitrtq_postproc``
+      - ``BITRTQ_POSTPROC`` syntax element.
+    * - __u16
+      - ``max_coded_width``
+      - Maximum coded width of the pictures of the sequence, in luma samples.
+	For the Advanced profile this is (``MAX_CODED_WIDTH`` + 1) * 2, for the
+	Simple and Main profiles this is ``HORIZ_SIZE`` of ``STRUCT_A``.
+    * - __u16
+      - ``max_coded_height``
+      - Maximum coded height of the pictures of the sequence, in luma samples.
+	For the Advanced profile this is (``MAX_CODED_HEIGHT`` + 1) * 2, for the
+	Simple and Main profiles this is ``VERT_SIZE`` of ``STRUCT_A``.
+    * - __u8
+      - ``reserved[2]``
+      - Applications and drivers must set this to zero.
+    * - __u32
+      - ``flags``
+      - See :ref:`VC-1 Sequence Flags <vc1_sequence_flags>`.
+
+.. raw:: latex
+
+    \normalsize
+
+.. _vc1_sequence_flags:
+
+``VC-1 Sequence Flags``
+
+.. cssclass:: longtable
+
+.. flat-table::
+    :header-rows:  0
+    :stub-columns: 0
+    :widths:       1 1 2
+
+    * - ``V4L2_VC1_SEQUENCE_FLAG_PULLDOWN``
+      - 0x00000001
+      - ``PULLDOWN`` syntax element. Advanced profile only.
+    * - ``V4L2_VC1_SEQUENCE_FLAG_INTERLACE``
+      - 0x00000002
+      - ``INTERLACE`` syntax element: the sequence may contain interlaced frames
+	and fields. Advanced profile only.
+    * - ``V4L2_VC1_SEQUENCE_FLAG_TFCNTRFLAG``
+      - 0x00000004
+      - ``TFCNTRFLAG`` syntax element. Advanced profile only.
+    * - ``V4L2_VC1_SEQUENCE_FLAG_FINTERPFLAG``
+      - 0x00000008
+      - ``FINTERPFLAG`` syntax element.
+    * - ``V4L2_VC1_SEQUENCE_FLAG_PSF``
+      - 0x00000010
+      - ``PSF`` syntax element. Advanced profile only.
+    * - ``V4L2_VC1_SEQUENCE_FLAG_MULTIRES``
+      - 0x00000020
+      - ``MULTIRES`` syntax element. Simple and Main profiles only.
+    * - ``V4L2_VC1_SEQUENCE_FLAG_SYNCMARKER``
+      - 0x00000040
+      - ``SYNCMARKER`` syntax element. Main profile only.
+    * - ``V4L2_VC1_SEQUENCE_FLAG_RANGERED``
+      - 0x00000080
+      - ``RANGERED`` syntax element. Main profile only.
+    * - ``V4L2_VC1_SEQUENCE_FLAG_POSTPROCFLAG``
+      - 0x00000100
+      - ``POSTPROCFLAG`` syntax element. Advanced profile only.
+    * - ``V4L2_VC1_SEQUENCE_FLAG_RES_RTM``
+      - 0x00000200
+      - The last bit of ``STRUCT_C``. It is 1 in the bitstreams which conform to
+	:ref:`vc1` and 0 in pre-release bitstreams, whose macroblock layer is
+	coded differently; drivers reject the control if they cannot decode
+	those. Simple and Main profiles only.
+
+``V4L2_CID_STATELESS_VC1_ENTRYPOINT_HEADER (struct)``
+    Specifies the entry-point parameters for the associated VC-1 slice data.
+    For the Advanced profile this includes fields matching the syntax elements
+    of the entry-point header which precedes the picture in the bitstream, as
+    specified by section 6.2 "Entry-point Header Syntax and Semantics" of
+    :ref:`vc1`. The Simple and Main profiles have no entry-point layer: the
+    control carries the equivalent syntax elements of ``STRUCT_C`` and the
+    picture size of ``STRUCT_A`` instead, and the fields and flags which only
+    exist for the Advanced profile must be set to zero.
+
+.. c:type:: v4l2_ctrl_vc1_entrypoint_header
+
+.. raw:: latex
+
+    \small
+
+.. cssclass:: longtable
+
+.. tabularcolumns:: |p{1.4cm}|p{6.0cm}|p{9.9cm}|
+
+.. flat-table:: struct v4l2_ctrl_vc1_entrypoint_header
+    :header-rows:  0
+    :stub-columns: 0
+    :widths:       1 1 2
+
+    * - __u8
+      - ``dquant``
+      - ``DQUANT`` syntax element.
+    * - __u8
+      - ``quantizer``
+      - ``QUANTIZER`` syntax element: ``V4L2_VC1_QUANTIZER_IMPLICIT`` (0),
+	``V4L2_VC1_QUANTIZER_EXPLICIT`` (1), ``V4L2_VC1_QUANTIZER_NON_UNIFORM``
+	(2) or ``V4L2_VC1_QUANTIZER_UNIFORM`` (3).
+    * - __u16
+      - ``coded_width``
+      - Coded width of the pictures, in luma samples. For the Advanced profile
+	this is (``CODED_WIDTH`` + 1) * 2 if ``CODED_SIZE_FLAG`` is set and the
+	maximum coded width of the sequence otherwise.
+    * - __u16
+      - ``coded_height``
+      - Coded height of the pictures, in luma samples. For the Advanced profile
+	this is (``CODED_HEIGHT`` + 1) * 2 if ``CODED_SIZE_FLAG`` is set and the
+	maximum coded height of the sequence otherwise.
+    * - __u8
+      - ``range_mapy``
+      - ``RANGE_MAPY`` syntax element. Valid if
+	``V4L2_VC1_ENTRYPOINT_HEADER_FLAG_RANGE_MAPY`` is set.
+    * - __u8
+      - ``range_mapuv``
+      - ``RANGE_MAPUV`` syntax element. Valid if
+	``V4L2_VC1_ENTRYPOINT_HEADER_FLAG_RANGE_MAPUV`` is set.
+    * - __u32
+      - ``flags``
+      - See :ref:`VC-1 Entry-point Header Flags <vc1_entrypoint_header_flags>`.
+
+.. raw:: latex
+
+    \normalsize
+
+.. _vc1_entrypoint_header_flags:
+
+``VC-1 Entry-point Header Flags``
+
+.. cssclass:: longtable
+
+.. flat-table::
+    :header-rows:  0
+    :stub-columns: 0
+    :widths:       1 1 2
+
+    * - ``V4L2_VC1_ENTRYPOINT_HEADER_FLAG_BROKEN_LINK``
+      - 0x00000001
+      - ``BROKEN_LINK`` syntax element. Advanced profile only.
+    * - ``V4L2_VC1_ENTRYPOINT_HEADER_FLAG_CLOSED_ENTRY``
+      - 0x00000002
+      - ``CLOSED_ENTRY`` syntax element. Advanced profile only.
+    * - ``V4L2_VC1_ENTRYPOINT_HEADER_FLAG_PANSCAN``
+      - 0x00000004
+      - ``PANSCAN_FLAG`` syntax element. Advanced profile only.
+    * - ``V4L2_VC1_ENTRYPOINT_HEADER_FLAG_REFDIST``
+      - 0x00000008
+      - ``REFDIST_FLAG`` syntax element. Advanced profile only.
+    * - ``V4L2_VC1_ENTRYPOINT_HEADER_FLAG_LOOPFILTER``
+      - 0x00000010
+      - ``LOOPFILTER`` syntax element.
+    * - ``V4L2_VC1_ENTRYPOINT_HEADER_FLAG_FASTUVMC``
+      - 0x00000020
+      - ``FASTUVMC`` syntax element.
+    * - ``V4L2_VC1_ENTRYPOINT_HEADER_FLAG_EXTENDED_MV``
+      - 0x00000040
+      - ``EXTENDED_MV`` syntax element.
+    * - ``V4L2_VC1_ENTRYPOINT_HEADER_FLAG_VSTRANSFORM``
+      - 0x00000080
+      - ``VSTRANSFORM`` syntax element.
+    * - ``V4L2_VC1_ENTRYPOINT_HEADER_FLAG_OVERLAP``
+      - 0x00000100
+      - ``OVERLAP`` syntax element.
+    * - ``V4L2_VC1_ENTRYPOINT_HEADER_FLAG_EXTENDED_DMV``
+      - 0x00000200
+      - ``EXTENDED_DMV`` syntax element. Advanced profile only.
+    * - ``V4L2_VC1_ENTRYPOINT_HEADER_FLAG_RANGE_MAPY``
+      - 0x00000400
+      - ``RANGE_MAPY_FLAG`` syntax element. Advanced profile only.
+    * - ``V4L2_VC1_ENTRYPOINT_HEADER_FLAG_RANGE_MAPUV``
+      - 0x00000800
+      - ``RANGE_MAPUV_FLAG`` syntax element. Advanced profile only.
+
+``V4L2_CID_STATELESS_VC1_PICTURE_LAYER (struct)``
+    Specifies the picture parameters (as extracted from the bitstream) for the
+    associated VC-1 slice data. This includes fields matching the syntax
+    elements of the picture layer of the coded picture held by the output
+    buffer, as specified by sections 7.1 and 9.1 of :ref:`vc1`. The coded
+    picture is a progressive frame, an interlaced frame or one field of a
+    field-interlaced frame; for a field the control combines the frame-level
+    syntax elements, which the bitstream only carries in front of the first
+    field, with the syntax elements of the field picture header. The two
+    fields of a frame are two decode requests and each of them has its own
+    complete control. Syntax elements which are not present in the picture
+    header must be set to zero, unless stated otherwise. This control must be
+    set with every request.
+
+    Decoding a picture also depends on the state of its reference pictures:
+    their picture types, their frame coding mode, their ``RANGEREDFRM`` state
+    and the intensity compensation which the pictures decoded since have
+    applied to them. This state is passed with every request, in the
+    ``forward_ref`` and ``backward_ref`` fields, so that drivers do not have
+    to remember anything from one decode request to the next.
+
+    Skipped pictures (``PTYPE`` signalling a skipped picture in the Advanced
+    profile, a frame of at most one byte in the Simple and Main profiles) have
+    no macroblock layer. They must not be queued: the decoded picture is
+    identical to its reference picture, which the application outputs again
+    and keeps using as a reference. A picture which refers to a skipped
+    picture is given the capture buffer of the picture which the skipped
+    picture repeats, with ``V4L2_VC1_PICTURE_TYPE_SKIPPED`` as the picture
+    type of the reference.
+
+    The capture buffer holds the decoded picture before the range expansion of
+    the Main profile (``RANGEREDFRM``) and before the range mapping of the
+    Advanced profile (``RANGE_MAPY``, ``RANGE_MAPUV``). Both are output
+    processes which :ref:`vc1` specifies after decoding; the application,
+    which has their parameters, applies them.
+
+.. c:type:: v4l2_ctrl_vc1_picture_layer
+
+.. raw:: latex
+
+    \small
+
+.. cssclass:: longtable
+
+.. tabularcolumns:: |p{3.4cm}|p{4.6cm}|p{9.3cm}|
+
+.. flat-table:: struct v4l2_ctrl_vc1_picture_layer
+    :header-rows:  0
+    :stub-columns: 0
+    :widths:       1 1 2
+
+    * - __u64
+      - ``backward_ref_ts``
+      - Timestamp of the V4L2 capture buffer to use as backward reference, used
+	with B-coded pictures. The timestamp refers to the ``timestamp`` field
+	in struct :c:type:`v4l2_buffer`. Use the :c:func:`v4l2_timeval_to_ns()`
+	function to convert the struct :c:type:`timeval` in struct
+	:c:type:`v4l2_buffer` to a __u64.
+    * - __u64
+      - ``forward_ref_ts``
+      - Timestamp of the V4L2 capture buffer to use as forward reference, used
+	with P-coded and B-coded pictures. The timestamp refers to the
+	``timestamp`` field in struct :c:type:`v4l2_buffer`. Use the
+	:c:func:`v4l2_timeval_to_ns()` function to convert the struct
+	:c:type:`timeval` in struct :c:type:`v4l2_buffer` to a __u64. The first
+	field of the frame being decoded is never referred to by timestamp: when
+	the second field of a frame is decoded, references to its first field
+	are implied and this timestamp designates the previous reference frame.
+    * - __u32
+      - ``data_bit_offset``
+      - Offset in bits from the first bit of the picture layer to the first bit
+	of the first macroblock layer, that is, the size in bits of the picture
+	header. The offset is counted on the unescaped bitstream. For the
+	Advanced profile the picture layer starts right after the 32-bit frame
+	or field start code which begins the output buffer and the emulation
+	prevention bytes are not counted. For the Simple and Main profiles,
+	which have neither start codes nor emulation prevention bytes, the
+	picture layer starts with the first bit of the output buffer.
+    * - __u32
+      - ``flags``
+      - See :ref:`VC-1 Picture Layer Flags <vc1_picture_layer_flags>`.
+    * - __u16
+      - ``header_emulation_bytes``
+      - Number of emulation prevention bytes present in the output buffer
+	between the start code and the byte holding the first bit of the first
+	macroblock layer. The position of the first macroblock layer in the
+	output buffer is therefore 32 + ``data_bit_offset`` + 8 *
+	``header_emulation_bytes`` bits for the Advanced profile. Always zero
+	for the Simple and Main profiles.
+    * - __u8
+      - ``ptype``
+      - Picture type of the frame or of the field being decoded:
+	``V4L2_VC1_PICTURE_TYPE_I`` (0), ``V4L2_VC1_PICTURE_TYPE_P`` (1),
+	``V4L2_VC1_PICTURE_TYPE_B`` (2) or ``V4L2_VC1_PICTURE_TYPE_BI`` (3). For
+	field pictures this is the type of the field, derived from ``FPTYPE``.
+	Skipped pictures are not queued.
+    * - __u8
+      - ``fptype``
+      - ``FPTYPE`` syntax element of the frame which the field belongs to,
+	giving the types of its first and second fields: ``V4L2_VC1_FPTYPE_I_I``
+	(0), ``V4L2_VC1_FPTYPE_I_P`` (1), ``V4L2_VC1_FPTYPE_P_I`` (2),
+	``V4L2_VC1_FPTYPE_P_P`` (3), ``V4L2_VC1_FPTYPE_B_B`` (4),
+	``V4L2_VC1_FPTYPE_B_BI`` (5), ``V4L2_VC1_FPTYPE_BI_B`` (6) or
+	``V4L2_VC1_FPTYPE_BI_BI`` (7). Field pictures only.
+    * - __u8
+      - ``fcm``
+      - Frame coding mode: ``V4L2_VC1_FCM_PROGRESSIVE`` (0),
+	``V4L2_VC1_FCM_FRAME_INTERLACE`` (1) or ``V4L2_VC1_FCM_FIELD_INTERLACE``
+	(2). Always progressive for the Simple and Main profiles and if
+	``V4L2_VC1_SEQUENCE_FLAG_INTERLACE`` is not set.
+    * - __u8
+      - ``pqindex``
+      - ``PQINDEX`` syntax element.
+    * - __u8
+      - ``pquant``
+      - Picture quantizer scale ``PQUANT``, derived from ``PQINDEX`` and
+	``QUANTIZER`` as specified by section 7.1.1.6 of :ref:`vc1`.
+    * - __u8
+      - ``mvrange``
+      - ``MVRANGE`` syntax element, as the index of its code (0 to 3).
+    * - __u8
+      - ``dmvrange``
+      - ``DMVRANGE`` syntax element, as the index of its code (0 to 3).
+    * - __u8
+      - ``respic``
+      - ``RESPIC`` syntax element. Simple and Main profiles only.
+    * - __u8
+      - ``transacfrm``
+      - ``TRANSACFRM`` syntax element, as the index of its code (0 to 2).
+    * - __u8
+      - ``transacfrm2``
+      - ``TRANSACFRM2`` syntax element, as the index of its code (0 to 2).
+    * - __u8
+      - ``bfraction``
+      - Index of the ``BFRACTION`` syntax element in Table 40 "BFRACTION VLC
+	Table" of :ref:`vc1`, in the range 0 to 20, which stand for the
+	fractions 1/2, 1/3, 2/3, 1/4, 3/4, 1/5, 2/5, 3/5, 4/5, 1/6, 5/6, 1/7,
+	2/7, 3/7, 4/7, 5/7, 6/7, 1/8, 3/8, 5/8 and 7/8. The code which signals a
+	BI picture in the Main profile is conveyed through ``ptype`` instead.
+    * - __u8
+      - ``mvmode``
+      - ``MVMODE`` syntax element: ``V4L2_VC1_MVMODE_1MV_HPEL_BILIN`` (0),
+	``V4L2_VC1_MVMODE_1MV`` (1), ``V4L2_VC1_MVMODE_1MV_HPEL`` (2),
+	``V4L2_VC1_MVMODE_MIXED_MV`` (3) or ``V4L2_VC1_MVMODE_INTENSITY_COMP``
+	(4). Not present in frame-interlaced pictures.
+    * - __u8
+      - ``mvmode2``
+      - ``MVMODE2`` syntax element, with the same values as ``mvmode`` except
+	``V4L2_VC1_MVMODE_INTENSITY_COMP``. Valid if ``mvmode`` is
+	``V4L2_VC1_MVMODE_INTENSITY_COMP``.
+    * - __u8
+      - ``lumscale``
+      - ``LUMSCALE`` syntax element of a progressive or frame-interlaced
+	picture, ``LUMSCALE1`` syntax element of a field picture.
+    * - __u8
+      - ``lumshift``
+      - ``LUMSHIFT`` syntax element of a progressive or frame-interlaced
+	picture, ``LUMSHIFT1`` syntax element of a field picture.
+    * - __u8
+      - ``lumscale2``
+      - ``LUMSCALE2`` syntax element. Field pictures only, present if
+	``intcompfield`` is ``V4L2_VC1_INTCOMPFIELD_BOTH``.
+    * - __u8
+      - ``lumshift2``
+      - ``LUMSHIFT2`` syntax element. Field pictures only, present if
+	``intcompfield`` is ``V4L2_VC1_INTCOMPFIELD_BOTH``.
+    * - __u8
+      - ``intcompfield``
+      - ``INTCOMPFIELD`` syntax element, as the index of its code in Table 109
+	of :ref:`vc1`: ``V4L2_VC1_INTCOMPFIELD_BOTH`` (0, ``LUMSCALE1`` and
+	``LUMSHIFT1`` apply to the top reference field, ``LUMSCALE2`` and
+	``LUMSHIFT2`` to the bottom reference field),
+	``V4L2_VC1_INTCOMPFIELD_TOP`` (1, ``LUMSCALE1`` and ``LUMSHIFT1`` apply
+	to the top reference field) or ``V4L2_VC1_INTCOMPFIELD_BOTTOM`` (2,
+	``LUMSCALE1`` and ``LUMSHIFT1`` apply to the bottom reference field).
+	Field pictures only, valid if ``mvmode`` is
+	``V4L2_VC1_MVMODE_INTENSITY_COMP``.
+    * - __u8
+      - ``mvtab``
+      - ``MVTAB`` syntax element.
+    * - __u8
+      - ``cbptab``
+      - ``CBPTAB`` syntax element.
+    * - __u8
+      - ``mbmodetab``
+      - ``MBMODETAB`` syntax element.
+    * - __u8
+      - ``imvtab``
+      - ``IMVTAB`` syntax element.
+    * - __u8
+      - ``icbptab``
+      - ``ICBPTAB`` syntax element.
+    * - __u8
+      - ``twomvbptab``
+      - ``2MVBPTAB`` syntax element.
+    * - __u8
+      - ``fourmvbptab``
+      - ``4MVBPTAB`` syntax element.
+    * - __u8
+      - ``ttfrm``
+      - ``TTFRM`` syntax element: ``V4L2_VC1_TTFRM_8X8`` (0),
+	``V4L2_VC1_TTFRM_8X4`` (1), ``V4L2_VC1_TTFRM_4X8`` (2) or
+	``V4L2_VC1_TTFRM_4X4`` (3).
+    * - __u8
+      - ``refdist``
+      - ``REFDIST`` syntax element, in the range 0 to 16. Field pictures only.
+	B-coded field pictures do not carry it: the ``REFDIST`` which their
+	decoding uses is the one of ``backward_ref``.
+    * - __u8
+      - ``condover``
+      - ``CONDOVER`` syntax element, as the index of its code:
+	``V4L2_VC1_CONDOVER_NONE`` (0), ``V4L2_VC1_CONDOVER_ALL`` (1) or
+	``V4L2_VC1_CONDOVER_SELECT`` (2). Advanced profile I and BI pictures
+	only.
+    * - __u8
+      - ``postproc``
+      - ``POSTPROC`` syntax element.
+    * - __u8
+      - ``rptfrm``
+      - ``RPTFRM`` syntax element.
+    * - __u8
+      - ``raw_coding_flags``
+      - Bitplanes of the picture which are coded in raw mode, that is, whose
+	bits are part of the macroblock layers. See :ref:`VC-1 Raw Coding Flags
+	<vc1_raw_coding_flags>`.
+    * - __u8
+      - ``bitplane_flags``
+      - Bitplanes of the picture which are coded in the picture header and which
+	are passed, decoded, through the ``V4L2_CID_STATELESS_VC1_BITPLANES``
+	control. See :ref:`VC-1 Bitplane Flags <vc1_bitplane_flags>`. A bitplane
+	cannot be both raw coded and passed through the control.
+    * - __u8
+      - ``reserved[6]``
+      - Applications and drivers must set this to zero.
+    * - struct :c:type:`v4l2_vc1_vopdquant`
+      - ``vopdquant``
+      - ``VOPDQUANT`` syntax elements.
+    * - struct :c:type:`v4l2_vc1_reference`
+      - ``forward_ref``
+      - Description of the forward reference. Used with P-coded and B-coded
+	pictures.
+    * - struct :c:type:`v4l2_vc1_reference`
+      - ``backward_ref``
+      - Description of the backward reference. Used with B-coded pictures.
+
+.. raw:: latex
+
+    \normalsize
+
+.. _vc1_picture_layer_flags:
+
+``VC-1 Picture Layer Flags``
+
+.. cssclass:: longtable
+
+.. flat-table::
+    :header-rows:  0
+    :stub-columns: 0
+    :widths:       1 1 2
+
+    * - ``V4L2_VC1_PICTURE_LAYER_FLAG_RANGEREDFRM``
+      - 0x00000001
+      - ``RANGEREDFRM`` syntax element: the picture is coded with a reduced
+	range. The capture buffer holds it as decoded, without the range
+	expansion. Main profile only.
+    * - ``V4L2_VC1_PICTURE_LAYER_FLAG_HALFQP``
+      - 0x00000002
+      - ``HALFQP`` syntax element.
+    * - ``V4L2_VC1_PICTURE_LAYER_FLAG_PQUANTIZER``
+      - 0x00000004
+      - The picture uses the uniform quantizer. This is the ``PQUANTIZER``
+	syntax element if ``QUANTIZER`` is explicit; otherwise it is derived as
+	specified by section 7.1.1.8 of :ref:`vc1`: set if ``QUANTIZER`` is
+	uniform, or if it is implicit and ``PQINDEX`` is lower than 9.
+    * - ``V4L2_VC1_PICTURE_LAYER_FLAG_TRANSDCTAB``
+      - 0x00000008
+      - ``TRANSDCTAB`` syntax element.
+    * - ``V4L2_VC1_PICTURE_LAYER_FLAG_TFF``
+      - 0x00000010
+      - ``TFF`` syntax element. Must be set if the syntax element is not
+	present, as the top field is then the first field.
+    * - ``V4L2_VC1_PICTURE_LAYER_FLAG_RNDCTRL``
+      - 0x00000020
+      - Rounding control of the picture. This is the ``RNDCTRL`` syntax element
+	for the Advanced profile and the rounding control value which the
+	decoder derives for the Simple and Main profiles, as specified by
+	:ref:`vc1`: it is reset by each I and BI picture and toggled by each P
+	picture.
+    * - ``V4L2_VC1_PICTURE_LAYER_FLAG_TTMBF``
+      - 0x00000040
+      - ``TTMBF`` syntax element. Must be set, with ``ttfrm`` equal to
+	``V4L2_VC1_TTFRM_8X8``, if ``VSTRANSFORM`` is 0.
+    * - ``V4L2_VC1_PICTURE_LAYER_FLAG_4MVSWITCH``
+      - 0x00000080
+      - ``4MVSWITCH`` syntax element. Frame-interlaced pictures only.
+    * - ``V4L2_VC1_PICTURE_LAYER_FLAG_INTCOMP``
+      - 0x00000100
+      - ``INTCOMP`` syntax element. Frame-interlaced pictures only.
+    * - ``V4L2_VC1_PICTURE_LAYER_FLAG_NUMREF``
+      - 0x00000200
+      - ``NUMREF`` syntax element: the field picture uses two reference fields.
+	Must be set for B-coded field pictures, which always use two reference
+	fields. Field pictures only.
+    * - ``V4L2_VC1_PICTURE_LAYER_FLAG_REFFIELD``
+      - 0x00000400
+      - ``REFFIELD`` syntax element. Field pictures only, valid if
+	``V4L2_VC1_PICTURE_LAYER_FLAG_NUMREF`` is not set.
+    * - ``V4L2_VC1_PICTURE_LAYER_FLAG_SECOND_FIELD``
+      - 0x00000800
+      - The picture is the second field, in decoding order, of a
+	field-interlaced frame. The first field is the top field if
+	``V4L2_VC1_PICTURE_LAYER_FLAG_TFF`` is set and the bottom field
+	otherwise.
+    * - ``V4L2_VC1_PICTURE_LAYER_FLAG_RFF``
+      - 0x00001000
+      - ``RFF`` syntax element.
+    * - ``V4L2_VC1_PICTURE_LAYER_FLAG_INTERPFRM``
+      - 0x00002000
+      - ``INTERPFRM`` syntax element.
+    * - ``V4L2_VC1_PICTURE_LAYER_FLAG_UVSAMP``
+      - 0x00004000
+      - ``UVSAMP`` syntax element.
+
+.. _vc1_raw_coding_flags:
+
+``VC-1 Raw Coding Flags``
+
+.. cssclass:: longtable
+
+.. flat-table::
+    :header-rows:  0
+    :stub-columns: 0
+    :widths:       1 1 2
+
+    * - ``V4L2_VC1_RAW_CODING_FLAG_MVTYPEMB``
+      - 0x01
+      - ``MVTYPEMB`` is coded in raw mode.
+    * - ``V4L2_VC1_RAW_CODING_FLAG_DIRECTMB``
+      - 0x02
+      - ``DIRECTMB`` is coded in raw mode.
+    * - ``V4L2_VC1_RAW_CODING_FLAG_SKIPMB``
+      - 0x04
+      - ``SKIPMB`` is coded in raw mode.
+    * - ``V4L2_VC1_RAW_CODING_FLAG_FIELDTX``
+      - 0x08
+      - ``FIELDTX`` is coded in raw mode.
+    * - ``V4L2_VC1_RAW_CODING_FLAG_FORWARDMB``
+      - 0x10
+      - ``FORWARDMB`` is coded in raw mode.
+    * - ``V4L2_VC1_RAW_CODING_FLAG_ACPRED``
+      - 0x20
+      - ``ACPRED`` is coded in raw mode.
+    * - ``V4L2_VC1_RAW_CODING_FLAG_OVERFLAGS``
+      - 0x40
+      - ``OVERFLAGS`` is coded in raw mode.
+
+.. _vc1_bitplane_flags:
+
+``VC-1 Bitplane Flags``
+
+.. cssclass:: longtable
+
+.. flat-table::
+    :header-rows:  0
+    :stub-columns: 0
+    :widths:       1 1 2
+
+    * - ``V4L2_VC1_BITPLANE_FLAG_MVTYPEMB``
+      - 0x01
+      - The ``mvtypemb`` bitplane is valid.
+    * - ``V4L2_VC1_BITPLANE_FLAG_DIRECTMB``
+      - 0x02
+      - The ``directmb`` bitplane is valid.
+    * - ``V4L2_VC1_BITPLANE_FLAG_SKIPMB``
+      - 0x04
+      - The ``skipmb`` bitplane is valid.
+    * - ``V4L2_VC1_BITPLANE_FLAG_FIELDTX``
+      - 0x08
+      - The ``fieldtx`` bitplane is valid.
+    * - ``V4L2_VC1_BITPLANE_FLAG_FORWARDMB``
+      - 0x10
+      - The ``forwardmb`` bitplane is valid.
+    * - ``V4L2_VC1_BITPLANE_FLAG_ACPRED``
+      - 0x20
+      - The ``acpred`` bitplane is valid.
+    * - ``V4L2_VC1_BITPLANE_FLAG_OVERFLAGS``
+      - 0x40
+      - The ``overflags`` bitplane is valid.
+
+.. c:type:: v4l2_vc1_vopdquant
+
+.. raw:: latex
+
+    \small
+
+.. cssclass:: longtable
+
+.. tabularcolumns:: |p{1.4cm}|p{6.0cm}|p{9.9cm}|
+
+.. flat-table:: struct v4l2_vc1_vopdquant
+    :header-rows:  0
+    :stub-columns: 0
+    :widths:       1 1 2
+
+    * - __u8
+      - ``altpquant``
+      - Alternative picture quantizer scale ``ALTPQUANT``, derived from the
+	``PQDIFF`` and ``ABSPQ`` syntax elements as specified by section
+	7.1.1.31 of :ref:`vc1`.
+    * - __u8
+      - ``dqprofile``
+      - ``DQPROFILE`` syntax element: ``V4L2_VC1_DQPROFILE_ALL_FOUR_EDGES`` (0),
+	``V4L2_VC1_DQPROFILE_DOUBLE_EDGES`` (1),
+	``V4L2_VC1_DQPROFILE_SINGLE_EDGE`` (2) or ``V4L2_VC1_DQPROFILE_ALL_MBS``
+	(3). If ``DQUANT`` is 2, in which case ``VOPDQUANT`` only carries
+	``PQDIFF`` and ``ABSPQ``, this must be
+	``V4L2_VC1_DQPROFILE_ALL_FOUR_EDGES`` with
+	``V4L2_VC1_VOPDQUANT_FLAG_DQUANTFRM`` set.
+    * - __u8
+      - ``dqsbedge``
+      - ``DQSBEDGE`` syntax element. Valid if ``dqprofile`` is
+	``V4L2_VC1_DQPROFILE_SINGLE_EDGE``.
+    * - __u8
+      - ``dqdbedge``
+      - ``DQDBEDGE`` syntax element. Valid if ``dqprofile`` is
+	``V4L2_VC1_DQPROFILE_DOUBLE_EDGES``.
+    * - __u8
+      - ``flags``
+      - See :ref:`VC-1 VOPDQUANT Flags <vc1_vopdquant_flags>`.
+    * - __u8
+      - ``reserved[3]``
+      - Applications and drivers must set this to zero.
+
+.. raw:: latex
+
+    \normalsize
+
+.. _vc1_vopdquant_flags:
+
+``VC-1 VOPDQUANT Flags``
+
+.. cssclass:: longtable
+
+.. flat-table::
+    :header-rows:  0
+    :stub-columns: 0
+    :widths:       1 1 2
+
+    * - ``V4L2_VC1_VOPDQUANT_FLAG_DQUANTFRM``
+      - 0x01
+      - ``DQUANTFRM`` syntax element.
+    * - ``V4L2_VC1_VOPDQUANT_FLAG_DQBILEVEL``
+      - 0x02
+      - ``DQBILEVEL`` syntax element.
+
+Struct :c:type:`v4l2_vc1_reference` describes the state of a reference picture
+which the decoding of the current picture depends on. It is taken by the
+application from the headers of the reference picture and of the pictures
+decoded since. In its arrays, index 0 is the top field and index 1 the bottom
+field of the reference frame; for a reference which is a progressive or
+frame-interlaced picture both elements are equal.
+
+.. c:type:: v4l2_vc1_reference
+
+.. raw:: latex
+
+    \small
+
+.. cssclass:: longtable
+
+.. tabularcolumns:: |p{3.4cm}|p{4.6cm}|p{9.3cm}|
+
+.. flat-table:: struct v4l2_vc1_reference
+    :header-rows:  0
+    :stub-columns: 0
+    :widths:       1 1 2
+
+    * - __u8
+      - ``fcm``
+      - Frame coding mode of the reference, with the values of the ``fcm`` field
+	of struct :c:type:`v4l2_ctrl_vc1_picture_layer`.
+    * - __u8
+      - ``ptype[2]``
+      - Picture type of each field of the reference, with the values of the
+	``ptype`` field of struct :c:type:`v4l2_ctrl_vc1_picture_layer`, or
+	``V4L2_VC1_PICTURE_TYPE_SKIPPED`` (4) if the reference is a skipped
+	picture. A skipped picture was not decoded: the capture buffer is the
+	one of the picture which it repeats and its motion vectors, as used by
+	the direct mode, are zero.
+    * - __u8
+      - ``refdist``
+      - ``REFDIST`` syntax element of the reference. Field-interlaced references
+	only.
+    * - __u8
+      - ``flags``
+      - See :ref:`VC-1 Reference Flags <vc1_reference_flags>`.
+    * - __u8
+      - ``num_intcomp[2]``
+      - Number of valid elements of ``intcomp`` for each field of the reference,
+	in the range 0 to ``V4L2_VC1_REFERENCE_NUM_INTCOMP``.
+    * - __u8
+      - ``reserved``
+      - Applications and drivers must set this to zero.
+    * - struct :c:type:`v4l2_vc1_intcomp`
+      - ``intcomp[2][V4L2_VC1_REFERENCE_NUM_INTCOMP]``
+      - Intensity compensations which the pictures decoded before the current
+	one have applied to each field of the reference, in the order in which
+	they are applied when the field is read. A field of a reference picture
+	is compensated by the second field of its own frame, if that field
+	refers to it, and by the P pictures which refer to it; B pictures read
+	their references through the compensations of the P pictures decoded
+	before them. The intensity compensation which the current picture itself
+	signals is not included: it is applied last.
+
+.. raw:: latex
+
+    \normalsize
+
+.. _vc1_reference_flags:
+
+``VC-1 Reference Flags``
+
+.. cssclass:: longtable
+
+.. flat-table::
+    :header-rows:  0
+    :stub-columns: 0
+    :widths:       1 1 2
+
+    * - ``V4L2_VC1_REFERENCE_FLAG_RANGEREDFRM``
+      - 0x01
+      - ``RANGEREDFRM`` syntax element of the reference: the capture buffer
+	holds it with a reduced range. Main profile only.
+    * - ``V4L2_VC1_REFERENCE_FLAG_TFF``
+      - 0x02
+      - The top field of the reference is its first field.
+
+.. c:type:: v4l2_vc1_intcomp
+
+.. raw:: latex
+
+    \small
+
+.. cssclass:: longtable
+
+.. tabularcolumns:: |p{1.4cm}|p{6.0cm}|p{9.9cm}|
+
+.. flat-table:: struct v4l2_vc1_intcomp
+    :header-rows:  0
+    :stub-columns: 0
+    :widths:       1 1 2
+
+    * - __u8
+      - ``lumscale``
+      - ``LUMSCALE`` syntax element, in the range 0 to 63.
+    * - __u8
+      - ``lumshift``
+      - ``LUMSHIFT`` syntax element, in the range 0 to 63.
+
+.. raw:: latex
+
+    \normalsize
+
+``V4L2_CID_STATELESS_VC1_BITPLANES (struct)``
+    Specifies the bitplanes of the picture layer for the associated VC-1 slice
+    data, decoded as specified by section 8.7 "Bitplane Coding" of :ref:`vc1`.
+    Bitplane decoding is done by the application, which has to parse the
+    bitplanes anyway to reach the syntax elements that follow them in the
+    picture header. Each bitplane holds one bit per macroblock of the picture
+    (of the field, for field pictures) in raster scan order, without any
+    padding between the macroblock rows: the bit of macroblock ``n`` is bit
+    ``n % 8`` of byte ``n / 8``, bit 0 being the least significant bit. Unused
+    bits must be zero.
+
+    A bitplane is valid if the matching flag is set in the ``bitplane_flags``
+    field of struct :c:type:`v4l2_ctrl_vc1_picture_layer`; the content of the
+    other bitplanes is ignored. This control only needs to be set for the
+    pictures which have at least one valid bitplane.
+
+.. c:type:: v4l2_ctrl_vc1_bitplanes
+
+.. raw:: latex
+
+    \small
+
+.. cssclass:: longtable
+
+.. tabularcolumns:: |p{1.4cm}|p{7.6cm}|p{8.3cm}|
+
+.. flat-table:: struct v4l2_ctrl_vc1_bitplanes
+    :header-rows:  0
+    :stub-columns: 0
+    :widths:       1 1 2
+
+    * - __u8
+      - ``mvtypemb[V4L2_VC1_BITPLANE_SIZE]``
+      - ``MVTYPEMB`` bitplane: the macroblock uses the mixed-MV (four motion
+	vectors) mode.
+    * - __u8
+      - ``directmb[V4L2_VC1_BITPLANE_SIZE]``
+      - ``DIRECTMB`` bitplane: the macroblock uses the direct mode.
+    * - __u8
+      - ``skipmb[V4L2_VC1_BITPLANE_SIZE]``
+      - ``SKIPMB`` bitplane: the macroblock is skipped.
+    * - __u8
+      - ``fieldtx[V4L2_VC1_BITPLANE_SIZE]``
+      - ``FIELDTX`` bitplane: the macroblock uses the field transform.
+    * - __u8
+      - ``forwardmb[V4L2_VC1_BITPLANE_SIZE]``
+      - ``FORWARDMB`` bitplane: the macroblock uses the forward mode.
+    * - __u8
+      - ``acpred[V4L2_VC1_BITPLANE_SIZE]``
+      - ``ACPRED`` bitplane: the macroblock uses AC prediction.
+    * - __u8
+      - ``overflags[V4L2_VC1_BITPLANE_SIZE]``
+      - ``OVERFLAGS`` bitplane: the macroblock uses overlap smoothing.
+
+.. raw:: latex
+
+    \normalsize
+
+``V4L2_CID_STATELESS_VC1_SLICE_PARAMS (struct)``
+    Specifies where the slices of the picture are located in the associated
+    VC-1 slice data. This control is a dynamically sized array with one
+    element per slice of the picture, in bitstream order. The first element
+    describes the slice which begins with the picture layer; the following
+    elements describe the slices which begin with a slice start code, as
+    specified by section 7.1.2 "Slice Layer" of :ref:`vc1`. Only the Advanced
+    profile has slices.
+
+    This control is only exposed by the drivers whose hardware cannot locate
+    the slices and skip their headers on its own. If it is exposed,
+    applications must set it with every request.
+
+.. c:type:: v4l2_ctrl_vc1_slice_params
+
+.. raw:: latex
+
+    \small
+
+.. cssclass:: longtable
+
+.. tabularcolumns:: |p{1.4cm}|p{6.0cm}|p{9.9cm}|
+
+.. flat-table:: struct v4l2_ctrl_vc1_slice_params
+    :header-rows:  0
+    :stub-columns: 0
+    :widths:       1 1 2
+
+    * - __u32
+      - ``offset``
+      - Offset in bytes from the beginning of the output buffer to the first
+	byte of the start code of the slice. Zero for the first slice.
+    * - __u32
+      - ``size``
+      - Size in bytes of the slice, including its start code and its emulation
+	prevention bytes.
+    * - __u32
+      - ``data_bit_offset``
+      - Offset in bits from the bit which follows the start code of the slice to
+	the first bit of the first macroblock layer of the slice, that is, the
+	size in bits of the slice header, including the picture header which it
+	carries if ``V4L2_VC1_SLICE_PARAMS_FLAG_PIC_HEADER`` is set. The offset
+	is counted on the unescaped bitstream: the emulation prevention bytes
+	are not counted, and the position of that bit in the output buffer is 8
+	* ``offset`` + 32 + ``data_bit_offset`` + 8 * ``header_emulation_bytes``
+	bits. For the first slice this is the ``data_bit_offset`` of struct
+	:c:type:`v4l2_ctrl_vc1_picture_layer`.
+    * - __u16
+      - ``header_emulation_bytes``
+      - Number of emulation prevention bytes present in the output buffer
+	between the start code of the slice and the byte holding the first bit
+	of its first macroblock layer.
+    * - __u16
+      - ``slice_addr``
+      - ``SLICE_ADDR`` syntax element: the address of the first macroblock row
+	of the slice. Zero for the first slice.
+    * - __u8
+      - ``flags``
+      - See :ref:`VC-1 Slice Params Flags <vc1_slice_params_flags>`.
+    * - __u8
+      - ``reserved[3]``
+      - Applications and drivers must set this to zero.
+
+.. raw:: latex
+
+    \normalsize
+
+.. _vc1_slice_params_flags:
+
+``VC-1 Slice Params Flags``
+
+.. cssclass:: longtable
+
+.. flat-table::
+    :header-rows:  0
+    :stub-columns: 0
+    :widths:       1 1 2
+
+    * - ``V4L2_VC1_SLICE_PARAMS_FLAG_PIC_HEADER``
+      - 0x01
+      - ``PIC_HEADER_FLAG`` syntax element: the slice header repeats the picture
+	header.
