@@ -132,6 +132,8 @@ static int vdec_poweroff(struct amvdec_session *sess)
 	mutex_lock(&sess->core->claim_lock);
 	sess->core->cur_sess = NULL;
 	synchronize_irq(sess->core->irq);
+	if (sess->core->irq_mbox0 > 0)
+		synchronize_irq(sess->core->irq_mbox0);
 
 	ret = vdec_ops->stop(sess);
 	if (!ret) {
@@ -149,7 +151,8 @@ static void vdec_job_watch_stream(struct amvdec_session *sess)
 	struct amvdec_core *core = sess->core;
 
 	if (sess->fmt_out->pixfmt != V4L2_PIX_FMT_HEVC_SLICE &&
-	    sess->fmt_out->pixfmt != V4L2_PIX_FMT_VP9_FRAME)
+	    sess->fmt_out->pixfmt != V4L2_PIX_FMT_VP9_FRAME &&
+	    sess->fmt_out->pixfmt != V4L2_PIX_FMT_AV1_FRAME)
 		return;
 	/* Registers only while this session owns the powered core */
 	if (READ_ONCE(core->cur_sess) != sess)
@@ -701,7 +704,8 @@ vdec_try_fmt_common(struct amvdec_session *sess, u32 size,
 		if (pixmp->pixelformat == V4L2_PIX_FMT_NV12M) {
 			/* HEVC and VP9 linear output uses a 32-byte row pitch. */
 			u32 align = (fmt_out->pixfmt == V4L2_PIX_FMT_HEVC_SLICE ||
-				     fmt_out->pixfmt == V4L2_PIX_FMT_VP9_FRAME) ? 32 : 64;
+				     fmt_out->pixfmt == V4L2_PIX_FMT_VP9_FRAME ||
+				     fmt_out->pixfmt == V4L2_PIX_FMT_AV1_FRAME) ? 32 : 64;
 
 			pfmt[0].sizeimage = vdec_nv12m_plane_size(sess, output_size);
 			pfmt[0].bytesperline = ALIGN(pixmp->width, align);
@@ -1156,6 +1160,39 @@ static const struct v4l2_ctrl_mpeg2_sequence vdec_mpeg2_sequence_default = {
 	.chroma_format = 1,
 };
 
+static int vdec_av1_try_ctrl(struct v4l2_ctrl *ctrl)
+{
+	const struct v4l2_ctrl_av1_sequence *seq = ctrl->p_new.p_av1_sequence;
+	const struct amvdec_format *fmt =
+		vdec_format_by_pixfmt(vdec_ctrl_session(ctrl)->core,
+				      V4L2_PIX_FMT_AV1_FRAME);
+	const u32 subsampling = V4L2_AV1_SEQUENCE_FLAG_SUBSAMPLING_X |
+				V4L2_AV1_SEQUENCE_FLAG_SUBSAMPLING_Y;
+
+	if (ctrl->id != V4L2_CID_STATELESS_AV1_SEQUENCE)
+		return 0;
+	if (!fmt || seq->seq_profile != 0 ||
+	    (seq->bit_depth != 8 && seq->bit_depth != 10) ||
+	    (seq->flags & V4L2_AV1_SEQUENCE_FLAG_MONO_CHROME) ||
+	    (seq->flags & subsampling) != subsampling ||
+	    seq->max_frame_width_minus_1 + 1 > fmt->max_width ||
+	    seq->max_frame_height_minus_1 + 1 > fmt->max_height)
+		return -EINVAL;
+	return 0;
+}
+
+static const struct v4l2_ctrl_ops vdec_av1_ctrl_ops = {
+	.try_ctrl = vdec_av1_try_ctrl,
+};
+
+static const struct v4l2_ctrl_av1_sequence vdec_av1_sequence_default = {
+	.flags = V4L2_AV1_SEQUENCE_FLAG_SUBSAMPLING_X |
+		 V4L2_AV1_SEQUENCE_FLAG_SUBSAMPLING_Y,
+	.bit_depth = 8,
+	.max_frame_width_minus_1 = 1919,
+	.max_frame_height_minus_1 = 1079,
+};
+
 static const struct v4l2_ctrl_vc1_sequence vdec_vc1_sequence_default = {
 	.profile = V4L2_VC1_PROFILE_ADVANCED,
 	.level = 3,
@@ -1258,6 +1295,28 @@ static int vdec_init_ctrls(struct amvdec_session *sess)
 		for (i = 0; i < ARRAY_SIZE(mpeg2_ctrls); i++)
 			v4l2_ctrl_new_custom(ctrl_handler,
 					     &mpeg2_ctrls[i], NULL);
+	}
+
+	if (vdec_format_by_pixfmt(sess->core, V4L2_PIX_FMT_AV1_FRAME)) {
+		static const struct v4l2_ctrl_config av1_ctrls[] = {
+			{
+				.id = V4L2_CID_STATELESS_AV1_SEQUENCE,
+				.ops = &vdec_av1_ctrl_ops,
+				.p_def.p_const = &vdec_av1_sequence_default,
+			}, {
+				.id = V4L2_CID_STATELESS_AV1_FRAME,
+			}, {
+				.id = V4L2_CID_STATELESS_AV1_TILE_GROUP_ENTRY,
+				.flags = V4L2_CTRL_FLAG_DYNAMIC_ARRAY,
+				.dims = { V4L2_AV1_MAX_TILE_COUNT },
+			}, {
+				.id = V4L2_CID_STATELESS_AV1_FILM_GRAIN,
+			},
+		};
+		unsigned int i;
+
+		for (i = 0; i < ARRAY_SIZE(av1_ctrls); i++)
+			v4l2_ctrl_new_custom(ctrl_handler, &av1_ctrls[i], NULL);
 	}
 
 	if (vdec_format_by_pixfmt(sess->core, V4L2_PIX_FMT_VC1_SLICE)) {
@@ -1603,6 +1662,16 @@ static int vdec_probe(struct platform_device *pdev)
 					"vdec", core);
 	if (ret)
 		return ret;
+
+	irq = platform_get_irq_byname_optional(pdev, "mbox0");
+	if (irq > 0) {
+		ret = devm_request_threaded_irq(core->dev, irq, vdec_isr,
+						vdec_threaded_isr, IRQF_ONESHOT,
+						"vdec-mbox0", core);
+		if (ret)
+			return ret;
+		core->irq_mbox0 = irq;
+	}
 
 	if (amvdec_has_esparser(core)) {
 		ret = meson_amvdec_esparser_init(pdev, core);
