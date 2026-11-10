@@ -238,6 +238,16 @@ static void config_registers(struct rkvdec_ctx *ctx,
 	regs->common.reg011_important_en.pix_range_det_e = 1;
 
 	/*
+	 * Store the co-located motion vectors compressed, as the vendor code
+	 * does for frame-only streams. This cuts the memory traffic of
+	 * B-frames and the hardware time of 4K streams by about 5%. The
+	 * compressed data fits the space reserved for the uncompressed
+	 * layout. Field and MBAFF streams use the uncompressed layout.
+	 */
+	regs->common.reg012_secondary_en.colmv_compress_en =
+		!!(run->sps->flags & V4L2_H264_SPS_FLAG_FRAME_MBS_ONLY);
+
+	/*
 	 * Even though the scan list address can be set in RPS,
 	 * with some frames, it will try to use the address set in the register.
 	 */
