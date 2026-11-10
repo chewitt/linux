@@ -27,6 +27,7 @@
 #include "codec_mpeg12.h"
 #include "codec_mpeg12_synth.h"
 #include "codec_vc1.h"
+#include "codec_av1.h"
 #include "codec_h264.h"
 #include "codec_hevc.h"
 #include "codec_vp9.h"
@@ -357,6 +358,7 @@ esparser_queue(struct amvdec_session *sess, struct vb2_v4l2_buffer *vbuf)
 	bool mpeg2_second = false;
 	bool mpeg2_job = false;
 	bool vc1_job = false;
+	bool av1_job = false;
 
 	BUILD_BUG_ON(sizeof(f->headers) < H264_SYNTH_MAX_HEADERS ||
 		     sizeof(f->headers) < MPEG12_SYNTH_MAX_HEADERS);
@@ -450,6 +452,74 @@ esparser_queue(struct amvdec_session *sess, struct vb2_v4l2_buffer *vbuf)
 			offset = esparser_get_offset(sess);
 		}
 		vp9_frame_ptr = &f->vp9_frame;
+	} else if (sess->fmt_out->pixfmt == V4L2_PIX_FMT_AV1_FRAME) {
+		const struct v4l2_ctrl_av1_tile_group_entry *tg;
+		const struct v4l2_ctrl_av1_frame *frame;
+		u8 *vaddr = vb2_plane_vaddr(vb, 0);
+		struct v4l2_ctrl *seq_ctrl;
+		unsigned int i, num_tiles;
+
+		seq_ctrl = v4l2_ctrl_find(&sess->ctrl_handler,
+					  V4L2_CID_STATELESS_AV1_SEQUENCE);
+		ctrl = v4l2_ctrl_find(&sess->ctrl_handler,
+				      V4L2_CID_STATELESS_AV1_FRAME);
+		if (!seq_ctrl || !ctrl || !vaddr) {
+			esparser_src_error(sess, vbuf);
+			return -EINVAL;
+		}
+		frame = ctrl->p_cur.p_av1_frame;
+		ctrl = v4l2_ctrl_find(&sess->ctrl_handler,
+				      V4L2_CID_STATELESS_AV1_TILE_GROUP_ENTRY);
+		if (!ctrl || !ctrl->elems) {
+			esparser_src_error(sess, vbuf);
+			return -EINVAL;
+		}
+		tg = ctrl->p_cur.p_av1_tile_group_entry;
+		num_tiles = ctrl->elems;
+		av1_job = true;
+
+		/* Publish the bit depth before the first capture allocation. */
+		if (offset && sess->bitdepth != seq_ctrl->p_cur.p_av1_sequence->bit_depth) {
+			dev_err_ratelimited(core->dev,
+					    "AV1 bit depth changed midstream from %u to %u\n",
+					    sess->bitdepth,
+					    seq_ctrl->p_cur.p_av1_sequence->bit_depth);
+			esparser_src_error(sess, vbuf);
+			return -EOPNOTSUPP;
+		}
+		if (!offset)
+			sess->bitdepth = seq_ctrl->p_cur.p_av1_sequence->bit_depth;
+
+		if (meson_amvdec_codec_av1_restream_pending(sess) &&
+		    frame->frame_type == V4L2_AV1_KEY_FRAME &&
+		    (frame->flags & V4L2_AV1_FRAME_FLAG_SHOW_FRAME) &&
+		    !sess->should_stop &&
+		    !atomic_read(&sess->esparser_queued_bufs)) {
+			ret = meson_amvdec_hevc_restream(sess);
+			if (ret) {
+				dev_err(core->dev, "AV1 restream failed (%d)\n", ret);
+				esparser_src_error(sess, vbuf);
+				return ret;
+			}
+			offset = esparser_get_offset(sess);
+		}
+
+		/* A slot that holds no known picture is not used by this one. */
+		for (i = 0; i < V4L2_AV1_TOTAL_REFS_PER_FRAME; i++)
+			meson_amvdec_request_resolve_ref(sess, i,
+							 frame->reference_frame_ts[i]);
+
+		ret = meson_amvdec_codec_av1_prepare(sess, seq_ctrl->p_cur.p_av1_sequence,
+						     frame, tg, num_tiles, vaddr,
+						     &payload_size,
+						     vb2_plane_size(vb, 0));
+		if (ret) {
+			dev_err_ratelimited(core->dev,
+					    "AV1 request refused: %d\n", ret);
+			esparser_src_error(sess, vbuf);
+			return ret;
+		}
+		vb2_set_plane_payload(vb, 0, payload_size);
 	} else if (sess->fmt_out->pixfmt == V4L2_PIX_FMT_HEVC_SLICE) {
 		u8 *vaddr = vb2_plane_vaddr(vb, 0);
 		u32 plane_size = vb2_plane_size(vb, 0);
@@ -945,7 +1015,8 @@ esparser_queue(struct amvdec_session *sess, struct vb2_v4l2_buffer *vbuf)
 	 * Reading PARSER_VIDEO_WP for offset includes previous transport bytes.
 	 */
 	if ((sess->fmt_out->pixfmt == V4L2_PIX_FMT_HEVC_SLICE ||
-	     sess->fmt_out->pixfmt == V4L2_PIX_FMT_VP9_FRAME) &&
+	     sess->fmt_out->pixfmt == V4L2_PIX_FMT_VP9_FRAME ||
+	     av1_job) &&
 	    meson_amvdec_set_input_end(sess, vb->timestamp, offset + payload_size)) {
 		esparser_src_error(sess, vbuf);
 		return -EINVAL;
@@ -1039,13 +1110,15 @@ esparser_queue(struct amvdec_session *sess, struct vb2_v4l2_buffer *vbuf)
 		 atomic_read(&sess->esparser_queued_bufs));
 
 	if (sess->fmt_out->pixfmt == V4L2_PIX_FMT_HEVC_SLICE ||
-	    sess->fmt_out->pixfmt == V4L2_PIX_FMT_VP9_FRAME)
+	    sess->fmt_out->pixfmt == V4L2_PIX_FMT_VP9_FRAME || av1_job)
 		meson_amvdec_hevc_release(sess);
 	if (sess->fmt_out->pixfmt == V4L2_PIX_FMT_HEVC_SLICE)
 		meson_amvdec_codec_hevc_request_input_ready(sess, vb->timestamp,
 							  offset + payload_size);
 	if (sess->fmt_out->pixfmt == V4L2_PIX_FMT_VP9_FRAME)
 		meson_amvdec_codec_vp9_request_input_ready(sess, offset + payload_size);
+	if (av1_job)
+		meson_amvdec_codec_av1_request_input_ready(sess, offset + payload_size);
 
 	return 0;
 }

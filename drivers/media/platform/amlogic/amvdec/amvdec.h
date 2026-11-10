@@ -148,6 +148,8 @@ struct amvdec_core {
 
 	/* kept so teardown can wait an in-flight handler out */
 	int irq;
+	/* HEVC mailbox 0, which the S4 AV1 firmware signals on; 0 if absent */
+	int irq_mbox0;
 };
 
 /**

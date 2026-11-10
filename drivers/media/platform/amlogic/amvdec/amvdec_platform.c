@@ -12,6 +12,7 @@
 
 #include "amvdec_1.h"
 #include "amvdec_hevc.h"
+#include "codec_av1.h"
 #include "codec_mpeg12.h"
 #include "codec_vc1.h"
 #include "codec_h264.h"
@@ -554,6 +555,25 @@ static const struct amvdec_format amvdec_formats_s4[] = {
 		.vdec_ops = &meson_amvdec_hevc_ops,
 		.codec_ops = &meson_amvdec_codec_vp9_ops,
 		.tee_format = AMVDEC_TEE_FW_VP9_MMU,
+		.pixfmts_cap = { V4L2_PIX_FMT_NV12M,
+				 V4L2_PIX_FMT_AM21C, 0 },
+		.flags = V4L2_FMT_FLAG_COMPRESSED,
+	}, {
+		.pixfmt = V4L2_PIX_FMT_AV1_FRAME,
+		.profile_ctrl = V4L2_CID_MPEG_VIDEO_AV1_PROFILE,
+		.default_profile = V4L2_MPEG_VIDEO_AV1_PROFILE_MAIN,
+		.profiles = BIT(V4L2_MPEG_VIDEO_AV1_PROFILE_MAIN),
+		.level_ctrl = V4L2_CID_MPEG_VIDEO_AV1_LEVEL,
+		.default_level = V4L2_MPEG_VIDEO_AV1_LEVEL_5_1,
+		.max_level = V4L2_MPEG_VIDEO_AV1_LEVEL_5_1,
+		.max_bit_depth = 10,
+		.min_buffers = 10,
+		.max_buffers = 16,
+		.max_width = 4096,
+		.max_height = 2304,
+		.vdec_ops = &meson_amvdec_hevc_ops,
+		.codec_ops = &meson_amvdec_codec_av1_ops,
+		.tee_format = AMVDEC_TEE_FW_AV1_MMU,
 		.pixfmts_cap = { V4L2_PIX_FMT_NV12M,
 				 V4L2_PIX_FMT_AM21C, 0 },
 		.flags = V4L2_FMT_FLAG_COMPRESSED,

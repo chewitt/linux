@@ -10,6 +10,8 @@
 #define AMVDEC_TEE_FW_VP9_MMU		19
 /* Tagged index of the HEVC MMU microcode with swapped-in sections */
 #define AMVDEC_TEE_FW_HEVC_MMU_SWAP	0x32363553
+/* Tagged index of the AV1 MMU microcode without swap */
+#define AMVDEC_TEE_FW_AV1_MMU		0x4156314d
 /* Tagged index of the multi-instance MPEG-1/2 microcode */
 #define AMVDEC_TEE_FW_MPEG12_MULTI	0x4d31324d
 
