@@ -1076,6 +1076,34 @@ static const struct v4l2_ctrl_ops vdec_mpeg2_ctrl_ops = {
 	.try_ctrl = vdec_mpeg2_try_ctrl,
 };
 
+static int vdec_vc1_try_ctrl(struct v4l2_ctrl *ctrl)
+{
+	const struct v4l2_ctrl_vc1_sequence *seq = ctrl->p_new.p_vc1_sequence;
+	const struct amvdec_format *fmt =
+		vdec_format_by_pixfmt(vdec_ctrl_session(ctrl)->core,
+				      V4L2_PIX_FMT_VC1_SLICE);
+
+	u32 profile = seq->profile == V4L2_VC1_PROFILE_ADVANCED ?
+		      V4L2_MPEG_VIDEO_VC1_PROFILE_ADVANCED : seq->profile;
+
+	if (ctrl->id != V4L2_CID_STATELESS_VC1_SEQUENCE)
+		return 0;
+	if (!fmt || seq->profile == V4L2_VC1_PROFILE_COMPLEX ||
+	    !(fmt->profiles & BIT(profile)) ||
+	    seq->max_coded_width > fmt->max_width ||
+	    seq->max_coded_height > fmt->max_height)
+		return -EINVAL;
+	/* Pre-release Simple/Main streams */
+	if (seq->profile != V4L2_VC1_PROFILE_ADVANCED &&
+	    !(seq->flags & V4L2_VC1_SEQUENCE_FLAG_RES_RTM))
+		return -EINVAL;
+	return 0;
+}
+
+static const struct v4l2_ctrl_ops vdec_vc1_ctrl_ops = {
+	.try_ctrl = vdec_vc1_try_ctrl,
+};
+
 static int vdec_vp9_try_ctrl(struct v4l2_ctrl *ctrl)
 {
 	const struct v4l2_ctrl_vp9_frame *frame = ctrl->p_new.p_vp9_frame;
@@ -1126,6 +1154,19 @@ static const struct v4l2_ctrl_mpeg2_sequence vdec_mpeg2_sequence_default = {
 	.horizontal_size = 16,
 	.vertical_size = 16,
 	.chroma_format = 1,
+};
+
+static const struct v4l2_ctrl_vc1_sequence vdec_vc1_sequence_default = {
+	.profile = V4L2_VC1_PROFILE_ADVANCED,
+	.level = 3,
+	.colordiff_format = 1,
+	.max_coded_width = 1920,
+	.max_coded_height = 1088,
+};
+
+static const struct v4l2_ctrl_vc1_entrypoint_header vdec_vc1_entrypoint_default = {
+	.coded_width = 1920,
+	.coded_height = 1088,
 };
 
 static const struct v4l2_ctrl_vp9_frame vdec_vp9_frame_default = {
@@ -1217,6 +1258,31 @@ static int vdec_init_ctrls(struct amvdec_session *sess)
 		for (i = 0; i < ARRAY_SIZE(mpeg2_ctrls); i++)
 			v4l2_ctrl_new_custom(ctrl_handler,
 					     &mpeg2_ctrls[i], NULL);
+	}
+
+	if (vdec_format_by_pixfmt(sess->core, V4L2_PIX_FMT_VC1_SLICE)) {
+		static const struct v4l2_ctrl_config vc1_ctrls[] = {
+			{
+				.id = V4L2_CID_STATELESS_VC1_SEQUENCE,
+				.ops = &vdec_vc1_ctrl_ops,
+				.p_def.p_const = &vdec_vc1_sequence_default,
+			}, {
+				.id = V4L2_CID_STATELESS_VC1_ENTRYPOINT_HEADER,
+				.p_def.p_const = &vdec_vc1_entrypoint_default,
+			}, {
+				.id = V4L2_CID_STATELESS_VC1_PICTURE_LAYER,
+			}, {
+				.id = V4L2_CID_STATELESS_VC1_BITPLANES,
+			}, {
+				.id = V4L2_CID_STATELESS_VC1_SLICE_PARAMS,
+				.flags = V4L2_CTRL_FLAG_DYNAMIC_ARRAY,
+				.dims = { 128 },
+			},
+		};
+		unsigned int i;
+
+		for (i = 0; i < ARRAY_SIZE(vc1_ctrls); i++)
+			v4l2_ctrl_new_custom(ctrl_handler, &vc1_ctrls[i], NULL);
 	}
 
 	if (vdec_format_by_pixfmt(sess->core, V4L2_PIX_FMT_HEVC_SLICE)) {

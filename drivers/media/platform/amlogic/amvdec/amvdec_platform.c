@@ -13,6 +13,7 @@
 #include "amvdec_1.h"
 #include "amvdec_hevc.h"
 #include "codec_mpeg12.h"
+#include "codec_vc1.h"
 #include "codec_h264.h"
 #include "codec_hevc.h"
 #include "codec_vp9.h"
@@ -21,6 +22,10 @@
 	BIT(V4L2_MPEG_VIDEO_H264_PROFILE_CONSTRAINED_BASELINE) | \
 	BIT(V4L2_MPEG_VIDEO_H264_PROFILE_MAIN) | \
 	BIT(V4L2_MPEG_VIDEO_H264_PROFILE_HIGH))
+
+#define AMVDEC_VC1_PROFILES (BIT(V4L2_MPEG_VIDEO_VC1_PROFILE_SIMPLE) | \
+	BIT(V4L2_MPEG_VIDEO_VC1_PROFILE_MAIN) | \
+	BIT(V4L2_MPEG_VIDEO_VC1_PROFILE_ADVANCED))
 
 static const struct amvdec_format amvdec_formats_gxbb[] = {
 	{
@@ -66,6 +71,23 @@ static const struct amvdec_format amvdec_formats_gxbb[] = {
 		.vdec_ops = &meson_amvdec_1_ops,
 		.codec_ops = &meson_amvdec_codec_mpeg12_sl_ops,
 		.firmware_path = "meson/vdec/gxl_mpeg12_multi.bin",
+		.pixfmts_cap = { V4L2_PIX_FMT_NV12M, 0 },
+		.flags = V4L2_FMT_FLAG_COMPRESSED,
+	}, {
+		.pixfmt = V4L2_PIX_FMT_VC1_SLICE,
+		.profile_ctrl = V4L2_CID_MPEG_VIDEO_VC1_PROFILE,
+		.default_profile = V4L2_MPEG_VIDEO_VC1_PROFILE_ADVANCED,
+		.level_ctrl = V4L2_CID_MPEG_VIDEO_VC1_LEVEL,
+		.default_level = V4L2_MPEG_VIDEO_VC1_LEVEL_3,
+		.profiles = AMVDEC_VC1_PROFILES,
+		.max_level = V4L2_MPEG_VIDEO_VC1_LEVEL_3,
+		.min_buffers = 4,
+		.max_buffers = 24,
+		.max_width = 1920,
+		.max_height = 1088,
+		.vdec_ops = &meson_amvdec_1_ops,
+		.codec_ops = &meson_amvdec_codec_vc1_ops,
+		.firmware_path = "amrisc/amrisc_vc1.bin",
 		.pixfmts_cap = { V4L2_PIX_FMT_NV12M, 0 },
 		.flags = V4L2_FMT_FLAG_COMPRESSED,
 	},
@@ -115,6 +137,23 @@ static const struct amvdec_format amvdec_formats_gxl[] = {
 		.vdec_ops = &meson_amvdec_1_ops,
 		.codec_ops = &meson_amvdec_codec_mpeg12_sl_ops,
 		.firmware_path = "meson/vdec/gxl_mpeg12_multi.bin",
+		.pixfmts_cap = { V4L2_PIX_FMT_NV12M, 0 },
+		.flags = V4L2_FMT_FLAG_COMPRESSED,
+	}, {
+		.pixfmt = V4L2_PIX_FMT_VC1_SLICE,
+		.profile_ctrl = V4L2_CID_MPEG_VIDEO_VC1_PROFILE,
+		.default_profile = V4L2_MPEG_VIDEO_VC1_PROFILE_ADVANCED,
+		.level_ctrl = V4L2_CID_MPEG_VIDEO_VC1_LEVEL,
+		.default_level = V4L2_MPEG_VIDEO_VC1_LEVEL_3,
+		.profiles = AMVDEC_VC1_PROFILES,
+		.max_level = V4L2_MPEG_VIDEO_VC1_LEVEL_3,
+		.min_buffers = 4,
+		.max_buffers = 24,
+		.max_width = 1920,
+		.max_height = 1088,
+		.vdec_ops = &meson_amvdec_1_ops,
+		.codec_ops = &meson_amvdec_codec_vc1_ops,
+		.firmware_path = "amrisc/amrisc_vc1.bin",
 		.pixfmts_cap = { V4L2_PIX_FMT_NV12M, 0 },
 		.flags = V4L2_FMT_FLAG_COMPRESSED,
 	}, {
@@ -182,6 +221,23 @@ static const struct amvdec_format amvdec_formats_gxlx[] = {
 		.firmware_path = "meson/vdec/gxl_mpeg12_multi.bin",
 		.pixfmts_cap = { V4L2_PIX_FMT_NV12M, 0 },
 		.flags = V4L2_FMT_FLAG_COMPRESSED,
+	}, {
+		.pixfmt = V4L2_PIX_FMT_VC1_SLICE,
+		.profile_ctrl = V4L2_CID_MPEG_VIDEO_VC1_PROFILE,
+		.default_profile = V4L2_MPEG_VIDEO_VC1_PROFILE_ADVANCED,
+		.level_ctrl = V4L2_CID_MPEG_VIDEO_VC1_LEVEL,
+		.default_level = V4L2_MPEG_VIDEO_VC1_LEVEL_3,
+		.profiles = AMVDEC_VC1_PROFILES,
+		.max_level = V4L2_MPEG_VIDEO_VC1_LEVEL_3,
+		.min_buffers = 4,
+		.max_buffers = 24,
+		.max_width = 1920,
+		.max_height = 1088,
+		.vdec_ops = &meson_amvdec_1_ops,
+		.codec_ops = &meson_amvdec_codec_vc1_ops,
+		.firmware_path = "amrisc/amrisc_vc1.bin",
+		.pixfmts_cap = { V4L2_PIX_FMT_NV12M, 0 },
+		.flags = V4L2_FMT_FLAG_COMPRESSED,
 	},
 };
 
@@ -230,6 +286,23 @@ static const struct amvdec_format amvdec_formats_gxm[] = {
 		.vdec_ops = &meson_amvdec_1_ops,
 		.codec_ops = &meson_amvdec_codec_mpeg12_sl_ops,
 		.firmware_path = "meson/vdec/gxl_mpeg12_multi.bin",
+		.pixfmts_cap = { V4L2_PIX_FMT_NV12M, 0 },
+		.flags = V4L2_FMT_FLAG_COMPRESSED,
+	}, {
+		.pixfmt = V4L2_PIX_FMT_VC1_SLICE,
+		.profile_ctrl = V4L2_CID_MPEG_VIDEO_VC1_PROFILE,
+		.default_profile = V4L2_MPEG_VIDEO_VC1_PROFILE_ADVANCED,
+		.level_ctrl = V4L2_CID_MPEG_VIDEO_VC1_LEVEL,
+		.default_level = V4L2_MPEG_VIDEO_VC1_LEVEL_3,
+		.profiles = AMVDEC_VC1_PROFILES,
+		.max_level = V4L2_MPEG_VIDEO_VC1_LEVEL_3,
+		.min_buffers = 4,
+		.max_buffers = 24,
+		.max_width = 1920,
+		.max_height = 1088,
+		.vdec_ops = &meson_amvdec_1_ops,
+		.codec_ops = &meson_amvdec_codec_vc1_ops,
+		.firmware_path = "amrisc/amrisc_vc1.bin",
 		.pixfmts_cap = { V4L2_PIX_FMT_NV12M, 0 },
 		.flags = V4L2_FMT_FLAG_COMPRESSED,
 	}, {
@@ -299,6 +372,23 @@ static const struct amvdec_format amvdec_formats_g12a[] = {
 		.pixfmts_cap = { V4L2_PIX_FMT_NV12M, 0 },
 		.flags = V4L2_FMT_FLAG_COMPRESSED,
 	}, {
+		.pixfmt = V4L2_PIX_FMT_VC1_SLICE,
+		.profile_ctrl = V4L2_CID_MPEG_VIDEO_VC1_PROFILE,
+		.default_profile = V4L2_MPEG_VIDEO_VC1_PROFILE_ADVANCED,
+		.level_ctrl = V4L2_CID_MPEG_VIDEO_VC1_LEVEL,
+		.default_level = V4L2_MPEG_VIDEO_VC1_LEVEL_3,
+		.profiles = AMVDEC_VC1_PROFILES,
+		.max_level = V4L2_MPEG_VIDEO_VC1_LEVEL_3,
+		.min_buffers = 4,
+		.max_buffers = 24,
+		.max_width = 1920,
+		.max_height = 1088,
+		.vdec_ops = &meson_amvdec_1_ops,
+		.codec_ops = &meson_amvdec_codec_vc1_ops,
+		.firmware_path = "amrisc/amrisc_vc1.bin",
+		.pixfmts_cap = { V4L2_PIX_FMT_NV12M, 0 },
+		.flags = V4L2_FMT_FLAG_COMPRESSED,
+	}, {
 		.pixfmt = V4L2_PIX_FMT_VP9_FRAME,
 		.profile_ctrl = V4L2_CID_MPEG_VIDEO_VP9_PROFILE,
 		.default_profile = V4L2_MPEG_VIDEO_VP9_PROFILE_0,
@@ -363,6 +453,23 @@ static const struct amvdec_format amvdec_formats_sm1[] = {
 		.vdec_ops = &meson_amvdec_1_ops,
 		.codec_ops = &meson_amvdec_codec_mpeg12_sl_ops,
 		.firmware_path = "meson/vdec/gxl_mpeg12_multi.bin",
+		.pixfmts_cap = { V4L2_PIX_FMT_NV12M, 0 },
+		.flags = V4L2_FMT_FLAG_COMPRESSED,
+	}, {
+		.pixfmt = V4L2_PIX_FMT_VC1_SLICE,
+		.profile_ctrl = V4L2_CID_MPEG_VIDEO_VC1_PROFILE,
+		.default_profile = V4L2_MPEG_VIDEO_VC1_PROFILE_ADVANCED,
+		.level_ctrl = V4L2_CID_MPEG_VIDEO_VC1_LEVEL,
+		.default_level = V4L2_MPEG_VIDEO_VC1_LEVEL_3,
+		.profiles = AMVDEC_VC1_PROFILES,
+		.max_level = V4L2_MPEG_VIDEO_VC1_LEVEL_3,
+		.min_buffers = 4,
+		.max_buffers = 24,
+		.max_width = 1920,
+		.max_height = 1088,
+		.vdec_ops = &meson_amvdec_1_ops,
+		.codec_ops = &meson_amvdec_codec_vc1_ops,
+		.firmware_path = "amrisc/amrisc_vc1.bin",
 		.pixfmts_cap = { V4L2_PIX_FMT_NV12M, 0 },
 		.flags = V4L2_FMT_FLAG_COMPRESSED,
 	}, {
@@ -495,6 +602,7 @@ const struct amvdec_platform meson_amvdec_platform_s4 = {
 	.revision = AMVDEC_REVISION_S4,
 };
 
+MODULE_FIRMWARE("amrisc/amrisc_vc1.bin");
 MODULE_FIRMWARE("meson/vdec/g12a_h264_multi.bin");
 MODULE_FIRMWARE("meson/vdec/g12a_hevc_mmu.bin");
 MODULE_FIRMWARE("meson/vdec/g12a_vp9.bin");

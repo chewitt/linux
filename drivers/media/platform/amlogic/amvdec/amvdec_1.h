@@ -13,4 +13,6 @@
 
 extern struct amvdec_ops meson_amvdec_1_ops;
 
+int meson_amvdec_1_reload(struct amvdec_session *sess);
+
 #endif
