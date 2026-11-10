@@ -404,6 +404,9 @@ static void config_registers(struct rkvdec_ctx *ctx,
 	/* Set HEVC mode */
 	regs->common.reg009_dec_mode.dec_mode = VDPU381_MODE_HEVC;
 
+	/* Store the co-located motion vectors compressed, as for H.264 */
+	regs->common.reg012_secondary_en.colmv_compress_en = 1;
+
 	/* Set config */
 	regs->common.reg011_important_en.buf_empty_en = 1;
 	regs->common.reg011_important_en.dec_clkgate_e = 1;
