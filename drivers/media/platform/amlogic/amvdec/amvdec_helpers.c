@@ -802,7 +802,8 @@ bool meson_amvdec_request_jobs(struct amvdec_session *sess)
 {
 	return sess->fmt_out->pixfmt == V4L2_PIX_FMT_HEVC_SLICE ||
 	       sess->fmt_out->pixfmt == V4L2_PIX_FMT_VP9_FRAME ||
-	       sess->fmt_out->pixfmt == V4L2_PIX_FMT_MPEG2_SLICE;
+	       sess->fmt_out->pixfmt == V4L2_PIX_FMT_MPEG2_SLICE ||
+	       sess->fmt_out->pixfmt == V4L2_PIX_FMT_VC1_SLICE;
 }
 
 int meson_amvdec_request_begin(struct amvdec_session *sess, struct vb2_v4l2_buffer *src)

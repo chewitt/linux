@@ -26,6 +26,7 @@
 #include "codec_hevc_synth.h"
 #include "codec_mpeg12.h"
 #include "codec_mpeg12_synth.h"
+#include "codec_vc1.h"
 #include "codec_h264.h"
 #include "codec_hevc.h"
 #include "codec_vp9.h"
@@ -355,6 +356,7 @@ esparser_queue(struct amvdec_session *sess, struct vb2_v4l2_buffer *vbuf)
 	u16 mpeg2_tref = 0;
 	bool mpeg2_second = false;
 	bool mpeg2_job = false;
+	bool vc1_job = false;
 
 	BUILD_BUG_ON(sizeof(f->headers) < H264_SYNTH_MAX_HEADERS ||
 		     sizeof(f->headers) < MPEG12_SYNTH_MAX_HEADERS);
@@ -678,6 +680,8 @@ esparser_queue(struct amvdec_session *sess, struct vb2_v4l2_buffer *vbuf)
 		dev_dbg(core->dev,
 			"MPEG2 synthesized %d header bytes, coding_type=%u\n",
 			hdrs_len, f->mpeg2_pic.picture_coding_type);
+	} else if (sess->fmt_out->pixfmt == V4L2_PIX_FMT_VC1_SLICE) {
+		vc1_job = true;
 	} else {
 		u8 *vaddr = vb2_plane_vaddr(vb, 0);
 		u32 plane_size = vb2_plane_size(vb, 0);
@@ -908,6 +912,19 @@ esparser_queue(struct amvdec_session *sess, struct vb2_v4l2_buffer *vbuf)
 		}
 	}
 	v4l2_m2m_buf_copy_metadata(vbuf, sess->request_job.dst);
+	if (vc1_job) {
+		/* The VLD reads a copy of this buffer; nothing goes through the parser. */
+		sess->request_job.credit = true;
+		atomic_inc(&sess->esparser_queued_bufs);
+		ret = meson_amvdec_codec_vc1_feed(sess, vb);
+		if (ret) {
+			sess->request_job.credit = false;
+			atomic_dec(&sess->esparser_queued_bufs);
+			esparser_src_error(sess, vbuf);
+			return ret;
+		}
+		return 0;
+	}
 	if (mpeg2_job) {
 		/* The VLD reads this buffer directly; nothing goes
 		 * through the parser FIFO.

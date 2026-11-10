@@ -213,6 +213,16 @@ release_firmware:
 	return ret;
 }
 
+/* Scrub the engines after a failed picture and load the firmware again. */
+int meson_amvdec_1_reload(struct amvdec_session *sess)
+{
+	struct amvdec_core *core = sess->core;
+
+	amvdec_1_stop_armrisc(core);
+	amvdec_1_quiesce_reset(core);
+	return amvdec_1_load_firmware(sess, sess->fmt_out->firmware_path);
+}
+
 static int amvdec_1_stbuf_power_up(struct amvdec_session *sess)
 {
 	struct amvdec_core *core = sess->core;
@@ -409,6 +419,7 @@ static int amvdec_1_start(struct amvdec_session *sess)
 	 * and decoder context.
 	 */
 	if (sess->fmt_out->pixfmt != V4L2_PIX_FMT_MPEG2_SLICE &&
+	    sess->fmt_out->pixfmt != V4L2_PIX_FMT_VC1_SLICE &&
 	    !codec_ops->direct_input) {
 		meson_amvdec_write_dos(core, MPSR, 1);
 		usleep_range(10, 20);
