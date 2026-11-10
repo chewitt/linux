@@ -2274,6 +2274,60 @@ enum v4l2_mpeg_video_vp9_level -
     * - ``V4L2_MPEG_VIDEO_VP9_LEVEL_6_2``
       - Level 6.2
 
+.. _v4l2-mpeg-video-vc1-profile:
+
+``V4L2_CID_MPEG_VIDEO_VC1_PROFILE``
+    (enum)
+
+enum v4l2_mpeg_video_vc1_profile -
+    The profile information for VC-1, as specified by Annex D of
+    :ref:`vc1`. This is used to enumerate the profiles supported by a
+    VC-1 decoder. Possible values are:
+
+.. flat-table::
+    :header-rows:  0
+    :stub-columns: 0
+
+    * - ``V4L2_MPEG_VIDEO_VC1_PROFILE_SIMPLE``
+      - Simple profile
+    * - ``V4L2_MPEG_VIDEO_VC1_PROFILE_MAIN``
+      - Main profile
+    * - ``V4L2_MPEG_VIDEO_VC1_PROFILE_ADVANCED``
+      - Advanced profile
+
+.. _v4l2-mpeg-video-vc1-level:
+
+``V4L2_CID_MPEG_VIDEO_VC1_LEVEL``
+    (enum)
+
+enum v4l2_mpeg_video_vc1_level -
+    The level information for VC-1, as specified by Annex D of
+    :ref:`vc1`. This is used to enumerate the levels supported by a
+    VC-1 decoder. The Low, Medium and High levels apply to the Simple and
+    Main profiles (the Simple profile has no High level), the levels 0 to 4
+    apply to the Advanced profile. Possible values are:
+
+.. flat-table::
+    :header-rows:  0
+    :stub-columns: 0
+
+    * - ``V4L2_MPEG_VIDEO_VC1_LEVEL_LOW``
+      - Low level
+    * - ``V4L2_MPEG_VIDEO_VC1_LEVEL_MEDIUM``
+      - Medium level
+    * - ``V4L2_MPEG_VIDEO_VC1_LEVEL_HIGH``
+      - High level
+    * - ``V4L2_MPEG_VIDEO_VC1_LEVEL_0``
+      - Level 0
+    * - ``V4L2_MPEG_VIDEO_VC1_LEVEL_1``
+      - Level 1
+    * - ``V4L2_MPEG_VIDEO_VC1_LEVEL_2``
+      - Level 2
+    * - ``V4L2_MPEG_VIDEO_VC1_LEVEL_3``
+      - Level 3
+    * - ``V4L2_MPEG_VIDEO_VC1_LEVEL_4``
+      - Level 4
+
 
 High Efficiency Video Coding (HEVC/H.265) Control Reference
 ===========================================================
