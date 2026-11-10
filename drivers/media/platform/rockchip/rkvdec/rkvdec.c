@@ -22,6 +22,7 @@
 #include <linux/platform_device.h>
 #include <linux/pm.h>
 #include <linux/pm_runtime.h>
+#include <linux/sizes.h>
 #include <linux/slab.h>
 #include <linux/videodev2.h>
 #include <linux/workqueue.h>
@@ -93,6 +94,21 @@ static bool rkvdec_is_valid_fmt(struct rkvdec_ctx *ctx, u32 fourcc,
 static u32 rkvdec_colmv_size(u16 width, u16 height)
 {
 	return 128 * DIV_ROUND_UP(width, 16) * DIV_ROUND_UP(height, 16);
+}
+
+/*
+ * The VDPU381 stores co-located motion vectors compressed, in segments of
+ * 64x16 pixels, with a segment header (rows padded to 16 headers)
+ * and up to 1 KiB of payload. That's the bound the vendor code allocates;
+ * how much is used depends on the content, and can be more than the
+ * uncompressed layout of rkvdec_colmv_size() takes.
+ */
+static u32 vdpu381_colmv_size(u16 width, u16 height)
+{
+	u32 seg_w = DIV_ROUND_UP(width, 64);
+	u32 seg_h = DIV_ROUND_UP(height, 16);
+
+	return ALIGN(ALIGN(seg_w, 16) * seg_h + seg_w * seg_h * SZ_1K, 128);
 }
 
 static u32 vdpu383_colmv_size(u16 width, u16 height)
@@ -1912,7 +1928,7 @@ static const struct rcb_size_info vdpu381_rcb_sizes[] = {
 
 static const struct rkvdec_variant_ops vdpu381_variant_ops = {
 	.irq_handler = vdpu381_irq_handler,
-	.colmv_size = rkvdec_colmv_size,
+	.colmv_size = vdpu381_colmv_size,
 	.flatten_matrices = transpose_and_flatten_matrices,
 };
 
