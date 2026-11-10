@@ -66,6 +66,36 @@ ISO 13818-2
 
 :author:    International Telecommunication Union (http://www.itu.ch), International Organisation for Standardisation (http://www.iso.ch)
 
+.. _mpeg4part2:
+
+ISO 14496-2
+===========
+
+
+:title:     ISO/IEC 14496-2:2004 "Information technology --- Coding of audio-visual objects --- Part 2: Visual"
+
+:author:    International Organisation for Standardisation (http://www.iso.ch)
+
+.. _h263:
+
+ITU-T H.263
+===========
+
+
+:title:     ITU-T Recommendation H.263 "Video coding for low bit rate communication"
+
+:author:    International Telecommunication Union (http://www.itu.ch)
+
+.. _vc1:
+
+SMPTE 421M
+==========
+
+
+:title:     SMPTE 421M-2006 "Television --- VC-1 Compressed Video Bitstream Format and Decoding Process"
+
+:author:    Society of Motion Picture and Television Engineers (http://www.smpte.org)
+
 .. _itu470:
 
 ITU BT.470
