@@ -2050,6 +2050,48 @@ This structure contains all loop filter related parameters. See sections
       - When set, the bitstream contains additional syntax elements that
         specify which mode and reference frame deltas are to be updated.
 
+``V4L2_CID_STATELESS_VP9_TILE_INFO_ENTRY (struct)``
+    Specifies VP9 Tile Info entry as describe in section 6.4 "Decode tile syntax"
+    of :ref:`vp9`.
+    MiRowStart, MiRowEnd, MiColStart and MiColEnd can be retrieved from struct
+    v4l2_ctrl_vp9_frame using tile_row and tile_col.
+
+.. c:type:: v4l2_ctrl_vp9_tile_info_entry
+
+.. raw:: latex
+
+    \small
+
+.. tabularcolumns:: |p{1.2cm}|p{9.2cm}|p{6.9cm}|
+
+.. cssclass:: longtable
+
+.. flat-table:: struct v4l2_ctrl_vp9_tile_info_entry
+    :header-rows:  0
+    :stub-columns: 0
+    :widths:       1 1 2
+
+    * - __u32
+      - ``tile_offset``
+      - Specifies the offset from the tile data after frame header,
+        i.e. where the coded tile data actually starts.
+    * - __u32
+      - ``tile_size``
+      - Specifies the size in bytes of the coded tile.
+        Equivalent to "tile_size" in :ref:`vp9`
+    * - __u32
+      - ``tile_row``
+      - Specifies the row of the current tile.
+        Equivalent to "tileRow" in :ref:`vp9`
+    * - __u32
+      - ``tile_col``
+      - Specifies the col of the current tile.
+        Equivalent to "tileCol" in :ref:`vp9`
+
+.. raw:: latex
+
+    \normalsize
+
 .. _v4l2-codec-stateless-hevc:
 
 ``V4L2_CID_STATELESS_HEVC_SPS (struct)``

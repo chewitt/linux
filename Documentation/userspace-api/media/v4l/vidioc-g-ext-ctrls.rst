@@ -258,6 +258,10 @@ still cause this situation.
       - ``p_vp9_frame``
       - A pointer to a struct :c:type:`v4l2_ctrl_vp9_frame`. Valid if this
         control is of type ``V4L2_CTRL_TYPE_VP9_FRAME``.
+    * - struct :c:type:`v4l2_ctrl_vp9_tile_info_entry` *
+      - ``p_vp9_tile_info_entry``
+      - A pointer to a struct :c:type:`v4l2_ctrl_vp9_tile_info_entry`. Valid if this
+        control is of type ``V4L2_CTRL_TYPE_VP9_TILE_INFO_ENTRY``.
     * - struct :c:type:`v4l2_ctrl_hdr10_cll_info` *
       - ``p_hdr10_cll``
       - A pointer to a struct :c:type:`v4l2_ctrl_hdr10_cll_info`. Valid if this control is

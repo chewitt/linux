@@ -425,6 +425,9 @@ void v4l2_ctrl_type_op_log(const struct v4l2_ctrl *ctrl)
 	case V4L2_CTRL_TYPE_VP9_FRAME:
 		pr_cont("VP9_FRAME");
 		break;
+	case V4L2_CTRL_TYPE_VP9_TILE_INFO_ENTRY:
+		pr_cont("VP9_TILE_INFO_ENTRY");
+		break;
 	case V4L2_CTRL_TYPE_HEVC_SPS:
 		pr_cont("HEVC_SPS");
 		break;
@@ -1415,6 +1418,8 @@ static int std_validate_compound(const struct v4l2_ctrl *ctrl, u32 idx,
 
 	case V4L2_CTRL_TYPE_VP9_FRAME:
 		return validate_vp9_frame(p);
+	case V4L2_CTRL_TYPE_VP9_TILE_INFO_ENTRY:
+		break;
 	case V4L2_CTRL_TYPE_AV1_FRAME:
 		return validate_av1_frame(p);
 	case V4L2_CTRL_TYPE_AV1_SEQUENCE:
@@ -2134,6 +2139,9 @@ static struct v4l2_ctrl *v4l2_ctrl_new(struct v4l2_ctrl_handler *hdl,
 		break;
 	case V4L2_CTRL_TYPE_VP9_FRAME:
 		elem_size = sizeof(struct v4l2_ctrl_vp9_frame);
+		break;
+	case V4L2_CTRL_TYPE_VP9_TILE_INFO_ENTRY:
+		elem_size = sizeof(struct v4l2_ctrl_vp9_tile_info_entry);
 		break;
 	case V4L2_CTRL_TYPE_AV1_SEQUENCE:
 		elem_size = sizeof(struct v4l2_ctrl_av1_sequence);

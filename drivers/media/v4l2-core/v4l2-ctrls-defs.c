@@ -1228,6 +1228,7 @@ const char *v4l2_ctrl_get_name(u32 id)
 	case V4L2_CID_STATELESS_MPEG2_QUANTISATION:		return "MPEG-2 Quantisation Matrices";
 	case V4L2_CID_STATELESS_VP9_COMPRESSED_HDR:	return "VP9 Probabilities Updates";
 	case V4L2_CID_STATELESS_VP9_FRAME:			return "VP9 Frame Decode Parameters";
+	case V4L2_CID_STATELESS_VP9_TILE_INFO_ENTRY:		return "VP9 Tile Info Entry";
 	case V4L2_CID_STATELESS_HEVC_SPS:			return "HEVC Sequence Parameter Set";
 	case V4L2_CID_STATELESS_HEVC_PPS:			return "HEVC Picture Parameter Set";
 	case V4L2_CID_STATELESS_HEVC_SLICE_PARAMS:		return "HEVC Slice Parameters";
@@ -1601,6 +1602,10 @@ void v4l2_ctrl_fill(u32 id, const char **name, enum v4l2_ctrl_type *type,
 		break;
 	case V4L2_CID_STATELESS_AV1_SEQUENCE:
 		*type = V4L2_CTRL_TYPE_AV1_SEQUENCE;
+		break;
+	case V4L2_CID_STATELESS_VP9_TILE_INFO_ENTRY:
+		*type = V4L2_CTRL_TYPE_VP9_TILE_INFO_ENTRY;
+		*flags |= V4L2_CTRL_FLAG_DYNAMIC_ARRAY;
 		break;
 	case V4L2_CID_STATELESS_AV1_TILE_GROUP_ENTRY:
 		*type = V4L2_CTRL_TYPE_AV1_TILE_GROUP_ENTRY;
