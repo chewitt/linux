@@ -171,9 +171,14 @@ struct hantro_hevc_dec_hw_ctx {
  * struct hantro_mpeg2_dec_hw_ctx
  *
  * @qtable:		Quantization table
+ * @field_ts:		OUTPUT timestamp of the last field picture decoded, if it
+ *			was the first field of a frame
+ * @field_structure:	picture_structure of that field, 0 if there is none
  */
 struct hantro_mpeg2_dec_hw_ctx {
 	struct hantro_aux_buf qtable;
+	u64 field_ts;
+	u8 field_structure;
 };
 
 /**
@@ -567,6 +572,9 @@ int hantro_g1_mpeg2_dec_run(struct hantro_ctx *ctx);
 int rockchip_vpu2_mpeg2_dec_run(struct hantro_ctx *ctx);
 void hantro_mpeg2_dec_copy_qtable(u8 *qtable,
 				  const struct v4l2_ctrl_mpeg2_quantisation *ctrl);
+bool hantro_mpeg2_dec_second_field(struct hantro_ctx *ctx,
+				   const struct v4l2_ctrl_mpeg2_picture *pic,
+				   u64 timestamp);
 int hantro_mpeg2_dec_init(struct hantro_ctx *ctx);
 void hantro_mpeg2_dec_exit(struct hantro_ctx *ctx);
 

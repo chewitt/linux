@@ -35,10 +35,41 @@ void hantro_mpeg2_dec_copy_qtable(u8 *qtable,
 	}
 }
 
+/*
+ * Tell whether a field picture is the second field of its frame, which
+ * decides where its references are: the second field can predict from the
+ * first one, already decoded into the same buffer. top_field_first can't
+ * tell, it is always 0 in field pictures (ISO/IEC 13818-2, 6.3.10). The
+ * second field is the field of opposite parity decoded right after the
+ * first one, with the same OUTPUT timestamp.
+ */
+bool hantro_mpeg2_dec_second_field(struct hantro_ctx *ctx,
+				   const struct v4l2_ctrl_mpeg2_picture *pic,
+				   u64 timestamp)
+{
+	struct hantro_mpeg2_dec_hw_ctx *mpeg2 = &ctx->mpeg2_dec;
+	bool second;
+
+	if (pic->picture_structure == V4L2_MPEG2_PIC_FRAME) {
+		mpeg2->field_structure = 0;
+		return false;
+	}
+
+	second = mpeg2->field_structure &&
+		 mpeg2->field_structure != pic->picture_structure &&
+		 mpeg2->field_ts == timestamp;
+
+	mpeg2->field_structure = second ? 0 : pic->picture_structure;
+	mpeg2->field_ts = timestamp;
+
+	return second;
+}
+
 int hantro_mpeg2_dec_init(struct hantro_ctx *ctx)
 {
 	struct hantro_dev *vpu = ctx->dev;
 
+	ctx->mpeg2_dec.field_structure = 0;
 	ctx->mpeg2_dec.qtable.size = ARRAY_SIZE(zigzag) * 4;
 	ctx->mpeg2_dec.qtable.cpu =
 		dma_alloc_coherent(vpu->dev,
