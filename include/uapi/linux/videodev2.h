@@ -1903,6 +1903,7 @@ struct v4l2_ext_control {
 		struct v4l2_ctrl_mpeg2_quantisation __user *p_mpeg2_quantisation;
 		struct v4l2_ctrl_vp9_compressed_hdr __user *p_vp9_compressed_hdr_probs;
 		struct v4l2_ctrl_vp9_frame __user *p_vp9_frame;
+		struct v4l2_ctrl_vp9_tile_info_entry __user *p_vp9_tile_info_entry;
 		struct v4l2_ctrl_hevc_sps __user *p_hevc_sps;
 		struct v4l2_ctrl_hevc_pps __user *p_hevc_pps;
 		struct v4l2_ctrl_hevc_slice_params __user *p_hevc_slice_params;
@@ -1984,6 +1985,7 @@ enum v4l2_ctrl_type {
 
 	V4L2_CTRL_TYPE_VP9_COMPRESSED_HDR	= 0x0260,
 	V4L2_CTRL_TYPE_VP9_FRAME		= 0x0261,
+	V4L2_CTRL_TYPE_VP9_TILE_INFO_ENTRY	= 0x0262,
 
 	V4L2_CTRL_TYPE_HEVC_SPS			= 0x0270,
 	V4L2_CTRL_TYPE_HEVC_PPS			= 0x0271,

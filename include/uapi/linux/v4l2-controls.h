@@ -2621,6 +2621,8 @@ struct v4l2_ctrl_hevc_ext_sps_lt_rps {
 
 /* Stateless VP9 controls */
 
+#define V4L2_VP9_MAX_TILE_COUNT			512
+
 #define V4L2_VP9_LOOP_FILTER_FLAG_DELTA_ENABLED	0x1
 #define V4L2_VP9_LOOP_FILTER_FLAG_DELTA_UPDATE	0x2
 
@@ -2901,6 +2903,31 @@ struct v4l2_ctrl_vp9_compressed_hdr {
 	__u8 partition[16][3];
 
 	struct v4l2_vp9_mv_probs mv;
+};
+
+#define V4L2_CID_STATELESS_VP9_TILE_INFO_ENTRY (V4L2_CID_CODEC_STATELESS_BASE + 302)
+/**
+ * struct v4l2_ctrl_vp9_tile_info_entry - VP9 Tile Info entry
+ *
+ * Represents a single VP9 tile inside. Note that MiRowStart,
+ * MiRowEnd, MiColStart and MiColEnd can be retrieved from struct
+ * v4l2_ctrl_vp9_frame using tile_row and tile_col.
+ * See section 6.4 "Decode tile syntax" for more details.
+ *
+ * @tile_offset: offset from the tile data after frame header,
+ * i.e. where the coded tile data actually starts.
+ * @tile_size: specifies the size in bytes of the coded tile. Equivalent to
+ * "tile_size" in the VP9 Specification.
+ * @tile_row: specifies the row of the current tile. Equivalent to "tileRow" in
+ * the VP9 Specification.
+ * @tile_col: specifies the col of the current tile. Equivalent to "tileCol" in
+ * the VP9 Specification.
+ */
+struct v4l2_ctrl_vp9_tile_info_entry {
+	__u32 tile_offset;
+	__u32 tile_size;
+	__u32 tile_row;
+	__u32 tile_col;
 };
 
 /* Stateless AV1 controls */

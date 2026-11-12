@@ -555,6 +555,12 @@ See also the examples in :ref:`control`.
       - n/a
       - A struct :c:type:`v4l2_ctrl_vp9_frame`, containing VP9
 	frame decode parameters for stateless video decoders.
+    * - ``V4L2_CTRL_TYPE_VP9_TILE_INFO_ENTRY``
+      - n/a
+      - n/a
+      - n/a
+      - A struct :c:type:`v4l2_ctrl_vp9_tile_info_entry`, containing VP9
+        tile info for stateless video decoders.
     * - ``V4L2_CTRL_TYPE_AV1_SEQUENCE``
       - n/a
       - n/a
