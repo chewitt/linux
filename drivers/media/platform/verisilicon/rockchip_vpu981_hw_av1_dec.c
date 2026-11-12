@@ -236,27 +236,32 @@ static void rockchip_vpu981_av1_dec_tiles_free(struct hantro_ctx *ctx)
 				  av1_dec->db_data_col.cpu,
 				  av1_dec->db_data_col.dma);
 	av1_dec->db_data_col.cpu = NULL;
+	av1_dec->db_data_col.size = 0;
 
 	if (av1_dec->db_ctrl_col.cpu)
 		dma_free_coherent(vpu->dev, av1_dec->db_ctrl_col.size,
 				  av1_dec->db_ctrl_col.cpu,
 				  av1_dec->db_ctrl_col.dma);
 	av1_dec->db_ctrl_col.cpu = NULL;
+	av1_dec->db_ctrl_col.size = 0;
 
 	if (av1_dec->cdef_col.cpu)
 		dma_free_coherent(vpu->dev, av1_dec->cdef_col.size,
 				  av1_dec->cdef_col.cpu, av1_dec->cdef_col.dma);
 	av1_dec->cdef_col.cpu = NULL;
+	av1_dec->cdef_col.size = 0;
 
 	if (av1_dec->sr_col.cpu)
 		dma_free_coherent(vpu->dev, av1_dec->sr_col.size,
 				  av1_dec->sr_col.cpu, av1_dec->sr_col.dma);
 	av1_dec->sr_col.cpu = NULL;
+	av1_dec->sr_col.size = 0;
 
 	if (av1_dec->lr_col.cpu)
 		dma_free_coherent(vpu->dev, av1_dec->lr_col.size,
 				  av1_dec->lr_col.cpu, av1_dec->lr_col.dma);
 	av1_dec->lr_col.cpu = NULL;
+	av1_dec->lr_col.size = 0;
 }
 
 static int rockchip_vpu981_av1_dec_tiles_reallocate(struct hantro_ctx *ctx)
@@ -269,15 +274,30 @@ static int rockchip_vpu981_av1_dec_tiles_reallocate(struct hantro_ctx *ctx)
 	unsigned int height = ALIGN(ctrls->frame->frame_height_minus_1 + 1, 64);
 	unsigned int height_in_sb = height / 64;
 	unsigned int stripe_num = ((height + 8) + 63) / 64;
+	size_t db_data_size, db_ctrl_size, cdef_size, sr_size, lr_size;
 	size_t size;
 
-	if (av1_dec->db_data_col.size >=
-	    ALIGN(height * 12 * ctx->bit_depth / 8, 128) * num_tile_cols)
+	db_data_size = ALIGN(height * 12 * ctx->bit_depth / 8, 128) * num_tile_cols;
+	db_ctrl_size = ALIGN(height * 2 * 16 / 4, 128) * num_tile_cols;
+	cdef_size = ALIGN(height_in_sb * 44 * ctx->bit_depth * 16 / 8, 128) * num_tile_cols;
+	sr_size = ALIGN(height_in_sb * (3040 + 1280), 128) * num_tile_cols;
+	lr_size = ALIGN(stripe_num * 1536 * ctx->bit_depth / 8, 128) * num_tile_cols;
+
+	/*
+	 * The five buffers scale differently with the frame height, the
+	 * number of tile columns and the bit depth, so each of them has to be
+	 * big enough for the current frame, not only the deblocking data one.
+	 */
+	if (av1_dec->db_data_col.size >= db_data_size &&
+	    av1_dec->db_ctrl_col.size >= db_ctrl_size &&
+	    av1_dec->cdef_col.size >= cdef_size &&
+	    av1_dec->sr_col.size >= sr_size &&
+	    av1_dec->lr_col.size >= lr_size)
 		return 0;
 
 	rockchip_vpu981_av1_dec_tiles_free(ctx);
 
-	size = ALIGN(height * 12 * ctx->bit_depth / 8, 128) * num_tile_cols;
+	size = db_data_size;
 	av1_dec->db_data_col.cpu = dma_alloc_coherent(vpu->dev, size,
 						      &av1_dec->db_data_col.dma,
 						      GFP_KERNEL);
@@ -285,7 +305,7 @@ static int rockchip_vpu981_av1_dec_tiles_reallocate(struct hantro_ctx *ctx)
 		goto buffer_allocation_error;
 	av1_dec->db_data_col.size = size;
 
-	size = ALIGN(height * 2 * 16 / 4, 128) * num_tile_cols;
+	size = db_ctrl_size;
 	av1_dec->db_ctrl_col.cpu = dma_alloc_coherent(vpu->dev, size,
 						      &av1_dec->db_ctrl_col.dma,
 						      GFP_KERNEL);
@@ -293,7 +313,7 @@ static int rockchip_vpu981_av1_dec_tiles_reallocate(struct hantro_ctx *ctx)
 		goto buffer_allocation_error;
 	av1_dec->db_ctrl_col.size = size;
 
-	size = ALIGN(height_in_sb * 44 * ctx->bit_depth * 16 / 8, 128) * num_tile_cols;
+	size = cdef_size;
 	av1_dec->cdef_col.cpu = dma_alloc_coherent(vpu->dev, size,
 						   &av1_dec->cdef_col.dma,
 						   GFP_KERNEL);
@@ -301,7 +321,7 @@ static int rockchip_vpu981_av1_dec_tiles_reallocate(struct hantro_ctx *ctx)
 		goto buffer_allocation_error;
 	av1_dec->cdef_col.size = size;
 
-	size = ALIGN(height_in_sb * (3040 + 1280), 128) * num_tile_cols;
+	size = sr_size;
 	av1_dec->sr_col.cpu = dma_alloc_coherent(vpu->dev, size,
 						 &av1_dec->sr_col.dma,
 						 GFP_KERNEL);
@@ -309,7 +329,7 @@ static int rockchip_vpu981_av1_dec_tiles_reallocate(struct hantro_ctx *ctx)
 		goto buffer_allocation_error;
 	av1_dec->sr_col.size = size;
 
-	size = ALIGN(stripe_num * 1536 * ctx->bit_depth / 8, 128) * num_tile_cols;
+	size = lr_size;
 	av1_dec->lr_col.cpu = dma_alloc_coherent(vpu->dev, size,
 						 &av1_dec->lr_col.dma,
 						 GFP_KERNEL);
