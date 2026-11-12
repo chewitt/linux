@@ -526,6 +526,13 @@ static int rockchip_vpu981_av1_dec_prepare_run(struct hantro_ctx *ctx)
 	if (num_tiles > tge->elems || num_tiles > AV1_MAX_TILES)
 		return -EINVAL;
 
+	/*
+	 * Every AV1 frame has at least one tile. Without tile columns, the
+	 * tile column buffers would be sized to zero and not allocated.
+	 */
+	if (!num_tiles)
+		return -EINVAL;
+
 	ctrls->film_grain =
 	    hantro_get_ctrl(ctx, V4L2_CID_STATELESS_AV1_FILM_GRAIN);
 
