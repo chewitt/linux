@@ -156,7 +156,6 @@ int hantro_g1_mpeg2_dec_run(struct hantro_ctx *ctx)
 	src_buf = hantro_get_src_buf(ctx);
 	dst_buf = hantro_get_dst_buf(ctx);
 
-	/* Apply request controls if any */
 	hantro_start_prepare_run(ctx);
 
 	seq = hantro_get_ctrl(ctx,

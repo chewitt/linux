@@ -130,12 +130,6 @@ void hantro_watchdog(struct work_struct *work)
 
 void hantro_start_prepare_run(struct hantro_ctx *ctx)
 {
-	struct vb2_v4l2_buffer *src_buf;
-
-	src_buf = hantro_get_src_buf(ctx);
-	v4l2_ctrl_request_setup(src_buf->vb2_buf.req_obj.req,
-				&ctx->ctrl_handler);
-
 	if (!ctx->is_encoder && !ctx->dev->variant->late_postproc) {
 		if (hantro_needs_postproc(ctx, ctx->vpu_dst_fmt))
 			hantro_postproc_enable(ctx);
@@ -164,6 +158,24 @@ void hantro_end_prepare_run(struct hantro_ctx *ctx)
 			      msecs_to_jiffies(2000));
 }
 
+/*
+ * The CAPTURE buffers of a decoder are checked against the CAPTURE format when
+ * they are queued, but the format can change while they are queued.
+ */
+static bool hantro_dec_dst_buf_fits(struct hantro_ctx *ctx,
+				    struct vb2_v4l2_buffer *dst)
+{
+	unsigned int i;
+
+	for (i = 0; i < ctx->dst_fmt.num_planes; i++) {
+		if (vb2_plane_size(&dst->vb2_buf, i) <
+		    ctx->dst_fmt.plane_fmt[i].sizeimage)
+			return false;
+	}
+
+	return true;
+}
+
 static void device_run(void *priv)
 {
 	struct hantro_ctx *ctx = priv;
@@ -181,6 +193,19 @@ static void device_run(void *priv)
 	}
 
 	v4l2_m2m_buf_copy_metadata(src, dst);
+
+	/*
+	 * Apply the controls of the request first: they can change the bit
+	 * depth, and with it the CAPTURE format.
+	 */
+	v4l2_ctrl_request_setup(src->vb2_buf.req_obj.req, &ctx->ctrl_handler);
+
+	if (!ctx->is_encoder && !hantro_dec_dst_buf_fits(ctx, dst)) {
+		v4l2_ctrl_request_complete(src->vb2_buf.req_obj.req,
+					   &ctx->ctrl_handler);
+		hantro_job_finish(ctx, VB2_BUF_STATE_ERROR);
+		return;
+	}
 
 	ret = ctx->codec_ops->run(ctx);
 	if (ret)
