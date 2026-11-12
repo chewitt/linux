@@ -533,6 +533,18 @@ static int rockchip_vpu981_av1_dec_prepare_run(struct hantro_ctx *ctx)
 	if (!num_tiles)
 		return -EINVAL;
 
+	/*
+	 * The frame size comes from userspace. The decoder writes a frame of
+	 * that size, upscaled to upscaled_width, into buffers that are made
+	 * for the CAPTURE format, so the frame has to fit in that format. As
+	 * the format is within the limits of the decoder, this also keeps the
+	 * frame height in the range the tile column buffers can be sized for.
+	 */
+	if (ctrls->frame->frame_width_minus_1 >= ctx->dst_fmt.width ||
+	    ctrls->frame->frame_height_minus_1 >= ctx->dst_fmt.height ||
+	    ctrls->frame->upscaled_width > ctx->dst_fmt.width)
+		return -EINVAL;
+
 	ctrls->film_grain =
 	    hantro_get_ctrl(ctx, V4L2_CID_STATELESS_AV1_FILM_GRAIN);
 
