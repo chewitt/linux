@@ -10,6 +10,7 @@
 #define HANTRO_HW_H_
 
 #include <linux/interrupt.h>
+#include <linux/sizes.h>
 #include <linux/v4l2-controls.h>
 #include <media/v4l2-ctrls.h>
 #include <media/v4l2-vp9.h>
@@ -19,6 +20,9 @@
 #include "rockchip_av1_filmgrain.h"
 
 #define DEC_8190_ALIGN_MASK	0x07U
+
+/* Slack after the picture in CAPTURE buffers without motion vectors */
+#define HANTRO_CAPTURE_TAIL		SZ_4K
 
 #define MB_DIM			16
 #define TILE_MB_DIM		4
