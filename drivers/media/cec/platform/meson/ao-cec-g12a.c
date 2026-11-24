@@ -470,7 +470,10 @@ static irqreturn_t meson_ao_cec_g12a_irq_thread(int irq, void *data)
 	regmap_read(ao_cec->regmap, CECB_INTR_STAT_REG, &stat);
 	regmap_write(ao_cec->regmap, CECB_INTR_CLR_REG, stat);
 
-	if (stat & CECB_INTR_DONE)
+	/* DONE can be raised together with INITIATOR_ERR */
+	if (stat & CECB_INTR_INITIATOR_ERR)
+		cec_transmit_attempt_done(ao_cec->adap, CEC_TX_STATUS_ERROR);
+	else if (stat & CECB_INTR_DONE)
 		cec_transmit_attempt_done(ao_cec->adap, CEC_TX_STATUS_OK);
 
 	if (stat & CECB_INTR_EOM)
@@ -485,10 +488,6 @@ static irqreturn_t meson_ao_cec_g12a_irq_thread(int irq, void *data)
 				   CECB_CTRL_SEND | CECB_CTRL_TYPE, 0);
 		cec_transmit_attempt_done(ao_cec->adap, CEC_TX_STATUS_ARB_LOST);
 	}
-
-	/* Initiator reports an error on the CEC bus */
-	if (stat & CECB_INTR_INITIATOR_ERR)
-		cec_transmit_attempt_done(ao_cec->adap, CEC_TX_STATUS_ERROR);
 
 	/* Follower reports a receive error, just reset RX buffer */
 	if (stat & CECB_INTR_FOLLOWER_ERR)
